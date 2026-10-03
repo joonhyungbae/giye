@@ -1,0 +1,14 @@
+# Demo archive: a synthetic field (no real people). Used by tests and the one-command reproduction.
+[archive]
+name = "Synthetic media-art field (demo)"
+id_prefix = "GY"
+territory = "KR"
+languages = ["ko", "en"]
+
+[paths]
+data = "data"
+frames = "frames.yml"
+
+[collect]
+user_agent = "GiyeDemo/0.1 (+https://example.org)"
+min_delay_s = 0.0
