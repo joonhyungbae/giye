@@ -73,7 +73,7 @@ def test_demo_collectors_match_the_paper_api_and_keep_spelling_variants(tmp_path
         "김하늘",
         "박서연 (Seoyeon Park)",
         "정다운",
-        "오세린",
+        "표은솔",
         "한별",
         "문지호",
         "최민수",
@@ -92,7 +92,7 @@ def test_demo_collectors_match_the_paper_api_and_keep_spelling_variants(tmp_path
     assert [row["name"] for row in workshop] == [
         "Lee Haru",
         "이하루",
-        "오세린",
+        "표은솔",
         "정다운",
         "문지호",
         "최민수",

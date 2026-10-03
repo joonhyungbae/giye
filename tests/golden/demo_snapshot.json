@@ -1024,50 +1024,6 @@
       "updated_at": "TIMESTAMP"
     },
     {
-      "id": "GY-000004",
-      "name_ko": "오세린",
-      "name_en": "Oh Serin",
-      "aliases": [],
-      "type": "individual",
-      "bio_short": null,
-      "birth_year": null,
-      "birth_year_source_url": null,
-      "active_since": null,
-      "regions": [],
-      "countries": [],
-      "medium_tags": [],
-      "derived": {},
-      "technique_tags": [],
-      "theme_tags": [],
-      "frame_status": "IN_FRAME",
-      "frame_codes": [
-        "EXAMPLE-RESIDENCY",
-        "EXAMPLE-WORKSHOP"
-      ],
-      "frame_editions": [
-        {
-          "frame": "EXAMPLE-RESIDENCY",
-          "edition": null
-        },
-        {
-          "frame": "EXAMPLE-WORKSHOP",
-          "edition": null
-        }
-      ],
-      "verification": "UNVERIFIED",
-      "cv_status": "none",
-      "same_name": [],
-      "status": "PUBLISHED",
-      "source_url": "https://example.org/residency/alumni",
-      "source_type": "PUBLIC_RECORD",
-      "collected_at": "DATE",
-      "external_ids": {
-        "ledger_id": "LED-0000000440"
-      },
-      "created_at": "TIMESTAMP",
-      "updated_at": "TIMESTAMP"
-    },
-    {
       "id": "GY-000015",
       "name_ko": "이하루",
       "name_en": null,
@@ -1228,6 +1184,50 @@
       "collected_at": "DATE",
       "external_ids": {
         "ledger_id": "LED-0000001640"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000004",
+      "name_ko": "표은솔",
+      "name_en": "Pyo Eunsol",
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-RESIDENCY",
+        "EXAMPLE-WORKSHOP"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-RESIDENCY",
+          "edition": null
+        },
+        {
+          "frame": "EXAMPLE-WORKSHOP",
+          "edition": null
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000000440"
       },
       "created_at": "TIMESTAMP",
       "updated_at": "TIMESTAMP"
@@ -1472,16 +1472,6 @@
         "bibtex": "@misc{giye_GY_000010,\n  author       = {{Example Archive}},\n  title        = {서지우},\n  note         = {Artist record GY-000010, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000010}},\n  urldate      = {DATE}\n}"
       },
       {
-        "id": "GY-000004",
-        "title": "오세린",
-        "url": "https://example.org/artist/GY-000004",
-        "year": 2026,
-        "accessed": "DATE",
-        "apa": "Example Archive. (2026). 오세린 [Artist record GY-000004, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000004",
-        "chicago": "Example Archive. \"오세린.\" [Artist record GY-000004, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000004.",
-        "bibtex": "@misc{giye_GY_000004,\n  author       = {{Example Archive}},\n  title        = {오세린},\n  note         = {Artist record GY-000004, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000004}},\n  urldate      = {DATE}\n}"
-      },
-      {
         "id": "GY-000015",
         "title": "이하루",
         "url": "https://example.org/artist/GY-000015",
@@ -1520,6 +1510,16 @@
         "apa": "Example Archive. (2026). 최민수 [Artist record GY-000019, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000019",
         "chicago": "Example Archive. \"최민수.\" [Artist record GY-000019, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000019.",
         "bibtex": "@misc{giye_GY_000019,\n  author       = {{Example Archive}},\n  title        = {최민수},\n  note         = {Artist record GY-000019, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000019}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000004",
+        "title": "표은솔",
+        "url": "https://example.org/artist/GY-000004",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). 표은솔 [Artist record GY-000004, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000004",
+        "chicago": "Example Archive. \"표은솔.\" [Artist record GY-000004, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000004.",
+        "bibtex": "@misc{giye_GY_000004,\n  author       = {{Example Archive}},\n  title        = {표은솔},\n  note         = {Artist record GY-000004, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000004}},\n  urldate      = {DATE}\n}"
       },
       {
         "id": "GY-000005",

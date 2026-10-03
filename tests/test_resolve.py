@@ -268,7 +268,7 @@ def test_e2_merges_when_the_cv_names_the_roster_year_and_not_two_years_off(tmp_p
     ledger = _ledger(tmp_path)
     _seed(
         ledger,
-        [_artist("LED-cv", "GY-000001", "오세린", "Oh Serin"), _artist("LED-roster", "GY-000002", "오세린")],
+        [_artist("LED-cv", "GY-000001", "표은솔", "Pyo Eunsol"), _artist("LED-roster", "GY-000002", "표은솔")],
         [_act("LED-cv", "EXAMPLE-RESIDENCY", 2019), _act("LED-roster", "EXAMPLE-WORKSHOP", 2021)],
         [_mem("LED-cv", "EXAMPLE-RESIDENCY"), _mem("LED-roster", "EXAMPLE-WORKSHOP")],
     )
@@ -276,12 +276,12 @@ def test_e2_merges_when_the_cv_names_the_roster_year_and_not_two_years_off(tmp_p
     result = resolve_ledger(ledger)
     assert any(item.rule == "E2" and "EXAMPLE-WORKSHOP" in item.evidence and "2021" in item.evidence for item in result.merges)
     assert "rule=E2" in _notes(ledger)
-    assert len([row for row in ledger.read("artists") if row["name_ko"] == "오세린"]) == 1
+    assert len([row for row in ledger.read("artists") if row["name_ko"] == "표은솔"]) == 1
 
     other = _ledger(tmp_path / "far")
     _seed(
         other,
-        [_artist("LED-cv", "GY-000001", "오세린", "Oh Serin"), _artist("LED-roster", "GY-000002", "오세린")],
+        [_artist("LED-cv", "GY-000001", "표은솔", "Pyo Eunsol"), _artist("LED-roster", "GY-000002", "표은솔")],
         [_act("LED-cv", "EXAMPLE-RESIDENCY", 2019), _act("LED-roster", "EXAMPLE-WORKSHOP", 2021)],
         [_mem("LED-cv", "EXAMPLE-RESIDENCY"), _mem("LED-roster", "EXAMPLE-WORKSHOP")],
     )
@@ -521,11 +521,11 @@ def test_reopen_a_done_item_whose_pair_was_not_merged(tmp_path: Path):
 
 def test_html_cv_binds_by_name(tmp_path: Path):
     people = read_html_cvs(FIXTURE_CV.parent)
-    assert {person["name_ko"] for person in people} >= {"오세린", "김하늘"}
+    assert {person["name_ko"] for person in people} >= {"표은솔", "김하늘"}
     ledger = _ledger(tmp_path, cv_dir=FIXTURE_CV.parent)
     _seed(
         ledger,
-        [_artist("LED-cv", "GY-000001", "오세린", "Oh Serin"), _artist("LED-roster", "GY-000002", "오세린")],
+        [_artist("LED-cv", "GY-000001", "표은솔", "Pyo Eunsol"), _artist("LED-roster", "GY-000002", "표은솔")],
         [_act("LED-cv", "EXAMPLE-RESIDENCY", 2019), _act("LED-roster", "EXAMPLE-WORKSHOP", 2021)],
         [_mem("LED-cv", "EXAMPLE-RESIDENCY"), _mem("LED-roster", "EXAMPLE-WORKSHOP")],
     )
@@ -565,7 +565,7 @@ def test_demo_resolve_fires_each_rule(tmp_path: Path, monkeypatch: pytest.Monkey
 
     assert len(rows_named("정다운")) == 1
     assert "rule=E1" in notes
-    assert len(rows_named("오세린")) == 1
+    assert len(rows_named("표은솔")) == 1
     assert "rule=E2" in notes
     assert len(rows_named("한별")) == 1
     assert "rule=E3" in notes

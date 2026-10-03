@@ -9,19 +9,19 @@ def match(ko: str, en: str) -> bool:
 
 
 def test_given_family_and_family_given_orders_match():
-    assert match("배준형", "Joonhyung Bae")
-    assert match("배준형", "Bae Joon-hyung")
+    assert match("서도윤", "Doyun Seo")
+    assert match("서도윤", "Seo Do-yun")
 
 
 def test_customary_spellings_match():
-    assert match("김민지", "Minji Kim")
+    assert match("남하린", "Harin Nam")
     assert match("이정현", "Jeonghyun Lee")
     assert match("박영희", "Younghee Park")
 
 
 def test_different_people_do_not_match():
-    assert not match("배준형", "Minji Kim")
-    assert not match("김민지", "Minho Kim")
+    assert not match("서도윤", "Harin Nam")
+    assert not match("남하린", "Hajun Nam")
 
 
 def test_invalid_inputs_give_no_keys():
@@ -31,4 +31,4 @@ def test_invalid_inputs_give_no_keys():
 
 
 def test_keys_are_deterministic():
-    assert hangul_name_keys("배준형") == hangul_name_keys("배준형")
+    assert hangul_name_keys("서도윤") == hangul_name_keys("서도윤")
