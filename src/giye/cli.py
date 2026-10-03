@@ -85,6 +85,41 @@ def _extract(args: argparse.Namespace) -> int:
     return 0
 
 
+def _ledger(args: argparse.Namespace) -> int:
+    from giye.config import load
+    from giye.demo import ledger_counts
+
+    counts = ledger_counts(load(args.config))
+    for name, count in counts.items():
+        print(f"{name}\t{count}")
+    return 0
+
+
+def _publish(args: argparse.Namespace) -> int:
+    from giye.config import load
+    from giye.publish import publish
+
+    publish(load(args.config))
+    return 0
+
+
+def _render(args: argparse.Namespace) -> int:
+    from giye.config import load
+    from giye.publish import render
+
+    pages = render(load(args.config))
+    print(f"pages={len(pages)}")
+    return 0
+
+
+def _demo(args: argparse.Namespace) -> int:
+    from giye.demo import run_demo
+
+    result = run_demo(args.config, args.output)
+    print(result.summary)
+    return 0
+
+
 def _normalize(args: argparse.Namespace) -> int:
     from giye.config import load
     from giye.normalize.service import normalize
@@ -124,6 +159,11 @@ def main(argv: list[str] | None = None) -> int:
             )
     nk = sub.add_parser("name-keys", help="print romanized matching keys for names (rule X1)")
     nk.add_argument("names", nargs="+")
+    demo = sub.add_parser("demo", help="run the synthetic field offline and print a summary")
+    demo.add_argument("--config", default=None, help="defaults to examples/demo/giye.toml")
+    demo.add_argument("--output", default=None, help="data directory; default is a new temporary directory")
+    render_cmd = sub.add_parser("render", help="write one plain HTML page per person from the site snapshot")
+    render_cmd.add_argument("--config", default="giye.toml")
     args = ap.parse_args(argv)
     if args.cmd == "name-keys":
         return _name_keys(args)
@@ -135,6 +175,14 @@ def main(argv: list[str] | None = None) -> int:
         return _normalize(args)
     if args.cmd == "extract":
         return _extract(args)
+    if args.cmd == "ledger":
+        return _ledger(args)
+    if args.cmd == "publish":
+        return _publish(args)
+    if args.cmd == "render":
+        return _render(args)
+    if args.cmd == "demo":
+        return _demo(args)
     return _not_ported(args.cmd)
 
 

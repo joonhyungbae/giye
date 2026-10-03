@@ -62,3 +62,10 @@ cv_dir = "fixtures/cv"
 [resolve.event_patterns]
 EXAMPLE-RESIDENCY = "예시 ?레지던시|example residency"
 EXAMPLE-WORKSHOP = "예시 ?워크숍|example workshop"
+
+# Citations point at example.org, not the reference deployment.
+[publish]
+site_url = "https://example.org"
+dataset_version = "0.2"
+dataset_title = "Synthetic media-art field (demo)"
+citation_author = "Example Archive"

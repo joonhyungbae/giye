@@ -101,6 +101,27 @@ Place names, generic institution words, and romanisation come from a language mo
 
 G2, G4, and G5 are not named in the production source. The audit header says G1–G6. The remaining lookup steps, in order, are a Korean first-level region in Hangul, a city (the more populous row wins), an admin1 name, then a country name. A Korean administrative suffix is stripped before the second try (서울시 → 서울). The packaged gazetteer is a compact table. The full GeoNames city list is CC BY 4.0 and is not shipped; `[normalize] reference` loads it when it is present.
 
+## Publication (stage 7)
+
+These are the production site builder's decisions. They do not have E/F/P/V ids of their own. F4 is the coverage ratio the snapshot prints.
+
+| Decision | Rule |
+|---|---|
+| Who is a page | In scope, http(s) source, on a roster or `cv_link_ok=yes`, status empty / `PUBLISHED` / `STAGED`. A roster row is the evidence of participation. |
+| Tombstone | A `gy_id` that is not on a page stays at that URL as `HIDDEN_BY_REQUEST` or `WITHDRAWN`, with no name and no records. |
+| Redirect | A retired `gy_id` points at the survivor's current `gy_id`. The ledger already collapsed the chain. |
+| Activity on the page | `publishable=yes`, a title, a year in 19xx/20xx, an http(s) source. Other types become `other`. |
+| Background | CV sections education, employment, teaching, and press, minus scholarship-like titles and a future `upcoming` year. Not counted as practice. |
+| F4 on the site | `coverage_pct = round(100 * included / roster, 1)`. `roster` is the greater of the declared size and the membership count. Null when that size is 0. |
+| Citation | APA, Chicago, and BibTeX in the production dialog's shape. Author, title, version, and origin come from `[publish]`. Default author `기예 Giye`, default origin `https://giye.org`, default version `0.2`. |
+| Same-name note | Open `possible_same_person` items are listed on both pages as other ids. They are not merges. |
+| Gap | A missing number up to the highest issued id is a warning. The snapshot is still written. |
+| Roster must publish | A member who is not published and not out of scope stops the build. |
+
+`giye publish` does not rewrite `frames.yml`. Production saved the new counts back into that file. The counts are in `frames.json` and `coverage.json`.
+
+Region tags (`서울`, `경기`, …) and the medium guess from `field` / `category` are the production Korean media-art lists, copied as written. Incheon is tagged `경기` because that script did so. Another field's tags belong in a later language module; they are not re-decided here. Membership code `APE-2025` still resolves to frame `APE-CURRENT` at edition 2025 when that frame is registered. That special case is one live programme, kept so the same ledger builds the same editions.
+
 ## Exploration (stage 6)
 
 | ID | Rule | Status |

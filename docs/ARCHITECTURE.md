@@ -3,8 +3,9 @@
 Giye builds a **provenance-first census archive of a creative field**: everyone named on the
 field's programme rosters, every dated activity they publish, each record carrying its source,
 and a public website on which every person has a permanent, citable page. It was written for
-Korean media art and runs the live archive at the project domain (see README). Nothing in the
-code is specific to Korea or to media art except configuration (rosters, glossaries, gazetteer).
+Korean media art and runs the live archive at [giye.org](https://giye.org). Nothing in the
+code is specific to Korea or to media art except configuration (rosters, glossaries, gazetteer) and the
+region-tag and medium lists the snapshot copies from the production builder (see SNAPSHOT.md).
 
 This repository holds **software only**. No person-level data is distributed. The demo uses a
 synthetic field (`examples/demo/`).
@@ -29,6 +30,7 @@ synthetic field (`examples/demo/`).
    7 PUBLISH  ── site snapshot (JSON), permanent URLs, redirects for retired IDs, citations
           ▼
    web/ (TanStack Start + React) reads the snapshot; no database needed to browse
+   giye render writes one plain HTML page per person from the same snapshot
 ```
 
 Each stage reads the previous stage's files and writes its own. Stages 3–7 never fetch the
@@ -44,8 +46,8 @@ network, so the whole chain after collection is deterministic and can be re-run 
 | `giye.resolve` | 4 | same-person evidence (E1–E4), cross-script candidates (X1, `names.py`), team guard (T1) and member expansion, review queue, merge through `giye.ledger` |
 | `giye.normalize` | 5 | text normalisation, place gazetteer, institution entities and their audit, derived artist attributes. Glossary and gazetteer are a language module |
 | `giye.explore` | 6 | feature schema, optional text-embedding backend, clustering with k chosen by bootstrap stability, cluster descriptors |
-| `giye.publish` | 7 | site snapshot builder, ID redirects and stubs, coverage per frame, dataset versions, citation metadata |
-| `giye.cli` | all | `giye <stage>` commands and `giye run` for the whole chain |
+| `giye.publish` | 7 | site snapshot (`<data>/site/*.json`), ID redirects and stubs, coverage per frame, dataset versions, APA/Chicago/BibTeX citations, plain HTML pages (`giye render`) |
+| `giye.cli` | all | `giye <stage>`, `giye render`, and `giye demo` for the synthetic field |
 
 ## Stage 1 — collection
 
@@ -107,6 +109,16 @@ Production's collectors queued a same-name pair before this script ran, and the 
 - V1–V9 resolve venue strings into institution and funder entities. V2 splits, V4 keys exactly, V5 joins parenthetical aliases, V7 strips titles, qualifiers, editions, and unstable Hangul spaces and joins Latin names with the same words, V8 joins a building or an acronym plus its city, V9 joins a Hangul name to a Latin name when the glossary, the gazetteer, and romanisation give one shared reading. `venue_audit.md` lists every merge with its rule id.
 
 Generic words and place names are a `LanguageModule`: `name_keys` (personal names, wrapping `giye.resolve.names` for Korean), `glossary`, `gazetteer`, and `romanise`. The Korean–English module is the default and reads packaged files. `[normalize] glossary` and `[normalize] gazetteer` replace those files. `[normalize] reference` points at a GeoNames tree (`geonames/` and `countries/`); that dump is CC BY 4.0 and is not in this repository. `[normalize] venue_name_rules` (or `giye normalize --venue-name-rules`) keeps a subset of V7, V8, V9, or `none`.
+
+## Stage 7 — publish
+
+`giye publish` does not fetch and does not crawl. It reads the ledger and, when present, `data/processed/`, and writes the site snapshot under `data/site/`. Shapes, the publish filter, tombstones, and redirects are documented in [SNAPSHOT.md](SNAPSHOT.md).
+
+A published activity and a published person each keep `source_url` and `collected_at`. A `gy_id` that is no longer a public page stays in `artist_stubs.json` (`HIDDEN_BY_REQUEST` or `WITHDRAWN`) with no name. `gy_redirects.json` sends a retired id to the survivor. Frame coverage (F4) is `round(100 * included / roster, 1)`. The dataset version defaults to `0.2`. `citations.json` holds APA, Chicago, and BibTeX for the dataset and for each person; the sentences match the production cite dialog, with the author and the site origin taken from `[publish]`.
+
+`giye render` writes one plain HTML page per person (and a tombstone or redirect page per other id) so the snapshot can be read without the web front-end. `giye demo` runs collect, extract in replay mode, resolve, normalize, publish, and render on `examples/demo/` into a separate output directory. It does not open a network connection. Ledger ids in that run are a fixed sequence so the snapshot can be compared with `tests/golden/demo_snapshot.json`.
+
+The home-page ring (`rim_order.json`) and the embedding flight file are not built. Both feed the web front-end, which is still planned.
 
 ## Data model (ledger)
 

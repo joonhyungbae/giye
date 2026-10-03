@@ -55,6 +55,15 @@ Example (see examples/demo/giye.toml)::
     # unless set. cache defaults to <data>/work/cv_cache. sources are optional.
     [extract]
     model = "claude-opus-5"
+
+    # Site snapshot. site_url is the public origin cited on each page.
+    # dataset_version 0.2 and citation_author "기예 Giye" match the live archive.
+    # Another field sets its own title, author, and origin.
+    [publish]
+    site_url = "https://example.org"
+    dataset_version = "0.2"
+    dataset_title = "Synthetic media-art field (demo)"
+    citation_author = "Example Archive"
     # cache = "cache"
     # [[extract.sources]]
     # name_ko = "김하늘"
@@ -130,6 +139,16 @@ class Config:
     extract_cache: Path | None = None
     extract_allow_team: bool = False
     extract_sources: tuple[ExtractSource, ...] = ()
+    # Public origin of the published site. Citations use ``<site_url>/artist/<id>``
+    # and ``<site_url>/data``. The default is the reference deployment.
+    site_url: str = "https://giye.org"
+    # Production ``dataset_versions.json`` is version 0.2. The artist page in the
+    # web app hard-codes 1.0; the snapshot uses this value for both.
+    dataset_version: str = "0.2"
+    # Empty means the archive name. Production's data page uses a longer title.
+    dataset_title: str = ""
+    # Production CiteDialog always writes this author string.
+    citation_author: str = "기예 Giye"
     extra: dict = field(default_factory=dict)
 
     @property
@@ -191,7 +210,10 @@ def load(path: str | Path) -> Config:
     resolve = raw.get("resolve") or {}
     if not isinstance(resolve, dict):
         raise TypeError(f"{path}: [resolve] must be a table")
-    known = {"archive", "paths", "collect", "evidence", "resolve", "normalize", "extract"}
+    known = {"archive", "paths", "collect", "evidence", "resolve", "normalize", "extract", "publish"}
+    publish = raw.get("publish") or {}
+    if not isinstance(publish, dict):
+        raise TypeError(f"{path}: [publish] must be a table")
     extract = raw.get("extract") or {}
     if not isinstance(extract, dict):
         raise TypeError(f"{path}: [extract] must be a table")
@@ -230,8 +252,28 @@ def load(path: str | Path) -> Config:
         extract_cache=_optional_path(root, extract.get("cache")),
         extract_allow_team=bool(extract.get("allow_team", False)),
         extract_sources=_extract_sources(extract),
+        site_url=_site_url(publish.get("site_url", "https://giye.org")),
+        dataset_version=_plain(publish.get("dataset_version", "0.2"), "0.2", "[publish] dataset_version"),
+        dataset_title=_plain(publish.get("dataset_title", ""), "", "[publish] dataset_title"),
+        citation_author=_plain(publish.get("citation_author", "기예 Giye"), "기예 Giye", "[publish] citation_author"),
         extra={k: v for k, v in raw.items() if k not in known},
     )
+
+
+def _site_url(value: object) -> str:
+    if value is None or value == "":
+        return "https://giye.org"
+    if not isinstance(value, str):
+        raise TypeError("[publish] site_url must be a string")
+    return value.rstrip("/")
+
+
+def _plain(value: object, default: str, label: str) -> str:
+    if value is None:
+        return default
+    if not isinstance(value, str):
+        raise TypeError(f"{label} must be a string")
+    return value
 
 
 def _optional_path(root: Path, value: object) -> Path | None:

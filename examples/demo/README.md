@@ -2,6 +2,13 @@
 
 A synthetic field used to reproduce the pipeline without real people.
 
+```bash
+giye demo
+```
+
+That runs the whole chain offline and writes the snapshot and HTML pages to a temporary directory.
+The steps below write into `examples/demo/data/` instead, which is useful when inspecting one stage.
+
 Roster collection runs offline (local HTML fixtures, robots.txt still checked) and writes the
 ledger (people, frame membership, one activity per appearance) as well as a roster CSV:
 

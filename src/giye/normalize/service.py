@@ -18,7 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -72,6 +72,8 @@ class NormalizeResult:
     report: str
     activities: int
     attributes: int
+    # Rule id → how many institution spellings that rule joined (V5a–V5f, V7–V9).
+    venue_merges: dict[str, int] = field(default_factory=dict)
 
 
 def parse_name_rules(raw: str | None) -> frozenset[str] | None:
@@ -340,4 +342,11 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
     ]
     report = "\n".join(lines) + "\n"
     (out / "report.md").write_text(report, encoding="utf-8")
-    return NormalizeResult(processed=out, report=report, activities=len(activities), attributes=len(attributes))
+    venue_merges = dict(sorted(Counter(rule for rule, _left, _right in venue_result.merges).items()))
+    return NormalizeResult(
+        processed=out,
+        report=report,
+        activities=len(activities),
+        attributes=len(attributes),
+        venue_merges=venue_merges,
+    )

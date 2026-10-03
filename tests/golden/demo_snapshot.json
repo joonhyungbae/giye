@@ -1,0 +1,1736 @@
+{
+  "activities.json": [
+    {
+      "id": "fea061ea-3a03-55c6-b4fc-77a6535b9909",
+      "artist_id": "GY-000001",
+      "title": "올해의 신호",
+      "venue": "예시홀, 서울",
+      "year": 2026,
+      "activity_type": "group_exhibition",
+      "role": "(예정)",
+      "source_url": "https://cv.example.org/haneul-ko",
+      "source_type": "SELF_SUBMITTED",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "55c7b580-7a40-5dd6-83f3-f1b09c22bcf2",
+      "artist_id": "GY-000001",
+      "title": "예시 미디어전",
+      "venue": "예시문화원, 부산",
+      "year": 2024,
+      "activity_type": "group_exhibition",
+      "role": null,
+      "source_url": "https://cv.example.org/haneul-ko",
+      "source_type": "SELF_SUBMITTED",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "92e7f6f1-fd76-5ed4-a317-23aaf387f4be",
+      "artist_id": "GY-000021",
+      "title": "EXAMPLE-WORKSHOP",
+      "venue": null,
+      "year": 2022,
+      "activity_type": "other",
+      "role": null,
+      "source_url": "https://example.org/workshop/fellows",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "52a13974-d237-5dc1-aaf1-b1a9702d5cab",
+      "artist_id": "GY-000022",
+      "title": "EXAMPLE-WORKSHOP",
+      "venue": null,
+      "year": 2022,
+      "activity_type": "other",
+      "role": null,
+      "source_url": "https://example.org/workshop/fellows",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "8e5408e7-23fa-5798-b068-f32c8a9b2273",
+      "artist_id": "GY-000014",
+      "title": "EXAMPLE-WORKSHOP",
+      "venue": null,
+      "year": 2021,
+      "activity_type": "other",
+      "role": null,
+      "source_url": "https://example.org/workshop/fellows",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "2e5f8b73-53a0-5778-a827-96ced7bab136",
+      "artist_id": "GY-000015",
+      "title": "EXAMPLE-WORKSHOP",
+      "venue": null,
+      "year": 2021,
+      "activity_type": "other",
+      "role": null,
+      "source_url": "https://example.org/workshop/fellows",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "b2958687-0f69-54d8-b1fe-193b16e11151",
+      "artist_id": "GY-000004",
+      "title": "EXAMPLE-WORKSHOP",
+      "venue": null,
+      "year": 2021,
+      "activity_type": "other",
+      "role": null,
+      "source_url": "https://example.org/workshop/fellows",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "a3e5f55c-4427-58a5-b017-f10574c83ee8",
+      "artist_id": "GY-000003",
+      "title": "EXAMPLE-WORKSHOP",
+      "venue": null,
+      "year": 2021,
+      "activity_type": "other",
+      "role": null,
+      "source_url": "https://example.org/workshop/fellows",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "40e5e737-bc0b-5b46-bcb9-358ff8e5478f",
+      "artist_id": "GY-000006",
+      "title": "EXAMPLE-WORKSHOP",
+      "venue": null,
+      "year": 2021,
+      "activity_type": "other",
+      "role": "팀: 노을크루",
+      "source_url": "https://example.org/workshop/fellows",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "97595c2c-d681-5159-9384-8820300e2313",
+      "artist_id": "GY-000019",
+      "title": "EXAMPLE-WORKSHOP",
+      "venue": null,
+      "year": 2021,
+      "activity_type": "other",
+      "role": null,
+      "source_url": "https://example.org/workshop/fellows",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "6cec3526-9358-5d14-b083-bb811beddf0d",
+      "artist_id": "GY-000020",
+      "title": "EXAMPLE-WORKSHOP",
+      "venue": null,
+      "year": 2021,
+      "activity_type": "other",
+      "role": null,
+      "source_url": "https://example.org/workshop/fellows",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "f1acca80-ee1a-580b-adeb-fdfe2412cfb2",
+      "artist_id": "GY-000025",
+      "title": "EXAMPLE-WORKSHOP",
+      "venue": null,
+      "year": 2021,
+      "activity_type": "other",
+      "role": "팀: 배수아",
+      "source_url": "https://example.org/workshop/fellows",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "5ce733cd-56f5-57cc-a864-9348750b4170",
+      "artist_id": "GY-000026",
+      "title": "EXAMPLE-WORKSHOP",
+      "venue": null,
+      "year": 2021,
+      "activity_type": "other",
+      "role": "팀: 배수아",
+      "source_url": "https://example.org/workshop/fellows",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "01e7aa08-5f18-5f3d-b4a3-c2ea98a5b680",
+      "artist_id": "GY-000011",
+      "title": "EXAMPLE-RESIDENCY",
+      "venue": null,
+      "year": 2020,
+      "activity_type": "other",
+      "role": null,
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "9bbd90e6-9d30-57a9-92f2-2ea1e300b7e9",
+      "artist_id": "GY-000012",
+      "title": "EXAMPLE-RESIDENCY",
+      "venue": null,
+      "year": 2020,
+      "activity_type": "other",
+      "role": null,
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "348ee6ce-0872-53ac-8818-5db19878496b",
+      "artist_id": "GY-000005",
+      "title": "EXAMPLE-RESIDENCY",
+      "venue": null,
+      "year": 2020,
+      "activity_type": "other",
+      "role": "〈푸른 신호〉",
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "85b4df93-9519-59ce-9ede-2d9dbcc062d1",
+      "artist_id": "GY-000001",
+      "title": "EXAMPLE-RESIDENCY",
+      "venue": null,
+      "year": 2019,
+      "activity_type": "other",
+      "role": null,
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "57e98ed4-1c3e-5cb6-a4ea-ad296009c871",
+      "artist_id": "GY-000002",
+      "title": "EXAMPLE-RESIDENCY",
+      "venue": null,
+      "year": 2019,
+      "activity_type": "other",
+      "role": null,
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "9f8589e7-046a-5cea-83f5-9e269164792d",
+      "artist_id": "GY-000003",
+      "title": "EXAMPLE-RESIDENCY",
+      "venue": null,
+      "year": 2019,
+      "activity_type": "other",
+      "role": null,
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "97aa239b-db22-529a-878b-75e42ee33963",
+      "artist_id": "GY-000004",
+      "title": "EXAMPLE-RESIDENCY",
+      "venue": null,
+      "year": 2019,
+      "activity_type": "other",
+      "role": null,
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "6a876778-35db-5653-b207-af48f77b9f07",
+      "artist_id": "GY-000005",
+      "title": "EXAMPLE-RESIDENCY",
+      "venue": null,
+      "year": 2019,
+      "activity_type": "other",
+      "role": "〈푸른 신호〉",
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "94a1bd5f-6505-579a-a9b5-c3c39f79476f",
+      "artist_id": "GY-000006",
+      "title": "EXAMPLE-RESIDENCY",
+      "venue": null,
+      "year": 2019,
+      "activity_type": "other",
+      "role": "팀: 노을크루",
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "acd6bb87-599b-55c8-8d72-296615568c99",
+      "artist_id": "GY-000007",
+      "title": "EXAMPLE-RESIDENCY",
+      "venue": null,
+      "year": 2019,
+      "activity_type": "other",
+      "role": null,
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "3a316bf2-139f-5f43-ac9f-e580380b057d",
+      "artist_id": "GY-000008",
+      "title": "EXAMPLE-RESIDENCY",
+      "venue": null,
+      "year": 2019,
+      "activity_type": "other",
+      "role": null,
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "d9eeb77f-313e-51fd-8d77-941c586dca30",
+      "artist_id": "GY-000009",
+      "title": "EXAMPLE-RESIDENCY",
+      "venue": null,
+      "year": 2019,
+      "activity_type": "other",
+      "role": null,
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "220fddc2-8c6a-57b2-a56f-d61f12decf3d",
+      "artist_id": "GY-000010",
+      "title": "EXAMPLE-RESIDENCY",
+      "venue": null,
+      "year": 2019,
+      "activity_type": "other",
+      "role": null,
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "3e28aede-4e0b-5800-a99c-78b543e39336",
+      "artist_id": "GY-000023",
+      "title": "EXAMPLE-RESIDENCY",
+      "venue": null,
+      "year": 2019,
+      "activity_type": "other",
+      "role": "팀: 노을 스튜디오",
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "4395a1c4-8597-509d-ad23-298a7bf24730",
+      "artist_id": "GY-000024",
+      "title": "EXAMPLE-RESIDENCY",
+      "venue": null,
+      "year": 2019,
+      "activity_type": "other",
+      "role": "팀: 노을 스튜디오",
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "d9f93d48-4e93-59f7-a5df-c6699135ce07",
+      "artist_id": "GY-000001",
+      "title": "〈푸른 신호〉",
+      "venue": "예시미술관, 서울",
+      "year": 2019,
+      "activity_type": "solo_exhibition",
+      "role": null,
+      "source_url": "https://cv.example.org/haneul-ko",
+      "source_type": "SELF_SUBMITTED",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    }
+  ],
+  "artist_stubs.json": {},
+  "artists.json": [
+    {
+      "id": "GY-000011",
+      "name_ko": "Haneul Kim",
+      "name_en": "Haneul Kim",
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-RESIDENCY"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-RESIDENCY",
+          "edition": null
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000000b40"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000021",
+      "name_ko": "Haru Lee",
+      "name_en": "Haru Lee",
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-WORKSHOP"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-WORKSHOP",
+          "edition": null
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/workshop/fellows",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000001840"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000022",
+      "name_ko": "Jiwoo Seo",
+      "name_en": "Jiwoo Seo",
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-WORKSHOP"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-WORKSHOP",
+          "edition": null
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [
+        "GY-000010"
+      ],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/workshop/fellows",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000001940"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000012",
+      "name_ko": "Kim Seoyeon",
+      "name_en": "Kim Seoyeon",
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-RESIDENCY"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-RESIDENCY",
+          "edition": null
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000000c40"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000014",
+      "name_ko": "Lee Haru",
+      "name_en": "Lee Haru",
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-WORKSHOP"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-WORKSHOP",
+          "edition": null
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/workshop/fellows",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000001140"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000023",
+      "name_ko": "김바다",
+      "name_en": null,
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-RESIDENCY"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-RESIDENCY",
+          "edition": null,
+          "role": "팀: 노을 스튜디오"
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000001d40"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000025",
+      "name_ko": "김솔",
+      "name_en": null,
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-WORKSHOP"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-WORKSHOP",
+          "edition": null,
+          "role": "팀: 배수아"
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/workshop/fellows",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000001f40"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000001",
+      "name_ko": "김하늘",
+      "name_en": null,
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": 2019,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {
+        "active_since": {
+          "rule": "A1 earliest public practice row"
+        }
+      },
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-RESIDENCY"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-RESIDENCY",
+          "edition": null
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "found",
+      "same_name": [],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000000140"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000009",
+      "name_ko": "노을 스튜디오",
+      "name_en": null,
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-RESIDENCY"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-RESIDENCY",
+          "edition": null
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000000940"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000006",
+      "name_ko": "문지호",
+      "name_en": "Jiho Moon",
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-RESIDENCY",
+        "EXAMPLE-WORKSHOP"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-RESIDENCY",
+          "edition": null,
+          "role": "팀: 노을크루"
+        },
+        {
+          "frame": "EXAMPLE-WORKSHOP",
+          "edition": null,
+          "role": "팀: 노을크루"
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000000640"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000024",
+      "name_ko": "박바다",
+      "name_en": null,
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-RESIDENCY"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-RESIDENCY",
+          "edition": null,
+          "role": "팀: 노을 스튜디오"
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000001e40"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000002",
+      "name_ko": "박서연 (Seoyeon Park)",
+      "name_en": null,
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-RESIDENCY"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-RESIDENCY",
+          "edition": null
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000000240"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000026",
+      "name_ko": "박솔",
+      "name_en": null,
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-WORKSHOP"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-WORKSHOP",
+          "edition": null,
+          "role": "팀: 배수아"
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/workshop/fellows",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000002040"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000008",
+      "name_ko": "배수아",
+      "name_en": null,
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-RESIDENCY"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-RESIDENCY",
+          "edition": null
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000000840"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000020",
+      "name_ko": "배수아",
+      "name_en": "Sua Bae",
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-WORKSHOP"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-WORKSHOP",
+          "edition": null
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/workshop/fellows",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000001740"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000010",
+      "name_ko": "서지우",
+      "name_en": null,
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-RESIDENCY"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-RESIDENCY",
+          "edition": null
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [
+        "GY-000022"
+      ],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000000a40"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000004",
+      "name_ko": "오세린",
+      "name_en": "Oh Serin",
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-RESIDENCY",
+        "EXAMPLE-WORKSHOP"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-RESIDENCY",
+          "edition": null
+        },
+        {
+          "frame": "EXAMPLE-WORKSHOP",
+          "edition": null
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000000440"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000015",
+      "name_ko": "이하루",
+      "name_en": null,
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-WORKSHOP"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-WORKSHOP",
+          "edition": null
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/workshop/fellows",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000001240"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000003",
+      "name_ko": "정다운",
+      "name_en": "Jung Dawoon",
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-RESIDENCY",
+        "EXAMPLE-WORKSHOP"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-RESIDENCY",
+          "edition": null
+        },
+        {
+          "frame": "EXAMPLE-WORKSHOP",
+          "edition": null
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000000340"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000007",
+      "name_ko": "최민수",
+      "name_en": null,
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-RESIDENCY"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-RESIDENCY",
+          "edition": null
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [
+        "GY-000019"
+      ],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000000740"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000019",
+      "name_ko": "최민수",
+      "name_en": "Minsu Choi",
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-WORKSHOP"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-WORKSHOP",
+          "edition": null
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [
+        "GY-000007"
+      ],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/workshop/fellows",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000001640"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000005",
+      "name_ko": "한별",
+      "name_en": "Han Byeol",
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-RESIDENCY"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-RESIDENCY",
+          "edition": null,
+          "role": "〈푸른 신호〉"
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/residency/alumni",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000000540"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    }
+  ],
+  "background.json": [
+    {
+      "id": "bc05c504-e741-586a-b763-9a0e57be5d7b",
+      "artist_id": "GY-000001",
+      "section": "education",
+      "title": "BFA, Seoul Yesidae University",
+      "venue": "Seoul Yesidae University",
+      "year": 2014,
+      "role": null,
+      "source_url": "https://cv.example.org/haneul-en",
+      "source_type": "SELF_SUBMITTED",
+      "collected_at": "DATE"
+    },
+    {
+      "id": "2bb58ab3-f726-5517-a774-f2f36043360b",
+      "artist_id": "GY-000001",
+      "section": "education",
+      "title": "서울예시대학교 미술학 학사",
+      "venue": "서울예시대학교",
+      "year": 2014,
+      "role": null,
+      "source_url": "https://cv.example.org/haneul-ko",
+      "source_type": "SELF_SUBMITTED",
+      "collected_at": "DATE"
+    }
+  ],
+  "citations.json": {
+    "dataset": {
+      "title": "Synthetic media-art field (demo)",
+      "version": "0.2",
+      "url": "https://example.org/data",
+      "year": 2026,
+      "accessed": "DATE",
+      "apa": "Example Archive. (2026). Synthetic media-art field (demo) [Dataset v0.2]. Retrieved DATE, from https://example.org/data",
+      "chicago": "Example Archive. \"Synthetic media-art field (demo).\" [Dataset v0.2] 2026. Accessed DATE. https://example.org/data.",
+      "bibtex": "@misc{giye_dataset,\n  author       = {{Example Archive}},\n  title        = {Synthetic media-art field (demo)},\n  note         = {Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/data}},\n  urldate      = {DATE}\n}"
+    },
+    "artists": [
+      {
+        "id": "GY-000011",
+        "title": "Haneul Kim",
+        "url": "https://example.org/artist/GY-000011",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). Haneul Kim [Artist record GY-000011, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000011",
+        "chicago": "Example Archive. \"Haneul Kim.\" [Artist record GY-000011, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000011.",
+        "bibtex": "@misc{giye_GY_000011,\n  author       = {{Example Archive}},\n  title        = {Haneul Kim},\n  note         = {Artist record GY-000011, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000011}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000021",
+        "title": "Haru Lee",
+        "url": "https://example.org/artist/GY-000021",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). Haru Lee [Artist record GY-000021, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000021",
+        "chicago": "Example Archive. \"Haru Lee.\" [Artist record GY-000021, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000021.",
+        "bibtex": "@misc{giye_GY_000021,\n  author       = {{Example Archive}},\n  title        = {Haru Lee},\n  note         = {Artist record GY-000021, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000021}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000022",
+        "title": "Jiwoo Seo",
+        "url": "https://example.org/artist/GY-000022",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). Jiwoo Seo [Artist record GY-000022, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000022",
+        "chicago": "Example Archive. \"Jiwoo Seo.\" [Artist record GY-000022, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000022.",
+        "bibtex": "@misc{giye_GY_000022,\n  author       = {{Example Archive}},\n  title        = {Jiwoo Seo},\n  note         = {Artist record GY-000022, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000022}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000012",
+        "title": "Kim Seoyeon",
+        "url": "https://example.org/artist/GY-000012",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). Kim Seoyeon [Artist record GY-000012, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000012",
+        "chicago": "Example Archive. \"Kim Seoyeon.\" [Artist record GY-000012, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000012.",
+        "bibtex": "@misc{giye_GY_000012,\n  author       = {{Example Archive}},\n  title        = {Kim Seoyeon},\n  note         = {Artist record GY-000012, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000012}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000014",
+        "title": "Lee Haru",
+        "url": "https://example.org/artist/GY-000014",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). Lee Haru [Artist record GY-000014, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000014",
+        "chicago": "Example Archive. \"Lee Haru.\" [Artist record GY-000014, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000014.",
+        "bibtex": "@misc{giye_GY_000014,\n  author       = {{Example Archive}},\n  title        = {Lee Haru},\n  note         = {Artist record GY-000014, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000014}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000023",
+        "title": "김바다",
+        "url": "https://example.org/artist/GY-000023",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). 김바다 [Artist record GY-000023, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000023",
+        "chicago": "Example Archive. \"김바다.\" [Artist record GY-000023, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000023.",
+        "bibtex": "@misc{giye_GY_000023,\n  author       = {{Example Archive}},\n  title        = {김바다},\n  note         = {Artist record GY-000023, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000023}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000025",
+        "title": "김솔",
+        "url": "https://example.org/artist/GY-000025",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). 김솔 [Artist record GY-000025, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000025",
+        "chicago": "Example Archive. \"김솔.\" [Artist record GY-000025, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000025.",
+        "bibtex": "@misc{giye_GY_000025,\n  author       = {{Example Archive}},\n  title        = {김솔},\n  note         = {Artist record GY-000025, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000025}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000001",
+        "title": "김하늘",
+        "url": "https://example.org/artist/GY-000001",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). 김하늘 [Artist record GY-000001, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000001",
+        "chicago": "Example Archive. \"김하늘.\" [Artist record GY-000001, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000001.",
+        "bibtex": "@misc{giye_GY_000001,\n  author       = {{Example Archive}},\n  title        = {김하늘},\n  note         = {Artist record GY-000001, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000001}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000009",
+        "title": "노을 스튜디오",
+        "url": "https://example.org/artist/GY-000009",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). 노을 스튜디오 [Artist record GY-000009, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000009",
+        "chicago": "Example Archive. \"노을 스튜디오.\" [Artist record GY-000009, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000009.",
+        "bibtex": "@misc{giye_GY_000009,\n  author       = {{Example Archive}},\n  title        = {노을 스튜디오},\n  note         = {Artist record GY-000009, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000009}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000006",
+        "title": "문지호",
+        "url": "https://example.org/artist/GY-000006",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). 문지호 [Artist record GY-000006, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000006",
+        "chicago": "Example Archive. \"문지호.\" [Artist record GY-000006, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000006.",
+        "bibtex": "@misc{giye_GY_000006,\n  author       = {{Example Archive}},\n  title        = {문지호},\n  note         = {Artist record GY-000006, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000006}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000024",
+        "title": "박바다",
+        "url": "https://example.org/artist/GY-000024",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). 박바다 [Artist record GY-000024, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000024",
+        "chicago": "Example Archive. \"박바다.\" [Artist record GY-000024, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000024.",
+        "bibtex": "@misc{giye_GY_000024,\n  author       = {{Example Archive}},\n  title        = {박바다},\n  note         = {Artist record GY-000024, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000024}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000002",
+        "title": "박서연 (Seoyeon Park)",
+        "url": "https://example.org/artist/GY-000002",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). 박서연 (Seoyeon Park) [Artist record GY-000002, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000002",
+        "chicago": "Example Archive. \"박서연 (Seoyeon Park).\" [Artist record GY-000002, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000002.",
+        "bibtex": "@misc{giye_GY_000002,\n  author       = {{Example Archive}},\n  title        = {박서연 (Seoyeon Park)},\n  note         = {Artist record GY-000002, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000002}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000026",
+        "title": "박솔",
+        "url": "https://example.org/artist/GY-000026",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). 박솔 [Artist record GY-000026, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000026",
+        "chicago": "Example Archive. \"박솔.\" [Artist record GY-000026, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000026.",
+        "bibtex": "@misc{giye_GY_000026,\n  author       = {{Example Archive}},\n  title        = {박솔},\n  note         = {Artist record GY-000026, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000026}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000008",
+        "title": "배수아",
+        "url": "https://example.org/artist/GY-000008",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). 배수아 [Artist record GY-000008, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000008",
+        "chicago": "Example Archive. \"배수아.\" [Artist record GY-000008, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000008.",
+        "bibtex": "@misc{giye_GY_000008,\n  author       = {{Example Archive}},\n  title        = {배수아},\n  note         = {Artist record GY-000008, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000008}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000020",
+        "title": "배수아",
+        "url": "https://example.org/artist/GY-000020",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). 배수아 [Artist record GY-000020, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000020",
+        "chicago": "Example Archive. \"배수아.\" [Artist record GY-000020, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000020.",
+        "bibtex": "@misc{giye_GY_000020,\n  author       = {{Example Archive}},\n  title        = {배수아},\n  note         = {Artist record GY-000020, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000020}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000010",
+        "title": "서지우",
+        "url": "https://example.org/artist/GY-000010",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). 서지우 [Artist record GY-000010, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000010",
+        "chicago": "Example Archive. \"서지우.\" [Artist record GY-000010, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000010.",
+        "bibtex": "@misc{giye_GY_000010,\n  author       = {{Example Archive}},\n  title        = {서지우},\n  note         = {Artist record GY-000010, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000010}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000004",
+        "title": "오세린",
+        "url": "https://example.org/artist/GY-000004",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). 오세린 [Artist record GY-000004, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000004",
+        "chicago": "Example Archive. \"오세린.\" [Artist record GY-000004, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000004.",
+        "bibtex": "@misc{giye_GY_000004,\n  author       = {{Example Archive}},\n  title        = {오세린},\n  note         = {Artist record GY-000004, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000004}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000015",
+        "title": "이하루",
+        "url": "https://example.org/artist/GY-000015",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). 이하루 [Artist record GY-000015, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000015",
+        "chicago": "Example Archive. \"이하루.\" [Artist record GY-000015, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000015.",
+        "bibtex": "@misc{giye_GY_000015,\n  author       = {{Example Archive}},\n  title        = {이하루},\n  note         = {Artist record GY-000015, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000015}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000003",
+        "title": "정다운",
+        "url": "https://example.org/artist/GY-000003",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). 정다운 [Artist record GY-000003, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000003",
+        "chicago": "Example Archive. \"정다운.\" [Artist record GY-000003, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000003.",
+        "bibtex": "@misc{giye_GY_000003,\n  author       = {{Example Archive}},\n  title        = {정다운},\n  note         = {Artist record GY-000003, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000003}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000007",
+        "title": "최민수",
+        "url": "https://example.org/artist/GY-000007",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). 최민수 [Artist record GY-000007, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000007",
+        "chicago": "Example Archive. \"최민수.\" [Artist record GY-000007, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000007.",
+        "bibtex": "@misc{giye_GY_000007,\n  author       = {{Example Archive}},\n  title        = {최민수},\n  note         = {Artist record GY-000007, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000007}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000019",
+        "title": "최민수",
+        "url": "https://example.org/artist/GY-000019",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). 최민수 [Artist record GY-000019, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000019",
+        "chicago": "Example Archive. \"최민수.\" [Artist record GY-000019, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000019.",
+        "bibtex": "@misc{giye_GY_000019,\n  author       = {{Example Archive}},\n  title        = {최민수},\n  note         = {Artist record GY-000019, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000019}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000005",
+        "title": "한별",
+        "url": "https://example.org/artist/GY-000005",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). 한별 [Artist record GY-000005, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000005",
+        "chicago": "Example Archive. \"한별.\" [Artist record GY-000005, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000005.",
+        "bibtex": "@misc{giye_GY_000005,\n  author       = {{Example Archive}},\n  title        = {한별},\n  note         = {Artist record GY-000005, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000005}},\n  urldate      = {DATE}\n}"
+      }
+    ]
+  },
+  "collaborations.json": [],
+  "content_pages.json": [],
+  "content_revisions.json": [],
+  "coverage.json": {
+    "generated_at": "TIMESTAMP",
+    "published_artists": 22,
+    "ledger_artists": 22,
+    "frame_count_active": 0,
+    "frame_count_total": 3,
+    "frames": [
+      {
+        "code": "EXAMPLE-RESIDENCY",
+        "roster_count": 14,
+        "included_count": 14,
+        "coverage_pct": 100.0,
+        "status": null,
+        "last_fetched_at": null
+      },
+      {
+        "code": "EXAMPLE-WORKSHOP",
+        "roster_count": 11,
+        "included_count": 11,
+        "coverage_pct": 100.0,
+        "status": null,
+        "last_fetched_at": null
+      },
+      {
+        "code": "EXAMPLE-GRANT",
+        "roster_count": 0,
+        "included_count": 0,
+        "coverage_pct": null,
+        "status": null,
+        "last_fetched_at": null
+      }
+    ],
+    "cadence": {
+      "weekly": "link check + site rebuild",
+      "monthly": "active frame collectors + site rebuild",
+      "quarterly": "out-of-frame / requests intake"
+    }
+  },
+  "dataset_versions.json": [
+    {
+      "id": "33ba4a91-875e-5082-90ce-cf37a089e403",
+      "version": "0.2",
+      "released_at": "DATE",
+      "doi": null,
+      "notes": "Ledger snapshot · frames active=0 · published=22 · generated TIMESTAMP",
+      "artist_count": 22
+    }
+  ],
+  "frames.json": [
+    {
+      "id": "36f90b83-fbf3-518e-831d-bd53d51ec756",
+      "code": "EXAMPLE-RESIDENCY",
+      "name_ko": "예시 레지던시",
+      "name_en": "Example Residency",
+      "years_covered": null,
+      "source_url": "https://example.org/residency/alumni",
+      "included_count": 14,
+      "published_count": 14,
+      "roster_count": 14,
+      "coverage_pct": 100.0,
+      "status": null,
+      "stage": null,
+      "last_fetched_at": null,
+      "order": 0,
+      "editions": [
+        {
+          "edition": null,
+          "label": null,
+          "roster_count": 14,
+          "published_count": 14,
+          "out_of_scope_count": 0
+        }
+      ],
+      "eligibility": {
+        "decision": "included",
+        "f1_purpose": "The programme page states media art and art-and-technology as its purpose.",
+        "f2_cohort": "Residents are selected by an open call and a jury.",
+        "f3_territory": "Held in the configured territory (KR).",
+        "f4_roster": "The official alumni page lists every resident.",
+        "f5_period": "Editions in 2019 and 2020."
+      }
+    },
+    {
+      "id": "56d913f3-d8b0-5f38-b1e4-e17cb358adbf",
+      "code": "EXAMPLE-WORKSHOP",
+      "name_ko": "예시 워크숍",
+      "name_en": "Example Workshop",
+      "years_covered": null,
+      "source_url": "https://example.org/workshop/fellows",
+      "included_count": 11,
+      "published_count": 11,
+      "roster_count": 11,
+      "coverage_pct": 100.0,
+      "status": null,
+      "stage": null,
+      "last_fetched_at": null,
+      "order": 1,
+      "editions": [
+        {
+          "edition": null,
+          "label": null,
+          "roster_count": 11,
+          "published_count": 11,
+          "out_of_scope_count": 0
+        }
+      ],
+      "eligibility": {
+        "decision": "adjacent",
+        "f1_purpose": "The public text describes a general art workshop and does not state the field's purpose.",
+        "f2_cohort": "Fellows are selected by a jury.",
+        "f3_territory": "Held in the configured territory (KR).",
+        "f4_roster": "The fellows page is a public roster.",
+        "f5_period": "Editions in 2021 and 2022.",
+        "note": "Adjacent because F1 is not met; the roster is kept public."
+      }
+    },
+    {
+      "id": "9bf378cd-0c22-529d-b965-229bdda9d239",
+      "code": "EXAMPLE-GRANT",
+      "name_ko": "예시 공개 공모",
+      "name_en": "Example Open Grant",
+      "years_covered": null,
+      "source_url": "https://example.org/grant/notice",
+      "included_count": 0,
+      "published_count": 0,
+      "roster_count": 0,
+      "coverage_pct": null,
+      "status": null,
+      "stage": null,
+      "last_fetched_at": null,
+      "order": 2,
+      "editions": [],
+      "eligibility": {
+        "decision": "excluded",
+        "f1_purpose": "The notice states art-and-technology support.",
+        "f2_cohort": "No cohort is selected; the page is an announcement without a fixed participant group.",
+        "f3_territory": "Held in the configured territory (KR).",
+        "f4_roster": "No participant list is published.",
+        "f5_period": "A single notice in 2018, not repeated.",
+        "note": "Excluded because F2, F4, and F5 fail."
+      }
+    }
+  ],
+  "gy_redirects.json": {
+    "GY-000017": "GY-000003",
+    "GY-000016": "GY-000004",
+    "GY-000013": "GY-000005",
+    "GY-000018": "GY-000006"
+  },
+  "links.json": [
+    {
+      "id": "0000000e-4000-8000-8000-00000000000e",
+      "artist_id": "GY-000003",
+      "label": "website",
+      "url": "https://dawoon.example.org",
+      "link_type": "website",
+      "last_checked_at": null,
+      "http_status": null,
+      "is_dead": false,
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "0000000f-4000-8000-8000-00000000000f",
+      "artist_id": "GY-000008",
+      "label": "website",
+      "url": "https://sua.example.org",
+      "link_type": "website",
+      "last_checked_at": null,
+      "http_status": null,
+      "is_dead": false,
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "00000010-4000-8000-8000-000000000010",
+      "artist_id": "GY-000009",
+      "label": "website",
+      "url": "https://noeul.example.org",
+      "link_type": "website",
+      "last_checked_at": null,
+      "http_status": null,
+      "is_dead": false,
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "0000001b-4000-8000-8000-00000000001b",
+      "artist_id": "GY-000020",
+      "label": "website",
+      "url": "https://sua.example.org",
+      "link_type": "website",
+      "last_checked_at": null,
+      "http_status": null,
+      "is_dead": false,
+      "created_at": "TIMESTAMP"
+    }
+  ],
+  "research.json": [],
+  "vocabularies.json": []
+}
