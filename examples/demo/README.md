@@ -25,4 +25,12 @@ a shared `팀:` credit (E4). A same-name pair with none of that evidence is queu
 that shares a name and a website with a person is left unmerged (T1). Spelling variants that
 share a frame are not treated as evidence.
 
-Cached LLM responses for extraction are still planned (docs/ROADMAP.md, item 7).
+CV extraction replays a hand-written cache (no network, no API key):
+
+```bash
+giye extract --config examples/demo/giye.toml --replay-only
+```
+
+Run `giye collect` first so the roster rows exist. `cvs/` holds three fictitious CVs (Korean,
+English, and mixed). The English page repeats one Korean event; the Korean page has an education
+section. `cache/` holds synthetic raw responses that stand in for model output. See `cache/README.md`.

@@ -57,6 +57,34 @@ def _collect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _extract(args: argparse.Namespace) -> int:
+    from giye.config import load
+    from giye.extract.service import extract
+
+    result = extract(load(args.config), replay_only=args.replay_only)
+    print(
+        f"registered={result.registered} pull={result.pull or '-'} "
+        f"extracted={len(result.extracted)} replay_miss={len(result.replay_misses)} "
+        f"invalid={len(result.invalid)}"
+    )
+    for ledger_id in result.skipped_unmatched:
+        print(f"no artist for source {ledger_id}")
+    for item in result.skipped_team:
+        print(f"skip team row {item}")
+    for ledger_id in result.replay_misses:
+        print(f"replay miss {ledger_id}")
+    for ledger_id in result.invalid:
+        print(f"invalid extraction {ledger_id}")
+    applied = result.apply
+    if applied is not None:
+        print(
+            f"activities_added={applied.added} repointed={applied.repointed} "
+            f"superseded_files={applied.superseded_files} "
+            f"self_reported_superseded={applied.superseded_rows}"
+        )
+    return 0
+
+
 def _normalize(args: argparse.Namespace) -> int:
     from giye.config import load
     from giye.normalize.service import normalize
@@ -88,6 +116,12 @@ def main(argv: list[str] | None = None) -> int:
                 default=None,
                 help="Ablation: comma-separated V7,V8,V9, or 'none'. Default: the config, else all three.",
             )
+        if stage == "extract":
+            sp.add_argument(
+                "--replay-only",
+                action="store_true",
+                help="Use the replay cache only. Do not call a model, even when an API key is set.",
+            )
     nk = sub.add_parser("name-keys", help="print romanized matching keys for names (rule X1)")
     nk.add_argument("names", nargs="+")
     args = ap.parse_args(argv)
@@ -99,6 +133,8 @@ def main(argv: list[str] | None = None) -> int:
         return _resolve(args)
     if args.cmd == "normalize":
         return _normalize(args)
+    if args.cmd == "extract":
+        return _extract(args)
     return _not_ported(args.cmd)
 
 

@@ -22,7 +22,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the stages and guarantees, 
 Early port from the production archive. Ported and tested so far: cross-script name keys
 (`giye.resolve.names`, rule X1), roster collection (`giye collect`: robots-checked fetch,
 snapshots, frame registry F1–F5), the ledger (`giye.ledger`: CSV tables, permanent ids,
-backups, retirement), same-person resolution (`giye resolve`: E1–E4, team guard T1,
+backups, retirement), CV extraction (`giye extract`: schema, replay cache, no API key
+required for the demo), same-person resolution (`giye resolve`: E1–E4, team guard T1,
 review queue), and normalisation (`giye normalize`: P1–P5, institution rules V1–V9,
 audit). Progress is tracked in [docs/ROADMAP.md](docs/ROADMAP.md).
 
@@ -34,13 +35,16 @@ pip install -e ".[dev]"
 pytest
 giye --help
 giye collect --config examples/demo/giye.toml
+giye extract --config examples/demo/giye.toml --replay-only
 giye resolve --config examples/demo/giye.toml
 giye normalize --config examples/demo/giye.toml
 ```
 
 `giye collect` on the demo config reads local fixture pages only (no network). It writes roster
 CSVs under `examples/demo/data/work/rosters/` and the ledger under `examples/demo/data/ledger/`.
-`giye resolve` then merges rows the evidence rules accept and queues the rest. `giye normalize`
+`giye extract` then reads the fictitious CVs in `examples/demo/cvs/` (robots.txt still checked)
+and replays the hand-written responses in `examples/demo/cache/`. It does not call a model.
+`giye resolve` merges rows the evidence rules accept and queues the rest. `giye normalize`
 writes derived values and institution entities under `data/processed/` (still no network). The
 demo fixtures are fictitious people and `example.org` URLs.
 

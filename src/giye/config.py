@@ -50,6 +50,16 @@ Example (see examples/demo/giye.toml)::
     # reference = "reference"
     # glossary = "glossary.yaml"
     # gazetteer = "cities.tsv"
+
+    # CV extraction. model defaults to the production id. temperature is omitted
+    # unless set. cache defaults to <data>/work/cv_cache. sources are optional.
+    [extract]
+    model = "claude-opus-5"
+    # cache = "cache"
+    # [[extract.sources]]
+    # name_ko = "김하늘"
+    # lang = "ko"
+    # url = "https://cv.example.org/haneul-ko"
 """
 
 from __future__ import annotations
@@ -61,6 +71,26 @@ try:  # Python 3.11+
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover - Python 3.10
     import tomli as tomllib  # type: ignore[no-redef]
+
+
+@dataclass(frozen=True)
+class ExtractSource:
+    """One CV location declared in ``[[extract.sources]]``.
+
+    ``source_id`` is optional. Empty means ``CV-<ledger_id>-<lang>``, the
+    production id. The demo sets it so a hand-written replay response can name
+    the source before a ledger id exists.
+    """
+
+    url: str
+    lang: str
+    ledger_id: str = ""
+    name_ko: str = ""
+    name_en: str = ""
+    kind: str = ""
+    note: str = ""
+    fetch_url: str = ""
+    source_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -93,6 +123,13 @@ class Config:
     normalize_gazetteer: Path | None = None
     # "" means V7, V8 and V9. "none" applies none of them. A comma-separated subset ablates.
     venue_name_rules: str = ""
+    # CV extraction. The model id is the production default. Temperature is sent
+    # only when the file sets it; production omitted the parameter.
+    extract_model: str = "claude-opus-5"
+    extract_temperature: float | None = None
+    extract_cache: Path | None = None
+    extract_allow_team: bool = False
+    extract_sources: tuple[ExtractSource, ...] = ()
     extra: dict = field(default_factory=dict)
 
     @property
@@ -154,7 +191,10 @@ def load(path: str | Path) -> Config:
     resolve = raw.get("resolve") or {}
     if not isinstance(resolve, dict):
         raise TypeError(f"{path}: [resolve] must be a table")
-    known = {"archive", "paths", "collect", "evidence", "resolve", "normalize"}
+    known = {"archive", "paths", "collect", "evidence", "resolve", "normalize", "extract"}
+    extract = raw.get("extract") or {}
+    if not isinstance(extract, dict):
+        raise TypeError(f"{path}: [extract] must be a table")
     normalize = raw.get("normalize") or {}
     if not isinstance(normalize, dict):
         raise TypeError(f"{path}: [normalize] must be a table")
@@ -185,6 +225,11 @@ def load(path: str | Path) -> Config:
         normalize_glossary=_optional_path(root, normalize.get("glossary")),
         normalize_gazetteer=_optional_path(root, normalize.get("gazetteer")),
         venue_name_rules=_venue_name_rules(normalize.get("venue_name_rules", "")),
+        extract_model=_extract_model(extract.get("model", "claude-opus-5")),
+        extract_temperature=_extract_temperature(extract),
+        extract_cache=_optional_path(root, extract.get("cache")),
+        extract_allow_team=bool(extract.get("allow_team", False)),
+        extract_sources=_extract_sources(extract),
         extra={k: v for k, v in raw.items() if k not in known},
     )
 
@@ -210,6 +255,50 @@ def _venue_name_rules(value: object) -> str:
     if not isinstance(value, str):
         raise TypeError("[normalize] venue_name_rules must be a string or a list of strings")
     return value
+
+
+def _extract_model(value: object) -> str:
+    if value is None or value == "":
+        return "claude-opus-5"
+    if not isinstance(value, str):
+        raise TypeError("[extract] model must be a string")
+    return value
+
+
+def _extract_temperature(extract: dict) -> float | None:
+    """None when the key is absent, so the live call omits temperature as production did."""
+    if "temperature" not in extract or extract["temperature"] is None:
+        return None
+    return float(extract["temperature"])
+
+
+def _extract_sources(extract: dict) -> tuple[ExtractSource, ...]:
+    raw = extract.get("sources") or []
+    if not isinstance(raw, list):
+        raise TypeError("[extract.sources] must be an array of tables")
+    sources: list[ExtractSource] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            raise TypeError("each [extract.sources] entry must be a table")
+        if "url" not in item or "lang" not in item:
+            raise ValueError("an extract source needs url and lang")
+        lang = str(item["lang"])
+        if lang not in ("ko", "en", "mixed"):
+            raise ValueError(f"extract source lang must be ko, en, or mixed (got {lang})")
+        sources.append(
+            ExtractSource(
+                url=str(item["url"]),
+                lang=lang,
+                ledger_id=str(item.get("ledger_id") or ""),
+                name_ko=str(item.get("name_ko") or ""),
+                name_en=str(item.get("name_en") or ""),
+                kind=str(item.get("kind") or ""),
+                note=str(item.get("note") or ""),
+                fetch_url=str(item.get("fetch_url") or ""),
+                source_id=str(item.get("source_id") or ""),
+            )
+        )
+    return tuple(sources)
 
 
 def _event_patterns(resolve: dict) -> tuple[tuple[str, str], ...]:

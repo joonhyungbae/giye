@@ -18,6 +18,23 @@ The five criteria were fixed before any candidate programme was examined (adopte
 
 Collection policy (not an F-rule): robots.txt is checked before every request. A disallowed URL raises `RobotsDisallowed` and is not fetched. When the live page is gone (HTTP 404 or 410, or the connection fails), an existing Internet Archive capture may be kept. Giye never asks the Archive to make a new capture. If robots.txt disallows the host, this public release records `robots_disallowed` and does not use the Archive unless `evidence.archive_fallback_for_disallowed` is true. That switch defaults to false; the production archive did use the Archive in the disallow case, and the difference is waiting on the author's decision. Platforms whose terms forbid collection (Instagram, Facebook, LinkedIn, X, Threads, TikTok) are not requested.
 
+## Extraction (stage 2)
+
+These decisions come from `extract_cvs_llm.py` and `apply_cv_extractions.py`. Production did not give them E/F/P/V ids. `giye.extract` keeps the same outcomes. A team is still refused at registration by T1 (`team_like`): a member's personal CV is not filed on the team unless `[extract] allow_team` is set.
+
+| Decision | Rule |
+|---|---|
+| Schema | One response is a list of activities (`title`, `venue`, `year`, `activity_type`, `role`, `cv_section`, `upcoming`, `source_id`). An extra field, a type outside the production enums, or a year that is not an integer rejects the whole response. |
+| Unknown source | A row whose `source_id` is not one of the CV documents just read is dropped. Production does not also check that the year or the venue string occurs in the CV text. |
+| Private rows | `publishable=no` for sections education, employment, teaching, press, scholarship, and service, and for a title or role that matches the production scholarship / peer-review pattern. The row stays in the ledger. |
+| Upcoming | A future year marked upcoming is `publishable=no`. This year's upcoming row stays visible and the role gains `(예정)`. A past year marked upcoming is shown without that suffix: the label has gone stale. |
+| Korean / English repeat | Inside the rows one extraction is adding, two lines with the same year, the same normalised venue, and titles that match or contain each other (Hangul floor 4 characters, Latin floor 6) collapse to the first row. |
+| Public record wins | If another origin already records the same title and year and that row is not self-reported, the CV copy is skipped. A self-reported row (`SELF_SUBMITTED`, or a note starting `from_arko_career_text`) is set `publishable=no` and noted `superseded_by_cv`. |
+| Owner | A `cv:<source_id>` row belongs to the `ledger_id` on that CV source, not to the id written on the extraction file. |
+| Superseded file | An extraction file whose id is not an artist is skipped when a live artist's file already covers the same sources. |
+| Content id | The activity id is the ledger uuid5 (`giye.ledger.ids`). The same CV line keeps its id across applies. A repeated key in one write gets an ordinal. A dropped line is not given a new id. |
+| Re-read | The CV is extracted again when a source content hash, the prompt SHA-256, or the model no longer matches the extraction file. The replay cache is keyed by the content hash of the CV texts (source id order), the prompt hash, and the model. |
+
 ## Identity (stage 4)
 
 | ID | Rule | Status |

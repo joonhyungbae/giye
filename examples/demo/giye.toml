@@ -16,9 +16,39 @@ timeout_s = 20
 robots_timeout_s = 10
 collector_modules = ["collectors.py"]
 
-# The demo never opens a socket. These prefixes are read from fixtures/ after robots.txt.
+# The demo never opens a socket. These prefixes are read from local directories after robots.txt.
 [collect.offline_roots]
 "https://example.org" = "fixtures"
+"https://cv.example.org" = "cvs"
+
+[extract]
+model = "claude-opus-5"
+temperature = 0
+cache = "cache"
+
+# Both language CVs attach to the Korean-named roster row. The Latin spelling
+# stays a separate row until resolve merges it. source_id is fixed so the
+# hand-written replay cache can name the document.
+[[extract.sources]]
+name_ko = "김하늘"
+lang = "ko"
+url = "https://cv.example.org/haneul-ko"
+source_id = "CV-DEMO-HANEUL-ko"
+note = "fictitious Korean CV"
+
+[[extract.sources]]
+name_ko = "김하늘"
+lang = "en"
+url = "https://cv.example.org/haneul-en"
+source_id = "CV-DEMO-HANEUL-en"
+note = "fictitious English CV; repeats one Korean event"
+
+[[extract.sources]]
+name_ko = "최민수"
+lang = "mixed"
+url = "https://cv.example.org/minsoo-mixed"
+source_id = "CV-DEMO-MINSOO-mixed"
+note = "fictitious mixed-language CV"
 
 [evidence]
 # Public default. A robots.txt disallow is not replaced with an Internet Archive capture.

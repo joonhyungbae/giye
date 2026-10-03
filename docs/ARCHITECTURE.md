@@ -39,7 +39,7 @@ network, so the whole chain after collection is deterministic and can be re-run 
 | Module | Stage | Responsibility |
 |---|---|---|
 | `giye.collect` | 1 | `Fetcher` (robots.txt before every request, rate limit, contact user agent, TLS-lenient retry), `SnapshotStore` (sha256, manifest.jsonl), `RosterCollector`, evidence copies, frame registry (eligibility F1–F5) |
-| `giye.extract` | 2 | CV source registry, fetch and change detection, LLM extraction to a pydantic schema, validation, cached responses for offline replay |
+| `giye.extract` | 2 | CV source registry, fetch through `Fetcher` (snapshot only when the content hash changes), LLM extraction to a pydantic schema, validation, replay cache keyed by content hash, prompt hash, and model |
 | `giye.ledger` | 3 | table schemas, CSV I/O with locking and backups, permanent `gy_id` allocation, content-derived activity ids, merge and retirement, CV-row ownership |
 | `giye.resolve` | 4 | same-person evidence (E1–E4), cross-script candidates (X1, `names.py`), team guard (T1) and member expansion, review queue, merge through `giye.ledger` |
 | `giye.normalize` | 5 | text normalisation, place gazetteer, institution entities and their audit, derived artist attributes. Glossary and gazetteer are a language module |
@@ -56,6 +56,19 @@ network, so the whole chain after collection is deterministic and can be re-run 
 - A `RosterCollector` subclass implements `editions()` and calls `fetch()`. `run()` returns roster rows with `source_url` and `collected_at`, writes `data/work/rosters/<frame>.csv`, and upserts the ledger. A new person receives a permanent `gy_id`. Membership is one row per person and frame. Each roster appearance is an activity. A re-run matches `name_ko` and `name_en` exactly and keeps both ids. Spelling variants stay on separate rows until rules E1–E4 and X1 merge them.
 - `frames.yml` holds each programme and its F1–F5 judgement. Coverage is members recorded / roster size.
 - Evidence keeps a copy of every cited URL. A gone page (HTTP 404 or 410, or a connection failure) is replaced with an existing Internet Archive capture (`via=archive.org` and the capture time). Save Page Now is never called. A robots.txt disallow is stored as `robots_disallowed` unless `evidence.archive_fallback_for_disallowed` is true (default false).
+
+## Stage 2 — extract
+
+`giye extract` registers CV locations, fetches them, reads them into activity rows, and writes those rows into the ledger. It does not crawl the web for a CV link (production `discover_cv_sources.py scan`). A location is declared in `[[extract.sources]]` or is already in `cv_sources.csv`.
+
+- The registry id is `CV-<ledger_id>-<lang>`, unless the config sets `source_id` (the demo cache names its sources ahead of the random ledger id). The same URL is not registered twice for one person. A team row is refused unless `[extract] allow_team` is true (rule T1: a member's personal CV must not be filed on the team).
+- Fetch uses `giye.collect.Fetcher`, so robots.txt is checked before every request, including an offline fixture. The content hash ignores whitespace. A new snapshot is written only when that hash changes. Unchanged text is not a new CV. Failures, including a robots disallow, stay on the registry row and open `cv_pull_failed`.
+- The prompt is `src/giye/extract/prompts/cv_extract_v1.txt` (the production system prompt). Its SHA-256 is stored on the cache record and on the extraction file. The model id defaults to the production model (`claude-opus-5`) and can be set in `[extract] model`.
+- `Provider.complete(prompt, document)` returns the raw response text. `AnthropicProvider` imports the SDK only when it is called. `ReplayProvider` reads a JSON file keyed by the CV content hash, the prompt hash, and the model. The file stores that raw text plus `model`, `prompt_sha256`, `content_sha256`, `created_at`, and `temperature`. `--replay-only`, and a run with no API key in the environment, never call the model.
+- The response is validated against the production activity schema. An invented type, a non-numeric year, or an extra field rejects the whole response. A row whose `source_id` was not one of the documents is dropped.
+- Apply keeps production's decisions: private sections and scholarship-like titles stay `publishable=no`; upcoming years in the future stay hidden; this year's upcoming rows stay visible with `(예정)` on the role; a Korean/English repeat with the same normalised title and venue keeps the first row; a public record of the same event wins over the CV copy; a self-reported row is marked `superseded_by_cv`. The row belongs to the owner of the CV source. A file for a ledger id that is no longer an artist is skipped when a live artist's file already covers those sources. Activity ids come from `giye.ledger`.
+
+`data/work/cv_extract/<ledger_id>.json` is the file `giye resolve` already reads.
 
 ## Stage 3 — ledger
 
