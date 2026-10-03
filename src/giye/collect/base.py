@@ -36,24 +36,49 @@ from giye.collect.fetch import Fetcher, Page, fetcher_from_config
 from giye.collect.snapshot import MAX_BYTES, SnapshotStore
 from giye.ledger import Ledger
 
-ROSTER_FIELDS = ["frame_code", "year", "name", "name_ko", "name_en", "source_url", "collected_at"]
+ROSTER_FIELDS = [
+    "frame_code",
+    "year",
+    "name",
+    "name_ko",
+    "name_en",
+    "source_url",
+    "collected_at",
+    "website",
+    "role",
+    "members",
+    "aliases",
+]
 _HANGUL = re.compile(r"[가-힣]")
 
 
 @dataclass
 class Person:
-    """One name as printed on a roster. Hangul goes to ``name_ko``, Latin to ``name_en``."""
+    """One name as printed on a roster. Hangul goes to ``name_ko``, Latin to ``name_en``.
+
+    ``website``, ``role``, ``members`` and ``aliases`` are optional. The resolver
+    reads them back from the ledger (rules E1, E3, E4, T1). A name that already
+    fills one script still takes the other script from ``name``.
+    """
 
     name: str
     name_ko: str = ""
     name_en: str = ""
+    website: str = ""
+    role: str = ""
+    members: str = ""
+    aliases: str = ""
 
     def __post_init__(self) -> None:
-        if self.name_ko or self.name_en:
+        if not self.name_ko and not self.name_en:
+            if _HANGUL.search(self.name or ""):
+                self.name_ko = self.name
+            else:
+                self.name_en = self.name
             return
-        if _HANGUL.search(self.name or ""):
+        if self.name and not self.name_ko and _HANGUL.search(self.name):
             self.name_ko = self.name
-        else:
+        if self.name and not self.name_en and not _HANGUL.search(self.name):
             self.name_en = self.name
 
 
@@ -141,6 +166,10 @@ class RosterCollector:
                         "name_en": person.name_en,
                         "source_url": edition.source_url,
                         "collected_at": stamp,
+                        "website": person.website,
+                        "role": person.role,
+                        "members": person.members,
+                        "aliases": person.aliases,
                     }
                 )
         Ledger.open(self.config).apply_roster(self.frame, rows, task="collect")

@@ -429,8 +429,8 @@ def test_demo_collectors_fill_the_ledger_and_keep_ids(tmp_path: Path, monkeypatc
     run_configured(config, collected_at="2026-10-04", run_id="2026-10-04T00:00:00Z")
     ledger = Ledger.open(config)
     artists = ledger.read("artists")
-    assert len(artists) == 7
-    assert [row["gy_id"] for row in artists] == [f"GY-{number:06d}" for number in range(1, 8)]
+    assert len(artists) == 22
+    assert [row["gy_id"] for row in artists] == [f"GY-{number:06d}" for number in range(1, 23)]
     assert {row["source_url"] for row in artists} <= {
         "https://example.org/residency/alumni",
         "https://example.org/workshop/fellows",
@@ -441,10 +441,12 @@ def test_demo_collectors_fill_the_ledger_and_keep_ids(tmp_path: Path, monkeypatc
     assert ("Haneul Kim", "Haneul Kim") in names
     assert ("이하루", "") in names
     membership = ledger.read("frame_membership")
-    assert len(membership) == 7
+    assert len(membership) == 22
     assert {row["frame_code"] for row in membership} == {"EXAMPLE-RESIDENCY", "EXAMPLE-WORKSHOP"}
     activities = ledger.read("activities")
-    assert sorted(row["year"] for row in activities) == ["2019", "2019", "2020", "2020", "2021", "2021", "2022"]
+    assert sorted(row["year"] for row in activities) == (
+        ["2019"] * 10 + ["2020"] * 3 + ["2021"] * 7 + ["2022"] * 2
+    )
     assert {row["origin"] for row in activities} == {"EXAMPLE-RESIDENCY", "EXAMPLE-WORKSHOP"}
     assert {row["title"] for row in activities} == {"EXAMPLE-RESIDENCY", "EXAMPLE-WORKSHOP"}
     assert all(row["source_url"].startswith("https://example.org/") for row in activities)
@@ -456,6 +458,6 @@ def test_demo_collectors_fill_the_ledger_and_keep_ids(tmp_path: Path, monkeypatc
     assert [row["gy_id"] for row in again.read("artists")] == gy_ids
     assert [row["ledger_id"] for row in again.read("artists")] == ledger_ids
     assert [row["activity_id"] for row in again.read("activities")] == activity_ids
-    assert len(again.read("frame_membership")) == 7
+    assert len(again.read("frame_membership")) == 22
     lock = (config.ledger / ".ledger.lock").read_text(encoding="utf-8")
     assert f"pid {os.getpid()}" in lock

@@ -41,7 +41,7 @@ network, so the whole chain after collection is deterministic and can be re-run 
 | `giye.collect` | 1 | `Fetcher` (robots.txt before every request, rate limit, contact user agent, TLS-lenient retry), `SnapshotStore` (sha256, manifest.jsonl), `RosterCollector`, evidence copies, frame registry (eligibility F1–F5) |
 | `giye.extract` | 2 | CV source registry, fetch and change detection, LLM extraction to a pydantic schema, validation, cached responses for offline replay |
 | `giye.ledger` | 3 | table schemas, CSV I/O with locking and backups, permanent `gy_id` allocation, content-derived activity ids, merge and retirement, CV-row ownership |
-| `giye.resolve` | 4 | same-person evidence rules, cross-script name keys (`names.py`), team detection, merge with ID retirement |
+| `giye.resolve` | 4 | same-person evidence (E1–E4), cross-script candidates (X1, `names.py`), team guard (T1) and member expansion, review queue, merge through `giye.ledger` |
 | `giye.normalize` | 5 | text normalisation, place gazetteer, institution entities and their audit, derived artist attributes |
 | `giye.explore` | 6 | feature schema, optional text-embedding backend, clustering with k chosen by bootstrap stability, cluster descriptors |
 | `giye.publish` | 7 | site snapshot builder, ID redirects and stubs, coverage per frame, dataset versions, citation metadata |
@@ -67,6 +67,21 @@ network, so the whole chain after collection is deterministic and can be re-run 
 - Activity ids are uuid5 of the namespace derived from `https://giye.org/ns/activity` (the same string as production, so the same fact hashes to the same id). The key is ledger id, source, normalised title, year, activity type, venue, and — for a collector row — the frame code. A repeated key in one write gets an ordinal (0, 1, 2, …). See `giye.ledger.ids`.
 - `merge(kept, dropped, evidence=…, rule=…)` moves activities, frame memberships and CV sources onto the kept row, retires the dropped `gy_id`, and rewrites older retirements so they point at the final survivor. `redirects()` maps each retired `gy_id` to the survivor's current `gy_id`. A merge without an evidence string is refused. The rule id is stored on the kept row's note.
 - A row whose `origin` is `cv:<source_id>` belongs to the `ledger_id` on that CV source. After a merge the source's owner is the survivor, and a row left on the retired id follows it. The activity id is not recomputed (production leaves it).
+
+## Stage 4 — resolve
+
+`giye resolve` does not fetch. It reads the ledger and, when present, `data/work/cv_extract/<ledger_id>.json` (the production extraction file: an `activities` list with `title`, `venue`, `year`). `[resolve] cv_dir` may point at local HTML CVs; those fill people who have no JSON yet, matched by `data-name-ko` and `data-name-en`. The match has to be unique.
+
+Team rows are expanded first: each name in `members=` (or a `; group;` credit) gets its own roster row, credited `팀: <team>`. The team stays. A second run adds nothing.
+
+Then, in order:
+
+1. **E1.** Rows that share a website key and an overlapping name. A team is not merged with a person (T1). Two team rows may merge. The kept row is the one with more activities.
+2. **E2–E4** on a same-script exact name, unless a collector pinned the rows apart (`identity=<collector>:<key>`) or T1 applies. Both rows must be on a roster.
+3. **X1.** A Hangul personal name and a Latin-only row whose romanized keys meet. E1–E4 still have to hold (`X1+E2`, and the same for the others). Otherwise the pair is queued. Sharing a frame code drops the pair.
+4. Same-script pairs no rule decided are queued (`possible_same_person`). They are not merged.
+
+Production's collectors queued a same-name pair before this script ran, and the script merged E2–E4 only for pairs already in that queue. This collector does not write that queue, so a pair the evidence rules accept is merged here. The evidence strings, the ±1 year window, the bracket rule, and the team-role prefix are the production ones.
 
 ## Data model (ledger)
 

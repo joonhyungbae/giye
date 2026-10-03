@@ -33,6 +33,14 @@ Example (see examples/demo/giye.toml)::
     # Production used the Internet Archive when robots.txt disallowed a host.
     # The public release does not, unless this is set true. Default false.
     archive_fallback_for_disallowed = false
+
+    # Optional. Frame-code prefix = regex for rule E2. Added to the production
+    # programme patterns; a prefix already in that list replaces its pattern.
+    [resolve.event_patterns]
+    EXAMPLE-RESIDENCY = "example residency"
+
+    [resolve]
+    cv_dir = "fixtures/cv"      # local HTML CVs, matched to people by name
 """
 
 from __future__ import annotations
@@ -64,6 +72,11 @@ class Config:
     archive_fallback_for_disallowed: bool = False
     offline_roots: tuple[tuple[str, Path], ...] = ()
     collector_modules: tuple[str, ...] = ()
+    # Extra E2 event patterns (frame-code prefix → regex). Production patterns stay
+    # in giye.resolve.evidence; a key here replaces that prefix's pattern.
+    event_patterns: tuple[tuple[str, str], ...] = ()
+    # Local HTML CVs, read by name. Production reads data/work/cv_extract/<id>.json.
+    cv_dir: Path | None = None
     extra: dict = field(default_factory=dict)
 
     @property
@@ -122,7 +135,16 @@ def load(path: str | Path) -> Config:
         raise ValueError(f"{path}: [archive] name is required")
     if not isinstance(evidence, dict):
         raise TypeError(f"{path}: [evidence] must be a table")
-    known = {"archive", "paths", "collect", "evidence"}
+    resolve = raw.get("resolve") or {}
+    if not isinstance(resolve, dict):
+        raise TypeError(f"{path}: [resolve] must be a table")
+    known = {"archive", "paths", "collect", "evidence", "resolve"}
+    cv_dir = resolve.get("cv_dir")
+    cv_path = None
+    if cv_dir:
+        cv_path = Path(str(cv_dir))
+        if not cv_path.is_absolute():
+            cv_path = (root / cv_path).resolve()
     return Config(
         root=root,
         name=archive["name"],
@@ -138,5 +160,14 @@ def load(path: str | Path) -> Config:
         archive_fallback_for_disallowed=bool(evidence.get("archive_fallback_for_disallowed", False)),
         offline_roots=_offline_roots(root, collect),
         collector_modules=_collector_modules(collect),
+        event_patterns=_event_patterns(resolve),
+        cv_dir=cv_path,
         extra={k: v for k, v in raw.items() if k not in known},
     )
+
+
+def _event_patterns(resolve: dict) -> tuple[tuple[str, str], ...]:
+    raw = resolve.get("event_patterns") or {}
+    if not isinstance(raw, dict):
+        raise TypeError("[resolve.event_patterns] must be a table of frame prefix = regex")
+    return tuple((str(key), str(pattern)) for key, pattern in raw.items())

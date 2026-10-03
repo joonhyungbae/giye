@@ -5,7 +5,7 @@ frames:
     name_en: Example Residency
     name_ko: 예시 레지던시
     source_url: https://example.org/residency/alumni
-    roster_count: 4
+    roster_count: 13
     eligibility:
       decision: included
       f1_purpose: The programme page states media art and art-and-technology as its purpose.
@@ -17,7 +17,7 @@ frames:
     name_en: Example Workshop
     name_ko: 예시 워크숍
     source_url: https://example.org/workshop/fellows
-    roster_count: 3
+    roster_count: 9
     eligibility:
       decision: adjacent
       f1_purpose: The public text describes a general art workshop and does not state the field's purpose.

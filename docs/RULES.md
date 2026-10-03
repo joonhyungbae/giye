@@ -22,12 +22,16 @@ Collection policy (not an F-rule): robots.txt is checked before every request. A
 
 | ID | Rule | Status |
 |---|---|---|
-| E1 | Two records are the same person when they share a personal website. | planned |
-| E2 | … when one's CV lists the other's roster appearance (same event, same year). | planned |
-| E3 | … when one's CV lists a work named on the other's roster entry. | planned |
-| E4 | … when both appear as members of the same team. | planned |
-| T1 | A record whose name looks like a team or collective is never merged with a person. | planned |
-| X1 | Hangul and Latin spellings are candidate matches when their romanized keys intersect (`giye.resolve.names`); a candidate is merged only with E1–E4 evidence. | ported |
+| E1 | Two records are the same person when they share a personal website. The key is the host, or host plus path on a shared platform (a blog host, a portfolio host, a video host). `www` and a trailing slash do not make a second site. Social links are not a personal site. The rows also need an overlapping name (Hangul with spaces removed, otherwise the lower-cased string). | ported |
+| E2 | … when one's CV lists the other's roster appearance: the CV text matches that frame's event pattern and the CV year is within one year of the edition. A frame code ending in `-YYYY` uses that year (`DAVINCI-2014`). A code with no year uses the years on that frame's roster activities. Patterns are the production programme list plus `[resolve.event_patterns]`. | ported |
+| E3 | … when a bracketed work title (`〈…〉`, `<…>`, `《…》`, and the same family) on one roster row also appears on the other's roster row or CV, in the same year ±1. The normalised title is at least 3 characters. An unbracketed title is not a work (that is E2). | ported |
+| E4 | … when both roster rows credit the same team in the role, written `팀: <name>`. The normalised team name is at least 2 characters. This joins two rows of one candidate pair; it does not collapse every member of a team into one person. | ported |
+| T1 | A record whose name looks like a team or collective is never merged with a person. A team row has `members=` or `rep=` in the note, two or more person-shaped aliases, or a team word in the name (`스튜디오`, `collective`, `lab`, …). Exactly one side being a team blocks the merge. Two team rows may still merge with each other on E1. X1 drops a pair when either side is a team. | ported |
+| X1 | Hangul and Latin spellings are candidate matches when their romanized keys intersect (`giye.resolve.names`). A candidate is merged only with E1–E4 evidence, recorded as `X1+E1` … `X1+E4`. No evidence queues the pair (`possible_same_person`). A shared frame code, a collector identity pin, or a team row drops the pair. A Korean row that already has a matching Latin name is not paired again. | ported |
+
+A same-script exact name (Unicode NFC, spaces removed, case folded) that no rule accepts is queued the same way, reason `possible_same_person`, detail `rule=same_script_exact`. It is not merged. A pair already named by an open item is not queued again. A done item whose pair was never actually joined is reopened (`reopened=wrong_close`) unless a person recorded `decided=same` or `decided=different`.
+
+Every merge stores `merge_evidence=` (the rule and the concrete website key, CV line, work title, or team) and `rule=` on the kept row, and retires the dropped `gy_id` through `giye.ledger.merge`.
 
 ## Ledger invariants (stage 3)
 

@@ -69,13 +69,37 @@ def test_demo_collectors_match_the_paper_api_and_keep_spelling_variants(tmp_path
     results = run_configured(config, collected_at="2026-10-04", run_id="2026-10-04T00:00:00Z")
     by_frame = {frame: rows for frame, rows, _path in results}
     residency = by_frame["EXAMPLE-RESIDENCY"]
-    assert [row["name"] for row in residency] == ["김하늘", "박서연 (Seoyeon Park)", "Haneul Kim", "Kim Seoyeon"]
+    assert [row["name"] for row in residency] == [
+        "김하늘",
+        "박서연 (Seoyeon Park)",
+        "정다운",
+        "오세린",
+        "한별",
+        "문지호",
+        "최민수",
+        "배수아",
+        "노을 스튜디오",
+        "서지우",
+        "Haneul Kim",
+        "Kim Seoyeon",
+        "한별",
+    ]
     assert {row["name_ko"] for row in residency} >= {"김하늘"}
     assert {row["name_en"] for row in residency} >= {"Haneul Kim", "Kim Seoyeon"}
     assert {row["source_url"] for row in residency} == {"https://example.org/residency/alumni"}
     assert {row["collected_at"] for row in residency} == {"2026-10-04"}
     workshop = by_frame["EXAMPLE-WORKSHOP"]
-    assert [row["name"] for row in workshop] == ["Lee Haru", "이하루", "Haru Lee"]
+    assert [row["name"] for row in workshop] == [
+        "Lee Haru",
+        "이하루",
+        "오세린",
+        "정다운",
+        "문지호",
+        "최민수",
+        "배수아",
+        "Haru Lee",
+        "Jiwoo Seo",
+    ]
     csv_path = tmp_path / "data" / "work" / "rosters" / "EXAMPLE-RESIDENCY.csv"
     with csv_path.open(encoding="utf-8", newline="") as handle:
         assert next(iter(csv.DictReader(handle)))["source_url"].startswith("https://example.org/")
@@ -96,8 +120,8 @@ def test_cli_collect_runs_offline(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(requests.Session, "get", boom)
     assert main(["collect", "--config", str(_config(tmp_path))]) == 0
     out = capsys.readouterr().out
-    assert "EXAMPLE-RESIDENCY\t4\t" in out
-    assert "EXAMPLE-WORKSHOP\t3\t" in out
+    assert "EXAMPLE-RESIDENCY\t13\t" in out
+    assert "EXAMPLE-WORKSHOP\t9\t" in out
 
 
 def test_cli_without_collectors_exits_loudly(tmp_path: Path):

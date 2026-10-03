@@ -21,6 +21,25 @@ def _not_ported(stage: str) -> int:
     return 2
 
 
+def _resolve(args: argparse.Namespace) -> int:
+    from giye.config import load
+    from giye.resolve.service import resolve
+
+    result = resolve(load(args.config), dry_run=args.dry_run)
+    for item in result.merges:
+        print(f"same person: {item.evidence} → keep {item.kept}, merge {item.dropped}")
+    for left, right in result.blocked_team:
+        print(f"same_name_blocked_team {left} {right}")
+    for item in result.queued:
+        print(f"review: {item['detail']} ledger={item['ledger_id']}")
+    print(
+        f"merged={len(result.merges)} queued={len(result.queued)} "
+        f"blocked_team={len(result.blocked_team)} expanded={len(result.expanded)} "
+        f"reopened={len(result.reopened)}"
+    )
+    return 0
+
+
 def _collect(args: argparse.Namespace) -> int:
     from giye.collect.base import run_configured
     from giye.config import load
@@ -52,6 +71,8 @@ def main(argv: list[str] | None = None) -> int:
     for stage in STAGES + ["run"]:
         sp = sub.add_parser(stage, help=f"run the {stage} stage" if stage != "run" else "run every stage in order")
         sp.add_argument("--config", default="giye.toml")
+        if stage == "resolve":
+            sp.add_argument("--dry-run", action="store_true", help="decide without writing the ledger")
     nk = sub.add_parser("name-keys", help="print romanized matching keys for names (rule X1)")
     nk.add_argument("names", nargs="+")
     args = ap.parse_args(argv)
@@ -59,6 +80,8 @@ def main(argv: list[str] | None = None) -> int:
         return _name_keys(args)
     if args.cmd == "collect":
         return _collect(args)
+    if args.cmd == "resolve":
+        return _resolve(args)
     return _not_ported(args.cmd)
 
 

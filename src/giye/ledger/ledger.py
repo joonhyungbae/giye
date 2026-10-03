@@ -16,6 +16,7 @@ update ``cv_sources.ledger_id``. Rows left on a retired id follow the source.
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from collections.abc import Iterable, Mapping
 from datetime import datetime, timezone
@@ -267,6 +268,7 @@ class Ledger:
                     artist["source_url"] = source_url
                     artist["source_type"] = artist.get("source_type") or "PUBLIC_RECORD"
                 artist["updated_at"] = stamp
+            _stamp_roster_person(artist, row)
             assigned.append(artist["ledger_id"])
 
         touched = set(assigned)
@@ -293,6 +295,36 @@ class Ledger:
         self.write("artists", artists, task=task)
         self.write("activities", activities, task=task)
         self.write("frame_membership", membership, task=task)
+        self._write_roster_links(frame, roster, assigned, task=task)
+
+    def _write_roster_links(self, frame: str, roster: list[Mapping[str, Any]], assigned: list[str], *, task: str) -> None:
+        """Store a personal website from a roster row. A second run does not add the URL again.
+
+        Rule E1 reads ``links.csv``. Social links are not written here; a collector that
+        knows a link is social can still record ``link_type`` social and E1 will skip it.
+        """
+        links = self.read("links") if self.path("links").exists() else []
+        seen = {(row.get("ledger_id", ""), row.get("url", "")) for row in links}
+        added = False
+        for row, lid in zip(roster, assigned, strict=True):
+            url = str(row.get("website") or "").strip()
+            if not url or (lid, url) in seen:
+                continue
+            links.append(
+                empty_row(
+                    self.fields("links"),
+                    link_id=str(uuid.uuid4()),
+                    ledger_id=lid,
+                    label="website",
+                    url=url,
+                    link_type="website",
+                    origin=frame,
+                )
+            )
+            seen.add((lid, url))
+            added = True
+        if added:
+            self.write("links", links, task=task)
 
     def restore_cv_owners(self, *, task: str) -> int:
         """Write activities so each CV row's ``ledger_id`` is its source's owner."""
@@ -457,6 +489,24 @@ def _merge_artist_fields(survivor: dict[str, str], dropped: list[dict[str, str]]
     survivor["reviewer_note"] = note.strip("; ")
 
 
+def _stamp_roster_person(artist: dict[str, str], row: Mapping[str, Any]) -> None:
+    """Copy aliases and a ``members=`` note onto the person. A re-run does not duplicate them."""
+    aliases = str(row.get("aliases") or "")
+    if aliases:
+        artist["aliases"] = join_pipe([*split_pipe(artist.get("aliases")), *split_pipe(aliases)])
+    note = str(row.get("reviewer_note") or "").strip()
+    members = str(row.get("members") or "").strip()
+    if members:
+        parts = [part.strip() for part in re.split(r"[,|]", members) if part.strip()]
+        if parts:
+            marker = "members=" + "|".join(parts)
+            if marker not in note:
+                note = f"{note}; {marker}".strip("; ")
+    current = artist.get("reviewer_note") or ""
+    if note and note not in current:
+        artist["reviewer_note"] = f"{current}; {note}".strip("; ")
+
+
 def _stored_name(name_ko: str, name_en: str) -> tuple[str, str]:
     """Names as stored on insert.
 
@@ -499,6 +549,9 @@ def _roster_activity(
     source = str(row.get("source_url") or "").strip()
     year = str(row.get("year") or "")
     title = frame
+    # Role is not part of the activity id. A work title or ``팀:`` credit can sit
+    # here (rules E3 and E4) without changing the id of the roster appearance.
+    role = str(row.get("role") or "")
     key = activity_id_key(
         ledger_id=ledger_id,
         source=source,
@@ -515,6 +568,7 @@ def _roster_activity(
         title=title,
         year=year,
         activity_type="other",
+        role=role,
         source_url=source,
         source_type="PUBLIC_RECORD",
         collected_at=str(row.get("collected_at") or "")[:10],

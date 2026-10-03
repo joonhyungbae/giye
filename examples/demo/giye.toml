@@ -23,3 +23,12 @@ collector_modules = ["collectors.py"]
 [evidence]
 # Public default. A robots.txt disallow is not replaced with an Internet Archive capture.
 archive_fallback_for_disallowed = false
+
+[resolve]
+# Local HTML CVs. Matched to a ledger row by data-name-ko and data-name-en.
+cv_dir = "fixtures/cv"
+
+# E2. These fictitious programmes are not in the production pattern list.
+[resolve.event_patterns]
+EXAMPLE-RESIDENCY = "예시 ?레지던시|example residency"
+EXAMPLE-WORKSHOP = "예시 ?워크숍|example workshop"
