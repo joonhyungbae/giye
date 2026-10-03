@@ -36,8 +36,9 @@ That runs collect → extract (replay, no API key) → resolve → normalize →
 `examples/demo/` and writes the ledger, the snapshot, and one HTML page per person into a new
 temporary directory. Nothing is fetched from the network: fixture pages are read locally, and
 `robots.txt` is still checked. The command prints how many people, roster rows, and activities
-were published, how many merges each identity rule made, how many review-queue items are open,
-how many institution merges each venue rule made, and the output paths.
+were published, how many merges each identity rule made, how many pairs T1 blocked, how many
+review-queue items are open, how many institution merges V7, V8 and V9 made, and the output
+paths. `examples/demo/EXPECTED.md` lists the cases and the summary lines.
 
 ```bash
 giye demo --output /tmp/giye-demo

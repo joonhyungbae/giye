@@ -65,7 +65,7 @@ def test_demo_collectors_match_the_paper_api_and_keep_spelling_variants(tmp_path
     monkeypatch.setattr(requests.Session, "get", boom)
     config = load(_config(tmp_path))
     classes = load_collectors(config)
-    assert [cls.__name__ for cls in classes] == ["ExampleResidency", "ExampleWorkshop"]
+    assert [cls.__name__ for cls in classes] == ["ExampleResidency", "ExampleWorkshop", "ExampleForum"]
     results = run_configured(config, collected_at="2026-10-04", run_id="2026-10-04T00:00:00Z")
     by_frame = {frame: rows for frame, rows, _path in results}
     residency = by_frame["EXAMPLE-RESIDENCY"]
@@ -80,12 +80,11 @@ def test_demo_collectors_match_the_paper_api_and_keep_spelling_variants(tmp_path
         "배수아",
         "노을 스튜디오",
         "서지우",
-        "Haneul Kim",
         "Kim Seoyeon",
         "한별",
     ]
     assert {row["name_ko"] for row in residency} >= {"김하늘"}
-    assert {row["name_en"] for row in residency} >= {"Haneul Kim", "Kim Seoyeon"}
+    assert {row["name_en"] for row in residency} >= {"Kim Seoyeon"}
     assert {row["source_url"] for row in residency} == {"https://example.org/residency/alumni"}
     assert {row["collected_at"] for row in residency} == {"2026-10-04"}
     workshop = by_frame["EXAMPLE-WORKSHOP"]
@@ -97,9 +96,11 @@ def test_demo_collectors_match_the_paper_api_and_keep_spelling_variants(tmp_path
         "문지호",
         "최민수",
         "배수아",
+        "Haneul Kim",
         "Haru Lee",
         "Jiwoo Seo",
     ]
+    assert {row["name_en"] for row in workshop} >= {"Haneul Kim"}
     csv_path = tmp_path / "data" / "work" / "rosters" / "EXAMPLE-RESIDENCY.csv"
     with csv_path.open(encoding="utf-8", newline="") as handle:
         assert next(iter(csv.DictReader(handle)))["source_url"].startswith("https://example.org/")
@@ -120,8 +121,9 @@ def test_cli_collect_runs_offline(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(requests.Session, "get", boom)
     assert main(["collect", "--config", str(_config(tmp_path))]) == 0
     out = capsys.readouterr().out
-    assert "EXAMPLE-RESIDENCY\t13\t" in out
-    assert "EXAMPLE-WORKSHOP\t9\t" in out
+    assert "EXAMPLE-RESIDENCY\t12\t" in out
+    assert "EXAMPLE-WORKSHOP\t10\t" in out
+    assert "EXAMPLE-FORUM\t1\t" in out
 
 
 def test_cli_without_collectors_exits_loudly(tmp_path: Path):
@@ -134,7 +136,7 @@ def test_demo_fixtures_are_served_locally_and_still_obey_robots():
         with pytest.raises(RobotsDisallowed):
             fetcher.get(base + "/private/secret.html")
         page = fetcher.get(base + "/residency/alumni.html")
-    assert "Haneul Kim" in page.text
+    assert "김하늘" in page.text
     paths = [hit[0] for hit in server.hits]
     assert "/private/secret.html" not in paths
     assert paths.count("/robots.txt") == 1

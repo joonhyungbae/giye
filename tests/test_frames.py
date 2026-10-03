@@ -38,11 +38,12 @@ def test_demo_frames_cover_included_excluded_and_adjacent():
     assert decisions == {
         "EXAMPLE-RESIDENCY": "included",
         "EXAMPLE-WORKSHOP": "adjacent",
+        "EXAMPLE-FORUM": "adjacent",
         "EXAMPLE-GRANT": "excluded",
     }
     residency = registry.by_code("EXAMPLE-RESIDENCY")
     assert residency is not None
-    assert residency.coverage(13) == 1.0
+    assert residency.coverage(12) == 1.0
     grant = registry.by_code("EXAMPLE-GRANT")
     assert grant is not None
     assert grant.coverage(0) is None

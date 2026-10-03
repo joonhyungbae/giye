@@ -574,7 +574,12 @@ def test_demo_resolve_fires_each_rule(tmp_path: Path, monkeypatch: pytest.Monkey
     assert len(rows_named("최민수")) == 2
     assert len(rows_named("배수아")) == 2
     assert len(rows_named("김하늘")) == 1
-    assert any(row["name_ko"] == "Haneul Kim" for row in artists)
+    haneul = rows_named("김하늘")[0]
+    assert haneul["name_en"] == "Haneul Kim"
+    assert "rule=X1+E2" in (haneul.get("reviewer_note") or "")
+    assert not any(row["name_ko"] == "Haneul Kim" for row in artists)
+    assert any(row["name_ko"] == "Kim Haneul" for row in artists)
+    assert "romanization match: 김하늘 ~ Kim Haneul" in out
     assert any(row["name_ko"] == "노을 스튜디오" for row in artists)
     assert any(row["name_ko"] == "김바다" for row in artists)
     bae = tuple(sorted(row["ledger_id"] for row in rows_named("배수아")))

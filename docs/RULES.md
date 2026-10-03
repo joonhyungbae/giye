@@ -50,6 +50,8 @@ A same-script exact name (Unicode NFC, spaces removed, case folded) that no rule
 
 Every merge stores `merge_evidence=` (the rule and the concrete website key, CV line, work title, or team) and `rule=` on the kept row, and retires the dropped `gy_id` through `giye.ledger.merge`.
 
+The synthetic demo fires each of these once. E1–E4 are same-script. X1 finds `kim/haneul` for 김하늘 on one programme and Haneul Kim on another; the English CV names the first programme in the same year, so the stored rule is `X1+E2`. A different Kim Haneul, on a third programme and with no evidence, is queued. T1 leaves the person 배수아 and the team row of the same name unmerged. See `examples/demo/EXPECTED.md`.
+
 ## Ledger invariants (stage 3)
 
 These are not sampling or identity rules. They are how the ledger keeps a fact attached to a source and to a permanent id. `giye.ledger` implements them.
@@ -98,6 +100,8 @@ Place names, generic institution words, and romanisation come from a language mo
 | G1 | An ISO alpha-2 or alpha-3 code is a country when the fragment is that code (`KR`, `KOR`). | ported |
 | G3 | An uppercase two- or three-letter token after a place inherits that place's country (and, for Korea, its region). `Los Angeles, CA` stays in the US. | ported |
 | G6 | A two-letter US postal abbreviation that is not itself a country code (`NY`) is the US, when G3 had no previous place. | ported |
+
+The synthetic demo's venue strings exercise V7a (an exhibition title in 《》), V7b (the qualifier 외 on 서울시립미술관), V8 (서울시립미술관 전시실, a hall of that museum), and V9 (that name with Seoul Museum of Art). The audit records the V8 and V9 joins. V7a–d do not, because they change the key before the join; the demo summary still counts those trimmed spellings under V7. See `examples/demo/EXPECTED.md`.
 
 G2, G4, and G5 are not named in the production source. The audit header says G1–G6. The remaining lookup steps, in order, are a Korean first-level region in Hangul, a city (the more populous row wins), an admin1 name, then a country name. A Korean administrative suffix is stripped before the second try (서울시 → 서울). The packaged gazetteer is a compact table. The full GeoNames city list is CC BY 4.0 and is not shipped; `[normalize] reference` loads it when it is present.
 

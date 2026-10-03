@@ -504,6 +504,7 @@ def test_demo_cache_replays_without_a_key(tmp_path: Path, monkeypatch: pytest.Mo
         path,
         [
             _person("LED-haneul", "김하늘", name_en="", gy="GY-000010"),
+            _person("LED-en", "Haneul Kim", name_en="Haneul Kim", gy="GY-000011"),
             _person("LED-minsoo", "최민수", gy="GY-000012"),
         ],
     )
@@ -514,8 +515,15 @@ def test_demo_cache_replays_without_a_key(tmp_path: Path, monkeypatch: pytest.Mo
     by_title = {}
     for row in rows:
         by_title.setdefault(row["title"], []).append(row)
-    assert len(by_title["예시 미디어전"]) == 1
-    assert by_title["예시 미디어전"][0]["origin"] == "cv:CV-DEMO-HANEUL-ko"
+    # The repeat lives on two people at extract time, so it is not collapsed.
+    assert {row["origin"] for row in by_title["예시 미디어전"]} == {
+        "cv:CV-DEMO-HANEUL-ko",
+        "cv:CV-DEMO-HANEUL-en",
+    }
+    assert by_title["신호"][0]["venue"] == "서울시립미술관 외"
+    assert by_title["Signal"][0]["venue"] == "Seoul Museum of Art"
+    assert by_title["Signal"][0]["ledger_id"] == "LED-en"
+    assert by_title["Example Residency"][0]["ledger_id"] == "LED-en"
     assert by_title["〈푸른 신호〉"][0]["publishable"] == "yes"
     assert by_title["서울예시대학교 미술학 학사"][0]["publishable"] == "no"
     assert by_title["BFA, Seoul Yesidae University"][0]["publishable"] == "no"

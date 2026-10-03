@@ -17,6 +17,6 @@ translated to English, made path-independent (configuration instead of fixed pat
 | 10 | Exploration: features, optional text embeddings, k by stability (C1), descriptors (C2) | `feature_schema.py`, `build_embedding_space.py` | `giye.explore` | planned |
 | 11 | Site snapshot, redirects, coverage, versions, citations | `build_site_dataset.py`, `build_rim_order.py` | `giye.publish` | partial: snapshot, tombstones, redirects, coverage, versions, citations, and plain HTML; rim order left with the web front-end |
 | 12 | Web front-end reading the snapshot; admin/database optional | `src/` (TanStack Start) | `web/` | planned |
-| 13 | Synthetic demo field and one-command reproduction (Docker) | – | `examples/demo/`, `Dockerfile` | done |
+| 13 | Synthetic demo field and one-command reproduction (Docker). The summary prints merges per rule, T1 blocks, and V7–V9 | – | `examples/demo/`, `Dockerfile` | done |
 | 14 | Accuracy audit: extraction, same-person merges, institution merges (sampled, one coder) | – | `docs/EVALUATION.md` | planned |
 | 15 | Zenodo DOI, SoftwareX manuscript and code-metadata table | – | `paper/` | planned |

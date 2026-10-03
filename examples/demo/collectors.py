@@ -3,7 +3,9 @@
 
     giye collect --config examples/demo/giye.toml
 
-Spelling variants (김하늘 / Haneul Kim, 이하루 / Haru Lee) stay on separate rows.
+김하늘 is on the residency roster and Haneul Kim on the workshop roster. ``giye demo``
+merges that pair when the English CV names the residency (X1+E2). Kim Haneul on
+the forum shares the name key and has no such evidence, so the pair is queued.
 ``giye resolve`` applies E1–E4, X1 and the team guard T1.
 """
 
@@ -86,6 +88,18 @@ class ExampleWorkshop(RosterCollector):
 
     def editions(self):
         url = "https://example.org/workshop/fellows"
+        page = self.fetch(url)
+        for year, people in parse_alumni(page.text):
+            yield Edition(year=year, people=people, source_url=page.url)
+
+
+class ExampleForum(RosterCollector):
+    """One guest, Kim Haneul, who shares a name key with 김하늘 and no evidence."""
+
+    frame = "EXAMPLE-FORUM"
+
+    def editions(self):
+        url = "https://example.org/forum/guests"
         page = self.fetch(url)
         for year, people in parse_alumni(page.text):
             yield Edition(year=year, people=people, source_url=page.url)

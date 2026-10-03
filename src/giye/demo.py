@@ -9,7 +9,9 @@ of the same fixtures publish the same snapshot aside from the clock.
 The synthetic CVs treat 2026 as the current year (an upcoming row in 2026 stays
 visible; 2027 stays hidden). The golden test freezes the clock at
 2026-01-15T00:00:00Z for that reason. ``giye demo`` without a frozen clock uses
-the real UTC time.
+the real UTC time. The summary counts merges per rule, T1 blocks, open queue
+items, and institution merges V7, V8 and V9. What those numbers refer to is
+listed in ``examples/demo/EXPECTED.md``.
 """
 
 from __future__ import annotations
@@ -26,8 +28,10 @@ from pathlib import Path
 from giye.collect.base import run_configured
 from giye.config import Config, load
 from giye.extract.service import extract
+from giye.ledger.io import read_csv
 from giye.ledger.ledger import Ledger
 from giye.normalize.service import normalize
+from giye.normalize.venue_names import trimmed
 from giye.publish import publish, render
 from giye.resolve.service import resolve
 
@@ -53,6 +57,7 @@ class DemoResult:
     roster_rows: int
     activities: int
     merges: dict[str, int]
+    blocked: dict[str, int]
     queue_items: int
     institution_merges: dict[str, int]
     files: list[Path]
@@ -108,8 +113,9 @@ def run_demo(
         roster_rows=roster_rows,
         activities=published.activities,
         merges=merges,
+        blocked={"T1": len(resolve_result.blocked_team)},
         queue_items=queue_items,
-        institution_merges=dict(norm.venue_merges),
+        institution_merges=_institution_counts(norm.venue_merges, norm.processed),
         files=files,
         summary="",
     )
@@ -119,18 +125,46 @@ def run_demo(
 
 def _summary(result: DemoResult) -> str:
     merges = ", ".join(f"{rule} {count}" for rule, count in result.merges.items()) or "none"
+    blocked = ", ".join(f"{rule} {count}" for rule, count in result.blocked.items()) or "none"
     institutions = ", ".join(f"{rule} {count}" for rule, count in result.institution_merges.items()) or "none"
     lines = [
         f"people: {result.people}",
         f"roster rows: {result.roster_rows}",
         f"activities: {result.activities}",
         f"merges: {merges}",
+        f"blocked: {blocked}",
         f"queue items: {result.queue_items}",
         f"institution merges: {institutions}",
         "output files:",
         *[f"  {path}" for path in result.files],
     ]
     return "\n".join(lines)
+
+
+def _institution_counts(merges: dict[str, int], processed: Path) -> dict[str, int]:
+    """Counts the demo summary prints: V7, V8, V9, in that order.
+
+    V8 and V9 are joins the audit records. V7e is recorded the same way and is
+    counted under V7. V7a–d are not: they rewrite the entity key before any
+    join is logged, so a qualifier (외) or an exhibition title (《…》) would
+    otherwise be invisible. A trimmed spelling that shares an entity with
+    another spelling is one of those merges.
+    """
+    counts = {
+        "V7": sum(count for rule, count in merges.items() if rule == "V7" or rule.startswith("V7")),
+        "V8": merges.get("V8", 0),
+        "V9": merges.get("V9", 0),
+    }
+    for row in read_csv(processed / "venues.csv"):
+        spellings = [row.get("name") or ""]
+        aliases = row.get("aliases") or ""
+        if aliases:
+            spellings.extend(part for part in aliases.split("|") if part)
+        spellings = [item for item in spellings if item]
+        if len(spellings) < 2:
+            continue
+        counts["V7"] += sum(1 for spelling in spellings if trimmed(spelling))
+    return counts
 
 
 @contextmanager

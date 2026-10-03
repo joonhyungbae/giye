@@ -27,10 +27,13 @@ giye resolve --config examples/demo/giye.toml
 ```
 
 The fixtures are arranged so each identity rule fires once: a shared website (E1), a CV line
-naming the other row's roster edition in the same year ±1 (E2), a bracketed work title (E3),
-a shared `팀:` credit (E4). A same-name pair with none of that evidence is queued. A team row
-that shares a name and a website with a person is left unmerged (T1). Spelling variants that
-share a frame are not treated as evidence.
+naming the other row's roster edition in the same year ±1 (E2 for 표은솔, and X1+E2 for
+김하늘 / Haneul Kim), a bracketed work title (E3), a shared `팀:` credit (E4). 김하늘 is on
+the residency roster and Haneul Kim on the workshop roster; the English CV names Example
+Residency in 2019, and X1's key is `kim/haneul`. Kim Haneul on the forum shares that key and
+has no evidence, so the pair is queued. Another same-name pair with no evidence is queued
+too. A team row that shares a name and a website with a person is left unmerged (T1).
+Spelling variants that share a frame are not treated as evidence.
 
 CV extraction replays a hand-written cache (no network, no API key):
 
@@ -39,5 +42,9 @@ giye extract --config examples/demo/giye.toml --replay-only
 ```
 
 Run `giye collect` first so the roster rows exist. `cvs/` holds three fictitious CVs (Korean,
-English, and mixed). The English page repeats one Korean event; the Korean page has an education
-section. `cache/` holds synthetic raw responses that stand in for model output. See `cache/README.md`.
+English, and mixed). The Korean CV writes 서울시립미술관 with a qualifier, an exhibition
+title, and a gallery hall. The English CV lists Example Residency and Seoul Museum of Art,
+and repeats one Korean event. The Korean page has an education section. `cache/` holds
+synthetic raw responses that stand in for model output. See `cache/README.md`.
+
+`EXPECTED.md` is the list of what one `giye demo` run shows, including the summary lines.

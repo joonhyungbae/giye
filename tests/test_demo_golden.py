@@ -56,11 +56,20 @@ def test_demo_snapshot_matches_golden(tmp_path: Path, monkeypatch):
     assert "people:" in result.summary
     assert "roster rows:" in result.summary
     assert "activities:" in result.summary
-    assert "merges:" in result.summary
-    assert "queue items:" in result.summary
-    assert "institution merges:" in result.summary
+    assert "merges: E1 1, E2 1, E3 1, E4 1, X1+E2 1" in result.summary
+    assert "blocked: T1 1" in result.summary
+    assert "queue items: 3" in result.summary
+    assert "institution merges: V7 2, V8 1, V9 1" in result.summary
     page = next(path for path in (site / "html").glob("GY-*.html") if "김하늘" in path.read_text(encoding="utf-8"))
     text = page.read_text(encoding="utf-8")
     assert 'href="https://' in text
     assert ">source</a>" in text
+    assert "예시 레지던시" in text and "예시 워크숍" in text
+    assert "서울시립미술관 외" in text and "서울시립미술관 《빛》" in text
+    assert "서울시립미술관 전시실" in text and "Seoul Museum of Art" in text
+    assert "Example Residency" in text
+    assert "Open same-name review: GY-000023" in text
+    other = (site / "html" / "GY-000023.html").read_text(encoding="utf-8")
+    assert "Kim Haneul" in other and "Open same-name review: GY-000001" in other
+    assert (site / "html" / "GY-000020.html").read_text(encoding="utf-8").count("GY-000001") >= 1
     assert (site / "html" / "index.html").is_file()

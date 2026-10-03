@@ -27,6 +27,45 @@
       "created_at": "TIMESTAMP"
     },
     {
+      "id": "45dff6c9-7928-5398-ad6e-4bdb81561147",
+      "artist_id": "GY-000001",
+      "title": "예시 미디어전",
+      "venue": "예시문화원, 부산",
+      "year": 2024,
+      "activity_type": "group_exhibition",
+      "role": null,
+      "source_url": "https://cv.example.org/haneul-en",
+      "source_type": "SELF_SUBMITTED",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "d5e0f2aa-cbda-50b3-99bf-a4db97f876c0",
+      "artist_id": "GY-000023",
+      "title": "EXAMPLE-FORUM",
+      "venue": null,
+      "year": 2023,
+      "activity_type": "other",
+      "role": null,
+      "source_url": "https://example.org/forum/guests",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "8f1e0db3-e1e4-54da-a18e-48e38ba4af50",
+      "artist_id": "GY-000001",
+      "title": "홀의 신호",
+      "venue": "서울시립미술관 전시실",
+      "year": 2023,
+      "activity_type": "group_exhibition",
+      "role": null,
+      "source_url": "https://cv.example.org/haneul-ko",
+      "source_type": "SELF_SUBMITTED",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
       "id": "92e7f6f1-fd76-5ed4-a317-23aaf387f4be",
       "artist_id": "GY-000021",
       "title": "EXAMPLE-WORKSHOP",
@@ -53,6 +92,45 @@
       "created_at": "TIMESTAMP"
     },
     {
+      "id": "645c800f-e5ed-5266-96a0-38414ae6b6df",
+      "artist_id": "GY-000001",
+      "title": "Signal",
+      "venue": "Seoul Museum of Art",
+      "year": 2022,
+      "activity_type": "group_exhibition",
+      "role": null,
+      "source_url": "https://cv.example.org/haneul-en",
+      "source_type": "SELF_SUBMITTED",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "3a12034a-6fc0-5c61-9303-09df666f6356",
+      "artist_id": "GY-000001",
+      "title": "신호",
+      "venue": "서울시립미술관 외",
+      "year": 2022,
+      "activity_type": "group_exhibition",
+      "role": null,
+      "source_url": "https://cv.example.org/haneul-ko",
+      "source_type": "SELF_SUBMITTED",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "bbbb6bbd-2d6e-5418-b114-bed214a45ba4",
+      "artist_id": "GY-000013",
+      "title": "EXAMPLE-WORKSHOP",
+      "venue": null,
+      "year": 2021,
+      "activity_type": "other",
+      "role": null,
+      "source_url": "https://example.org/workshop/fellows",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
       "id": "8e5408e7-23fa-5798-b068-f32c8a9b2273",
       "artist_id": "GY-000014",
       "title": "EXAMPLE-WORKSHOP",
@@ -67,19 +145,6 @@
     },
     {
       "id": "2e5f8b73-53a0-5778-a827-96ced7bab136",
-      "artist_id": "GY-000015",
-      "title": "EXAMPLE-WORKSHOP",
-      "venue": null,
-      "year": 2021,
-      "activity_type": "other",
-      "role": null,
-      "source_url": "https://example.org/workshop/fellows",
-      "source_type": "PUBLIC_RECORD",
-      "collected_at": "DATE",
-      "created_at": "TIMESTAMP"
-    },
-    {
-      "id": "b2958687-0f69-54d8-b1fe-193b16e11151",
       "artist_id": "GY-000004",
       "title": "EXAMPLE-WORKSHOP",
       "venue": null,
@@ -92,7 +157,7 @@
       "created_at": "TIMESTAMP"
     },
     {
-      "id": "a3e5f55c-4427-58a5-b017-f10574c83ee8",
+      "id": "b2958687-0f69-54d8-b1fe-193b16e11151",
       "artist_id": "GY-000003",
       "title": "EXAMPLE-WORKSHOP",
       "venue": null,
@@ -105,13 +170,26 @@
       "created_at": "TIMESTAMP"
     },
     {
-      "id": "40e5e737-bc0b-5b46-bcb9-358ff8e5478f",
+      "id": "a3e5f55c-4427-58a5-b017-f10574c83ee8",
       "artist_id": "GY-000006",
       "title": "EXAMPLE-WORKSHOP",
       "venue": null,
       "year": 2021,
       "activity_type": "other",
       "role": "팀: 노을크루",
+      "source_url": "https://example.org/workshop/fellows",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "40e5e737-bc0b-5b46-bcb9-358ff8e5478f",
+      "artist_id": "GY-000018",
+      "title": "EXAMPLE-WORKSHOP",
+      "venue": null,
+      "year": 2021,
+      "activity_type": "other",
+      "role": null,
       "source_url": "https://example.org/workshop/fellows",
       "source_type": "PUBLIC_RECORD",
       "collected_at": "DATE",
@@ -132,7 +210,7 @@
     },
     {
       "id": "6cec3526-9358-5d14-b083-bb811beddf0d",
-      "artist_id": "GY-000020",
+      "artist_id": "GY-000001",
       "title": "EXAMPLE-WORKSHOP",
       "venue": null,
       "year": 2021,
@@ -144,8 +222,8 @@
       "created_at": "TIMESTAMP"
     },
     {
-      "id": "f1acca80-ee1a-580b-adeb-fdfe2412cfb2",
-      "artist_id": "GY-000025",
+      "id": "e3565411-27f6-5820-b353-6db967b542fb",
+      "artist_id": "GY-000026",
       "title": "EXAMPLE-WORKSHOP",
       "venue": null,
       "year": 2021,
@@ -157,8 +235,8 @@
       "created_at": "TIMESTAMP"
     },
     {
-      "id": "5ce733cd-56f5-57cc-a864-9348750b4170",
-      "artist_id": "GY-000026",
+      "id": "206a70ee-23e6-5e6a-b026-f2d0a09166c0",
+      "artist_id": "GY-000027",
       "title": "EXAMPLE-WORKSHOP",
       "venue": null,
       "year": 2021,
@@ -166,6 +244,19 @@
       "role": "팀: 배수아",
       "source_url": "https://example.org/workshop/fellows",
       "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "cf77f4d8-65e4-5523-a3d8-f3d550888291",
+      "artist_id": "GY-000001",
+      "title": "빛",
+      "venue": "서울시립미술관 《빛》",
+      "year": 2021,
+      "activity_type": "group_exhibition",
+      "role": null,
+      "source_url": "https://cv.example.org/haneul-ko",
+      "source_type": "SELF_SUBMITTED",
       "collected_at": "DATE",
       "created_at": "TIMESTAMP"
     },
@@ -184,19 +275,6 @@
     },
     {
       "id": "9bbd90e6-9d30-57a9-92f2-2ea1e300b7e9",
-      "artist_id": "GY-000012",
-      "title": "EXAMPLE-RESIDENCY",
-      "venue": null,
-      "year": 2020,
-      "activity_type": "other",
-      "role": null,
-      "source_url": "https://example.org/residency/alumni",
-      "source_type": "PUBLIC_RECORD",
-      "collected_at": "DATE",
-      "created_at": "TIMESTAMP"
-    },
-    {
-      "id": "348ee6ce-0872-53ac-8818-5db19878496b",
       "artist_id": "GY-000005",
       "title": "EXAMPLE-RESIDENCY",
       "venue": null,
@@ -205,6 +283,19 @@
       "role": "〈푸른 신호〉",
       "source_url": "https://example.org/residency/alumni",
       "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "50c59121-f80c-50a1-8837-e5ecd33bae9a",
+      "artist_id": "GY-000001",
+      "title": "열린 수장고",
+      "venue": "서울시립미술관",
+      "year": 2020,
+      "activity_type": "group_exhibition",
+      "role": null,
+      "source_url": "https://cv.example.org/haneul-ko",
+      "source_type": "SELF_SUBMITTED",
       "collected_at": "DATE",
       "created_at": "TIMESTAMP"
     },
@@ -339,8 +430,8 @@
       "created_at": "TIMESTAMP"
     },
     {
-      "id": "3e28aede-4e0b-5800-a99c-78b543e39336",
-      "artist_id": "GY-000023",
+      "id": "5073502e-0175-5583-8e06-6385bcf9747f",
+      "artist_id": "GY-000024",
       "title": "EXAMPLE-RESIDENCY",
       "venue": null,
       "year": 2019,
@@ -352,8 +443,8 @@
       "created_at": "TIMESTAMP"
     },
     {
-      "id": "4395a1c4-8597-509d-ad23-298a7bf24730",
-      "artist_id": "GY-000024",
+      "id": "63cd2e68-196a-5d0d-a55e-389498837b85",
+      "artist_id": "GY-000025",
       "title": "EXAMPLE-RESIDENCY",
       "venue": null,
       "year": 2019,
@@ -361,6 +452,19 @@
       "role": "팀: 노을 스튜디오",
       "source_url": "https://example.org/residency/alumni",
       "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "created_at": "TIMESTAMP"
+    },
+    {
+      "id": "7b47f9bc-b65f-5abf-994e-8e35efa242b3",
+      "artist_id": "GY-000001",
+      "title": "Example Residency",
+      "venue": "Seoul",
+      "year": 2019,
+      "activity_type": "residency",
+      "role": null,
+      "source_url": "https://cv.example.org/haneul-en",
+      "source_type": "SELF_SUBMITTED",
       "collected_at": "DATE",
       "created_at": "TIMESTAMP"
     },
@@ -380,45 +484,6 @@
   ],
   "artist_stubs.json": {},
   "artists.json": [
-    {
-      "id": "GY-000011",
-      "name_ko": "Haneul Kim",
-      "name_en": "Haneul Kim",
-      "aliases": [],
-      "type": "individual",
-      "bio_short": null,
-      "birth_year": null,
-      "birth_year_source_url": null,
-      "active_since": null,
-      "regions": [],
-      "countries": [],
-      "medium_tags": [],
-      "derived": {},
-      "technique_tags": [],
-      "theme_tags": [],
-      "frame_status": "IN_FRAME",
-      "frame_codes": [
-        "EXAMPLE-RESIDENCY"
-      ],
-      "frame_editions": [
-        {
-          "frame": "EXAMPLE-RESIDENCY",
-          "edition": null
-        }
-      ],
-      "verification": "UNVERIFIED",
-      "cv_status": "none",
-      "same_name": [],
-      "status": "PUBLISHED",
-      "source_url": "https://example.org/residency/alumni",
-      "source_type": "PUBLIC_RECORD",
-      "collected_at": "DATE",
-      "external_ids": {
-        "ledger_id": "LED-0000000b40"
-      },
-      "created_at": "TIMESTAMP",
-      "updated_at": "TIMESTAMP"
-    },
     {
       "id": "GY-000021",
       "name_ko": "Haru Lee",
@@ -500,7 +565,48 @@
       "updated_at": "TIMESTAMP"
     },
     {
-      "id": "GY-000012",
+      "id": "GY-000023",
+      "name_ko": "Kim Haneul",
+      "name_en": "Kim Haneul",
+      "aliases": [],
+      "type": "individual",
+      "bio_short": null,
+      "birth_year": null,
+      "birth_year_source_url": null,
+      "active_since": null,
+      "regions": [],
+      "countries": [],
+      "medium_tags": [],
+      "derived": {},
+      "technique_tags": [],
+      "theme_tags": [],
+      "frame_status": "IN_FRAME",
+      "frame_codes": [
+        "EXAMPLE-FORUM"
+      ],
+      "frame_editions": [
+        {
+          "frame": "EXAMPLE-FORUM",
+          "edition": null
+        }
+      ],
+      "verification": "UNVERIFIED",
+      "cv_status": "none",
+      "same_name": [
+        "GY-000001"
+      ],
+      "status": "PUBLISHED",
+      "source_url": "https://example.org/forum/guests",
+      "source_type": "PUBLIC_RECORD",
+      "collected_at": "DATE",
+      "external_ids": {
+        "ledger_id": "LED-0000001c40"
+      },
+      "created_at": "TIMESTAMP",
+      "updated_at": "TIMESTAMP"
+    },
+    {
+      "id": "GY-000011",
       "name_ko": "Kim Seoyeon",
       "name_en": "Kim Seoyeon",
       "aliases": [],
@@ -533,13 +639,13 @@
       "source_type": "PUBLIC_RECORD",
       "collected_at": "DATE",
       "external_ids": {
-        "ledger_id": "LED-0000000c40"
+        "ledger_id": "LED-0000000b40"
       },
       "created_at": "TIMESTAMP",
       "updated_at": "TIMESTAMP"
     },
     {
-      "id": "GY-000014",
+      "id": "GY-000013",
       "name_ko": "Lee Haru",
       "name_en": "Lee Haru",
       "aliases": [],
@@ -572,13 +678,13 @@
       "source_type": "PUBLIC_RECORD",
       "collected_at": "DATE",
       "external_ids": {
-        "ledger_id": "LED-0000001140"
+        "ledger_id": "LED-0000001040"
       },
       "created_at": "TIMESTAMP",
       "updated_at": "TIMESTAMP"
     },
     {
-      "id": "GY-000023",
+      "id": "GY-000024",
       "name_ko": "김바다",
       "name_en": null,
       "aliases": [],
@@ -612,13 +718,13 @@
       "source_type": "PUBLIC_RECORD",
       "collected_at": "DATE",
       "external_ids": {
-        "ledger_id": "LED-0000001d40"
+        "ledger_id": "LED-0000001f40"
       },
       "created_at": "TIMESTAMP",
       "updated_at": "TIMESTAMP"
     },
     {
-      "id": "GY-000025",
+      "id": "GY-000026",
       "name_ko": "김솔",
       "name_en": null,
       "aliases": [],
@@ -652,7 +758,7 @@
       "source_type": "PUBLIC_RECORD",
       "collected_at": "DATE",
       "external_ids": {
-        "ledger_id": "LED-0000001f40"
+        "ledger_id": "LED-0000002140"
       },
       "created_at": "TIMESTAMP",
       "updated_at": "TIMESTAMP"
@@ -660,7 +766,7 @@
     {
       "id": "GY-000001",
       "name_ko": "김하늘",
-      "name_en": null,
+      "name_en": "Haneul Kim",
       "aliases": [],
       "type": "individual",
       "bio_short": null,
@@ -679,17 +785,24 @@
       "theme_tags": [],
       "frame_status": "IN_FRAME",
       "frame_codes": [
-        "EXAMPLE-RESIDENCY"
+        "EXAMPLE-RESIDENCY",
+        "EXAMPLE-WORKSHOP"
       ],
       "frame_editions": [
         {
           "frame": "EXAMPLE-RESIDENCY",
           "edition": null
+        },
+        {
+          "frame": "EXAMPLE-WORKSHOP",
+          "edition": null
         }
       ],
       "verification": "UNVERIFIED",
       "cv_status": "found",
-      "same_name": [],
+      "same_name": [
+        "GY-000023"
+      ],
       "status": "PUBLISHED",
       "source_url": "https://example.org/residency/alumni",
       "source_type": "PUBLIC_RECORD",
@@ -786,7 +899,7 @@
       "updated_at": "TIMESTAMP"
     },
     {
-      "id": "GY-000024",
+      "id": "GY-000025",
       "name_ko": "박바다",
       "name_en": null,
       "aliases": [],
@@ -820,7 +933,7 @@
       "source_type": "PUBLIC_RECORD",
       "collected_at": "DATE",
       "external_ids": {
-        "ledger_id": "LED-0000001e40"
+        "ledger_id": "LED-0000002040"
       },
       "created_at": "TIMESTAMP",
       "updated_at": "TIMESTAMP"
@@ -865,7 +978,7 @@
       "updated_at": "TIMESTAMP"
     },
     {
-      "id": "GY-000026",
+      "id": "GY-000027",
       "name_ko": "박솔",
       "name_en": null,
       "aliases": [],
@@ -899,7 +1012,7 @@
       "source_type": "PUBLIC_RECORD",
       "collected_at": "DATE",
       "external_ids": {
-        "ledger_id": "LED-0000002040"
+        "ledger_id": "LED-0000002240"
       },
       "created_at": "TIMESTAMP",
       "updated_at": "TIMESTAMP"
@@ -944,7 +1057,7 @@
       "updated_at": "TIMESTAMP"
     },
     {
-      "id": "GY-000020",
+      "id": "GY-000019",
       "name_ko": "배수아",
       "name_en": "Sua Bae",
       "aliases": [],
@@ -977,7 +1090,7 @@
       "source_type": "PUBLIC_RECORD",
       "collected_at": "DATE",
       "external_ids": {
-        "ledger_id": "LED-0000001740"
+        "ledger_id": "LED-0000001640"
       },
       "created_at": "TIMESTAMP",
       "updated_at": "TIMESTAMP"
@@ -1024,7 +1137,7 @@
       "updated_at": "TIMESTAMP"
     },
     {
-      "id": "GY-000015",
+      "id": "GY-000014",
       "name_ko": "이하루",
       "name_en": null,
       "aliases": [],
@@ -1057,7 +1170,7 @@
       "source_type": "PUBLIC_RECORD",
       "collected_at": "DATE",
       "external_ids": {
-        "ledger_id": "LED-0000001240"
+        "ledger_id": "LED-0000001140"
       },
       "created_at": "TIMESTAMP",
       "updated_at": "TIMESTAMP"
@@ -1135,7 +1248,7 @@
       "verification": "UNVERIFIED",
       "cv_status": "none",
       "same_name": [
-        "GY-000019"
+        "GY-000018"
       ],
       "status": "PUBLISHED",
       "source_url": "https://example.org/residency/alumni",
@@ -1148,7 +1261,7 @@
       "updated_at": "TIMESTAMP"
     },
     {
-      "id": "GY-000019",
+      "id": "GY-000018",
       "name_ko": "최민수",
       "name_en": "Minsu Choi",
       "aliases": [],
@@ -1183,7 +1296,7 @@
       "source_type": "PUBLIC_RECORD",
       "collected_at": "DATE",
       "external_ids": {
-        "ledger_id": "LED-0000001640"
+        "ledger_id": "LED-0000001540"
       },
       "created_at": "TIMESTAMP",
       "updated_at": "TIMESTAMP"
@@ -1275,7 +1388,7 @@
   ],
   "background.json": [
     {
-      "id": "bc05c504-e741-586a-b763-9a0e57be5d7b",
+      "id": "785714cc-2a36-5ebb-9387-0ce12b4f9e51",
       "artist_id": "GY-000001",
       "section": "education",
       "title": "BFA, Seoul Yesidae University",
@@ -1312,16 +1425,6 @@
     },
     "artists": [
       {
-        "id": "GY-000011",
-        "title": "Haneul Kim",
-        "url": "https://example.org/artist/GY-000011",
-        "year": 2026,
-        "accessed": "DATE",
-        "apa": "Example Archive. (2026). Haneul Kim [Artist record GY-000011, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000011",
-        "chicago": "Example Archive. \"Haneul Kim.\" [Artist record GY-000011, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000011.",
-        "bibtex": "@misc{giye_GY_000011,\n  author       = {{Example Archive}},\n  title        = {Haneul Kim},\n  note         = {Artist record GY-000011, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000011}},\n  urldate      = {DATE}\n}"
-      },
-      {
         "id": "GY-000021",
         "title": "Haru Lee",
         "url": "https://example.org/artist/GY-000021",
@@ -1342,44 +1445,54 @@
         "bibtex": "@misc{giye_GY_000022,\n  author       = {{Example Archive}},\n  title        = {Jiwoo Seo},\n  note         = {Artist record GY-000022, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000022}},\n  urldate      = {DATE}\n}"
       },
       {
-        "id": "GY-000012",
-        "title": "Kim Seoyeon",
-        "url": "https://example.org/artist/GY-000012",
-        "year": 2026,
-        "accessed": "DATE",
-        "apa": "Example Archive. (2026). Kim Seoyeon [Artist record GY-000012, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000012",
-        "chicago": "Example Archive. \"Kim Seoyeon.\" [Artist record GY-000012, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000012.",
-        "bibtex": "@misc{giye_GY_000012,\n  author       = {{Example Archive}},\n  title        = {Kim Seoyeon},\n  note         = {Artist record GY-000012, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000012}},\n  urldate      = {DATE}\n}"
-      },
-      {
-        "id": "GY-000014",
-        "title": "Lee Haru",
-        "url": "https://example.org/artist/GY-000014",
-        "year": 2026,
-        "accessed": "DATE",
-        "apa": "Example Archive. (2026). Lee Haru [Artist record GY-000014, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000014",
-        "chicago": "Example Archive. \"Lee Haru.\" [Artist record GY-000014, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000014.",
-        "bibtex": "@misc{giye_GY_000014,\n  author       = {{Example Archive}},\n  title        = {Lee Haru},\n  note         = {Artist record GY-000014, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000014}},\n  urldate      = {DATE}\n}"
-      },
-      {
         "id": "GY-000023",
-        "title": "김바다",
+        "title": "Kim Haneul",
         "url": "https://example.org/artist/GY-000023",
         "year": 2026,
         "accessed": "DATE",
-        "apa": "Example Archive. (2026). 김바다 [Artist record GY-000023, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000023",
-        "chicago": "Example Archive. \"김바다.\" [Artist record GY-000023, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000023.",
-        "bibtex": "@misc{giye_GY_000023,\n  author       = {{Example Archive}},\n  title        = {김바다},\n  note         = {Artist record GY-000023, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000023}},\n  urldate      = {DATE}\n}"
+        "apa": "Example Archive. (2026). Kim Haneul [Artist record GY-000023, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000023",
+        "chicago": "Example Archive. \"Kim Haneul.\" [Artist record GY-000023, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000023.",
+        "bibtex": "@misc{giye_GY_000023,\n  author       = {{Example Archive}},\n  title        = {Kim Haneul},\n  note         = {Artist record GY-000023, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000023}},\n  urldate      = {DATE}\n}"
       },
       {
-        "id": "GY-000025",
-        "title": "김솔",
-        "url": "https://example.org/artist/GY-000025",
+        "id": "GY-000011",
+        "title": "Kim Seoyeon",
+        "url": "https://example.org/artist/GY-000011",
         "year": 2026,
         "accessed": "DATE",
-        "apa": "Example Archive. (2026). 김솔 [Artist record GY-000025, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000025",
-        "chicago": "Example Archive. \"김솔.\" [Artist record GY-000025, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000025.",
-        "bibtex": "@misc{giye_GY_000025,\n  author       = {{Example Archive}},\n  title        = {김솔},\n  note         = {Artist record GY-000025, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000025}},\n  urldate      = {DATE}\n}"
+        "apa": "Example Archive. (2026). Kim Seoyeon [Artist record GY-000011, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000011",
+        "chicago": "Example Archive. \"Kim Seoyeon.\" [Artist record GY-000011, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000011.",
+        "bibtex": "@misc{giye_GY_000011,\n  author       = {{Example Archive}},\n  title        = {Kim Seoyeon},\n  note         = {Artist record GY-000011, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000011}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000013",
+        "title": "Lee Haru",
+        "url": "https://example.org/artist/GY-000013",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). Lee Haru [Artist record GY-000013, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000013",
+        "chicago": "Example Archive. \"Lee Haru.\" [Artist record GY-000013, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000013.",
+        "bibtex": "@misc{giye_GY_000013,\n  author       = {{Example Archive}},\n  title        = {Lee Haru},\n  note         = {Artist record GY-000013, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000013}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000024",
+        "title": "김바다",
+        "url": "https://example.org/artist/GY-000024",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). 김바다 [Artist record GY-000024, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000024",
+        "chicago": "Example Archive. \"김바다.\" [Artist record GY-000024, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000024.",
+        "bibtex": "@misc{giye_GY_000024,\n  author       = {{Example Archive}},\n  title        = {김바다},\n  note         = {Artist record GY-000024, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000024}},\n  urldate      = {DATE}\n}"
+      },
+      {
+        "id": "GY-000026",
+        "title": "김솔",
+        "url": "https://example.org/artist/GY-000026",
+        "year": 2026,
+        "accessed": "DATE",
+        "apa": "Example Archive. (2026). 김솔 [Artist record GY-000026, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000026",
+        "chicago": "Example Archive. \"김솔.\" [Artist record GY-000026, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000026.",
+        "bibtex": "@misc{giye_GY_000026,\n  author       = {{Example Archive}},\n  title        = {김솔},\n  note         = {Artist record GY-000026, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000026}},\n  urldate      = {DATE}\n}"
       },
       {
         "id": "GY-000001",
@@ -1412,14 +1525,14 @@
         "bibtex": "@misc{giye_GY_000006,\n  author       = {{Example Archive}},\n  title        = {문지호},\n  note         = {Artist record GY-000006, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000006}},\n  urldate      = {DATE}\n}"
       },
       {
-        "id": "GY-000024",
+        "id": "GY-000025",
         "title": "박바다",
-        "url": "https://example.org/artist/GY-000024",
+        "url": "https://example.org/artist/GY-000025",
         "year": 2026,
         "accessed": "DATE",
-        "apa": "Example Archive. (2026). 박바다 [Artist record GY-000024, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000024",
-        "chicago": "Example Archive. \"박바다.\" [Artist record GY-000024, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000024.",
-        "bibtex": "@misc{giye_GY_000024,\n  author       = {{Example Archive}},\n  title        = {박바다},\n  note         = {Artist record GY-000024, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000024}},\n  urldate      = {DATE}\n}"
+        "apa": "Example Archive. (2026). 박바다 [Artist record GY-000025, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000025",
+        "chicago": "Example Archive. \"박바다.\" [Artist record GY-000025, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000025.",
+        "bibtex": "@misc{giye_GY_000025,\n  author       = {{Example Archive}},\n  title        = {박바다},\n  note         = {Artist record GY-000025, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000025}},\n  urldate      = {DATE}\n}"
       },
       {
         "id": "GY-000002",
@@ -1432,14 +1545,14 @@
         "bibtex": "@misc{giye_GY_000002,\n  author       = {{Example Archive}},\n  title        = {박서연 (Seoyeon Park)},\n  note         = {Artist record GY-000002, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000002}},\n  urldate      = {DATE}\n}"
       },
       {
-        "id": "GY-000026",
+        "id": "GY-000027",
         "title": "박솔",
-        "url": "https://example.org/artist/GY-000026",
+        "url": "https://example.org/artist/GY-000027",
         "year": 2026,
         "accessed": "DATE",
-        "apa": "Example Archive. (2026). 박솔 [Artist record GY-000026, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000026",
-        "chicago": "Example Archive. \"박솔.\" [Artist record GY-000026, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000026.",
-        "bibtex": "@misc{giye_GY_000026,\n  author       = {{Example Archive}},\n  title        = {박솔},\n  note         = {Artist record GY-000026, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000026}},\n  urldate      = {DATE}\n}"
+        "apa": "Example Archive. (2026). 박솔 [Artist record GY-000027, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000027",
+        "chicago": "Example Archive. \"박솔.\" [Artist record GY-000027, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000027.",
+        "bibtex": "@misc{giye_GY_000027,\n  author       = {{Example Archive}},\n  title        = {박솔},\n  note         = {Artist record GY-000027, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000027}},\n  urldate      = {DATE}\n}"
       },
       {
         "id": "GY-000008",
@@ -1452,14 +1565,14 @@
         "bibtex": "@misc{giye_GY_000008,\n  author       = {{Example Archive}},\n  title        = {배수아},\n  note         = {Artist record GY-000008, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000008}},\n  urldate      = {DATE}\n}"
       },
       {
-        "id": "GY-000020",
+        "id": "GY-000019",
         "title": "배수아",
-        "url": "https://example.org/artist/GY-000020",
+        "url": "https://example.org/artist/GY-000019",
         "year": 2026,
         "accessed": "DATE",
-        "apa": "Example Archive. (2026). 배수아 [Artist record GY-000020, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000020",
-        "chicago": "Example Archive. \"배수아.\" [Artist record GY-000020, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000020.",
-        "bibtex": "@misc{giye_GY_000020,\n  author       = {{Example Archive}},\n  title        = {배수아},\n  note         = {Artist record GY-000020, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000020}},\n  urldate      = {DATE}\n}"
+        "apa": "Example Archive. (2026). 배수아 [Artist record GY-000019, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000019",
+        "chicago": "Example Archive. \"배수아.\" [Artist record GY-000019, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000019.",
+        "bibtex": "@misc{giye_GY_000019,\n  author       = {{Example Archive}},\n  title        = {배수아},\n  note         = {Artist record GY-000019, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000019}},\n  urldate      = {DATE}\n}"
       },
       {
         "id": "GY-000010",
@@ -1472,14 +1585,14 @@
         "bibtex": "@misc{giye_GY_000010,\n  author       = {{Example Archive}},\n  title        = {서지우},\n  note         = {Artist record GY-000010, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000010}},\n  urldate      = {DATE}\n}"
       },
       {
-        "id": "GY-000015",
+        "id": "GY-000014",
         "title": "이하루",
-        "url": "https://example.org/artist/GY-000015",
+        "url": "https://example.org/artist/GY-000014",
         "year": 2026,
         "accessed": "DATE",
-        "apa": "Example Archive. (2026). 이하루 [Artist record GY-000015, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000015",
-        "chicago": "Example Archive. \"이하루.\" [Artist record GY-000015, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000015.",
-        "bibtex": "@misc{giye_GY_000015,\n  author       = {{Example Archive}},\n  title        = {이하루},\n  note         = {Artist record GY-000015, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000015}},\n  urldate      = {DATE}\n}"
+        "apa": "Example Archive. (2026). 이하루 [Artist record GY-000014, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000014",
+        "chicago": "Example Archive. \"이하루.\" [Artist record GY-000014, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000014.",
+        "bibtex": "@misc{giye_GY_000014,\n  author       = {{Example Archive}},\n  title        = {이하루},\n  note         = {Artist record GY-000014, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000014}},\n  urldate      = {DATE}\n}"
       },
       {
         "id": "GY-000003",
@@ -1502,14 +1615,14 @@
         "bibtex": "@misc{giye_GY_000007,\n  author       = {{Example Archive}},\n  title        = {최민수},\n  note         = {Artist record GY-000007, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000007}},\n  urldate      = {DATE}\n}"
       },
       {
-        "id": "GY-000019",
+        "id": "GY-000018",
         "title": "최민수",
-        "url": "https://example.org/artist/GY-000019",
+        "url": "https://example.org/artist/GY-000018",
         "year": 2026,
         "accessed": "DATE",
-        "apa": "Example Archive. (2026). 최민수 [Artist record GY-000019, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000019",
-        "chicago": "Example Archive. \"최민수.\" [Artist record GY-000019, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000019.",
-        "bibtex": "@misc{giye_GY_000019,\n  author       = {{Example Archive}},\n  title        = {최민수},\n  note         = {Artist record GY-000019, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000019}},\n  urldate      = {DATE}\n}"
+        "apa": "Example Archive. (2026). 최민수 [Artist record GY-000018, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000018",
+        "chicago": "Example Archive. \"최민수.\" [Artist record GY-000018, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000018.",
+        "bibtex": "@misc{giye_GY_000018,\n  author       = {{Example Archive}},\n  title        = {최민수},\n  note         = {Artist record GY-000018, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000018}},\n  urldate      = {DATE}\n}"
       },
       {
         "id": "GY-000004",
@@ -1541,20 +1654,28 @@
     "published_artists": 22,
     "ledger_artists": 22,
     "frame_count_active": 0,
-    "frame_count_total": 3,
+    "frame_count_total": 4,
     "frames": [
       {
         "code": "EXAMPLE-RESIDENCY",
-        "roster_count": 14,
-        "included_count": 14,
+        "roster_count": 13,
+        "included_count": 13,
         "coverage_pct": 100.0,
         "status": null,
         "last_fetched_at": null
       },
       {
         "code": "EXAMPLE-WORKSHOP",
-        "roster_count": 11,
-        "included_count": 11,
+        "roster_count": 12,
+        "included_count": 12,
+        "coverage_pct": 100.0,
+        "status": null,
+        "last_fetched_at": null
+      },
+      {
+        "code": "EXAMPLE-FORUM",
+        "roster_count": 1,
+        "included_count": 1,
         "coverage_pct": 100.0,
         "status": null,
         "last_fetched_at": null
@@ -1592,9 +1713,9 @@
       "name_en": "Example Residency",
       "years_covered": null,
       "source_url": "https://example.org/residency/alumni",
-      "included_count": 14,
-      "published_count": 14,
-      "roster_count": 14,
+      "included_count": 13,
+      "published_count": 13,
+      "roster_count": 13,
       "coverage_pct": 100.0,
       "status": null,
       "stage": null,
@@ -1604,8 +1725,8 @@
         {
           "edition": null,
           "label": null,
-          "roster_count": 14,
-          "published_count": 14,
+          "roster_count": 13,
+          "published_count": 13,
           "out_of_scope_count": 0
         }
       ],
@@ -1625,9 +1746,9 @@
       "name_en": "Example Workshop",
       "years_covered": null,
       "source_url": "https://example.org/workshop/fellows",
-      "included_count": 11,
-      "published_count": 11,
-      "roster_count": 11,
+      "included_count": 12,
+      "published_count": 12,
+      "roster_count": 12,
       "coverage_pct": 100.0,
       "status": null,
       "stage": null,
@@ -1637,8 +1758,8 @@
         {
           "edition": null,
           "label": null,
-          "roster_count": 11,
-          "published_count": 11,
+          "roster_count": 12,
+          "published_count": 12,
           "out_of_scope_count": 0
         }
       ],
@@ -1650,6 +1771,40 @@
         "f4_roster": "The fellows page is a public roster.",
         "f5_period": "Editions in 2021 and 2022.",
         "note": "Adjacent because F1 is not met; the roster is kept public."
+      }
+    },
+    {
+      "id": "7470976d-3725-58d2-b38c-c84e081a2911",
+      "code": "EXAMPLE-FORUM",
+      "name_ko": "예시 포럼",
+      "name_en": "Example Forum",
+      "years_covered": null,
+      "source_url": "https://example.org/forum/guests",
+      "included_count": 1,
+      "published_count": 1,
+      "roster_count": 1,
+      "coverage_pct": 100.0,
+      "status": null,
+      "stage": null,
+      "last_fetched_at": null,
+      "order": 2,
+      "editions": [
+        {
+          "edition": null,
+          "label": null,
+          "roster_count": 1,
+          "published_count": 1,
+          "out_of_scope_count": 0
+        }
+      ],
+      "eligibility": {
+        "decision": "adjacent",
+        "f1_purpose": "The public text describes a general discussion forum and does not state the field's purpose.",
+        "f2_cohort": "The guest is named on the public page; there is no open call.",
+        "f3_territory": "Held in the configured territory (KR).",
+        "f4_roster": "The guests page is a public list of one name.",
+        "f5_period": "A single list in 2023, not repeated.",
+        "note": "Adjacent because F1 is not met. Holds Kim Haneul, a same-key name with no same-person evidence."
       }
     },
     {
@@ -1666,7 +1821,7 @@
       "status": null,
       "stage": null,
       "last_fetched_at": null,
-      "order": 2,
+      "order": 3,
       "editions": [],
       "eligibility": {
         "decision": "excluded",
@@ -1680,14 +1835,15 @@
     }
   ],
   "gy_redirects.json": {
-    "GY-000017": "GY-000003",
-    "GY-000016": "GY-000004",
-    "GY-000013": "GY-000005",
-    "GY-000018": "GY-000006"
+    "GY-000016": "GY-000003",
+    "GY-000015": "GY-000004",
+    "GY-000012": "GY-000005",
+    "GY-000017": "GY-000006",
+    "GY-000020": "GY-000001"
   },
   "links.json": [
     {
-      "id": "0000000e-4000-8000-8000-00000000000e",
+      "id": "0000000d-4000-8000-8000-00000000000d",
       "artist_id": "GY-000003",
       "label": "website",
       "url": "https://dawoon.example.org",
@@ -1698,7 +1854,7 @@
       "created_at": "TIMESTAMP"
     },
     {
-      "id": "0000000f-4000-8000-8000-00000000000f",
+      "id": "0000000e-4000-8000-8000-00000000000e",
       "artist_id": "GY-000008",
       "label": "website",
       "url": "https://sua.example.org",
@@ -1709,7 +1865,7 @@
       "created_at": "TIMESTAMP"
     },
     {
-      "id": "00000010-4000-8000-8000-000000000010",
+      "id": "0000000f-4000-8000-8000-00000000000f",
       "artist_id": "GY-000009",
       "label": "website",
       "url": "https://noeul.example.org",
@@ -1721,7 +1877,7 @@
     },
     {
       "id": "0000001b-4000-8000-8000-00000000001b",
-      "artist_id": "GY-000020",
+      "artist_id": "GY-000019",
       "label": "website",
       "url": "https://sua.example.org",
       "link_type": "website",

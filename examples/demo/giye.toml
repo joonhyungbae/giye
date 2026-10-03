@@ -26,22 +26,23 @@ model = "claude-opus-5"
 temperature = 0
 cache = "cache"
 
-# Both language CVs attach to the Korean-named roster row. The Latin spelling
-# stays a separate row until resolve merges it. source_id is fixed so the
-# hand-written replay cache can name the document.
+# The Korean CV attaches to the residency row 김하늘. The English CV attaches to
+# the workshop row Haneul Kim, and names the residency, so resolve can merge
+# them (X1+E2). source_id is fixed so the hand-written replay cache can name
+# the document before a ledger id exists.
 [[extract.sources]]
 name_ko = "김하늘"
 lang = "ko"
 url = "https://cv.example.org/haneul-ko"
 source_id = "CV-DEMO-HANEUL-ko"
-note = "fictitious Korean CV"
+note = "fictitious Korean CV; writes 서울시립미술관 외"
 
 [[extract.sources]]
-name_ko = "김하늘"
+name_en = "Haneul Kim"
 lang = "en"
 url = "https://cv.example.org/haneul-en"
 source_id = "CV-DEMO-HANEUL-en"
-note = "fictitious English CV; repeats one Korean event"
+note = "fictitious English CV; lists Example Residency and Seoul Museum of Art"
 
 [[extract.sources]]
 name_ko = "최민수"

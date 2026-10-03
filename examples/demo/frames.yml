@@ -5,7 +5,7 @@ frames:
     name_en: Example Residency
     name_ko: 예시 레지던시
     source_url: https://example.org/residency/alumni
-    roster_count: 13
+    roster_count: 12
     eligibility:
       decision: included
       f1_purpose: The programme page states media art and art-and-technology as its purpose.
@@ -17,7 +17,7 @@ frames:
     name_en: Example Workshop
     name_ko: 예시 워크숍
     source_url: https://example.org/workshop/fellows
-    roster_count: 9
+    roster_count: 10
     eligibility:
       decision: adjacent
       f1_purpose: The public text describes a general art workshop and does not state the field's purpose.
@@ -26,6 +26,19 @@ frames:
       f4_roster: The fellows page is a public roster.
       f5_period: Editions in 2021 and 2022.
       note: Adjacent because F1 is not met; the roster is kept public.
+  - code: EXAMPLE-FORUM
+    name_en: Example Forum
+    name_ko: 예시 포럼
+    source_url: https://example.org/forum/guests
+    roster_count: 1
+    eligibility:
+      decision: adjacent
+      f1_purpose: The public text describes a general discussion forum and does not state the field's purpose.
+      f2_cohort: The guest is named on the public page; there is no open call.
+      f3_territory: Held in the configured territory (KR).
+      f4_roster: The guests page is a public list of one name.
+      f5_period: A single list in 2023, not repeated.
+      note: Adjacent because F1 is not met. Holds Kim Haneul, a same-key name with no same-person evidence.
   - code: EXAMPLE-GRANT
     name_en: Example Open Grant
     name_ko: 예시 공개 공모
