@@ -20,8 +20,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the stages and guarantees, 
 ## Status
 
 Early port from the production archive. Ported and tested so far: cross-script name keys
-(`giye.resolve.names`, rule X1) and roster collection (`giye collect`: robots-checked fetch,
-snapshots, frame registry F1–F5). Progress is tracked in [docs/ROADMAP.md](docs/ROADMAP.md).
+(`giye.resolve.names`, rule X1), roster collection (`giye collect`: robots-checked fetch,
+snapshots, frame registry F1–F5), and the ledger (`giye.ledger`: CSV tables, permanent ids,
+backups, retirement). Progress is tracked in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Quick start (development)
 
@@ -33,8 +34,8 @@ giye --help
 giye collect --config examples/demo/giye.toml
 ```
 
-`giye collect` on the demo config reads local fixture pages only (no network) and writes roster
-CSVs under `examples/demo/data/work/rosters/`.
+`giye collect` on the demo config reads local fixture pages only (no network). It writes roster
+CSVs under `examples/demo/data/work/rosters/` and the ledger under `examples/demo/data/ledger/`.
 
 ## Data policy
 

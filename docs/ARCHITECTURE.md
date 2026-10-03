@@ -40,7 +40,7 @@ network, so the whole chain after collection is deterministic and can be re-run 
 |---|---|---|
 | `giye.collect` | 1 | `Fetcher` (robots.txt before every request, rate limit, contact user agent, TLS-lenient retry), `SnapshotStore` (sha256, manifest.jsonl), `RosterCollector`, evidence copies, frame registry (eligibility F1–F5) |
 | `giye.extract` | 2 | CV source registry, fetch and change detection, LLM extraction to a pydantic schema, validation, cached responses for offline replay |
-| `giye.ledger` | 3 | table schemas, CSV I/O with locking and backups, permanent ID assignment (`GY-000001`), retirement table, review queue |
+| `giye.ledger` | 3 | table schemas, CSV I/O with locking and backups, permanent `gy_id` allocation, content-derived activity ids, merge and retirement, CV-row ownership |
 | `giye.resolve` | 4 | same-person evidence rules, cross-script name keys (`names.py`), team detection, merge with ID retirement |
 | `giye.normalize` | 5 | text normalisation, place gazetteer, institution entities and their audit, derived artist attributes |
 | `giye.explore` | 6 | feature schema, optional text-embedding backend, clustering with k chosen by bootstrap stability, cluster descriptors |
@@ -53,9 +53,20 @@ network, so the whole chain after collection is deterministic and can be re-run 
 
 - `Fetcher` checks robots.txt (RFC 9309, `urllib.robotparser`) before every request and caches the file per host. The configured User-Agent, which must include a contact URL or email, is sent on every request including robots.txt. Requests to one host are spaced by `collect.min_delay_s`. Page fetches use `collect.timeout_s`; robots.txt uses `collect.robots_timeout_s`. A certificate failure is retried once without verification and the page is marked `tls_unverified`. A disallow raises `RobotsDisallowed` and that URL is not requested.
 - `SnapshotStore` writes each distinct body once under its SHA-256 and appends one `manifest.jsonl` line per fetch (`url`, `final_url`, `status`, `fetched_at` in UTC, `sha256`, `bytes`, `content_type`, `collector`, `run_id`, `tls_unverified`).
-- A `RosterCollector` subclass implements `editions()` and calls `fetch()`. `run()` returns roster rows with `source_url` and `collected_at` and writes `data/work/rosters/<frame>.csv`. Ledger upsert is the next port (see the TODO in `giye.collect.base`).
+- A `RosterCollector` subclass implements `editions()` and calls `fetch()`. `run()` returns roster rows with `source_url` and `collected_at`, writes `data/work/rosters/<frame>.csv`, and upserts the ledger. A new person receives a permanent `gy_id`. Membership is one row per person and frame. Each roster appearance is an activity. A re-run matches `name_ko` and `name_en` exactly and keeps both ids. Spelling variants stay on separate rows until rules E1–E4 and X1 merge them.
 - `frames.yml` holds each programme and its F1–F5 judgement. Coverage is members recorded / roster size.
 - Evidence keeps a copy of every cited URL. A gone page (HTTP 404 or 410, or a connection failure) is replaced with an existing Internet Archive capture (`via=archive.org` and the capture time). Save Page Now is never called. A robots.txt disallow is stored as `robots_disallowed` unless `evidence.archive_fallback_for_disallowed` is true (default false).
+
+## Stage 3 — ledger
+
+`giye.ledger.Ledger.open(config)` is the file-backed ledger. Paths come from the config (`data/ledger`, backups under `data/work/backups`). There is no database.
+
+- Tables are CSV. `write_csv` is keyword-only (`path`, `fields`, `rows`) so the production positional order cannot be swapped by mistake. `Ledger.write` copies an existing file to `backups/<file>-<YYYYMMDD>-before-<task>.csv` before replacing it. The date is UTC. A second write the same day with the same task is kept as `-2`, `-3`, and so on. A file that does not exist yet has nothing to copy.
+- A lock file `.ledger.lock` is taken on the first read or write of that ledger directory and held until the process exits (`fcntl.flock`), so one run's reads and its later writes are not interleaved with another process.
+- `ledger_id` (`LED-…`) is the internal key. `gy_id` (`GY-000001`, prefix from `archive.id_prefix`) is the published id. The next id is one past the highest number ever issued, retired ids included. A gap is not filled. Sorting the file does not renumber anyone. The collector issues an id when it creates a person; production issued it at site build, in Hangul dictionary order for that batch. Once issued, the id stays.
+- Activity ids are uuid5 of the namespace derived from `https://giye.org/ns/activity` (the same string as production, so the same fact hashes to the same id). The key is ledger id, source, normalised title, year, activity type, venue, and — for a collector row — the frame code. A repeated key in one write gets an ordinal (0, 1, 2, …). See `giye.ledger.ids`.
+- `merge(kept, dropped, evidence=…, rule=…)` moves activities, frame memberships and CV sources onto the kept row, retires the dropped `gy_id`, and rewrites older retirements so they point at the final survivor. `redirects()` maps each retired `gy_id` to the survivor's current `gy_id`. A merge without an evidence string is refused. The rule id is stored on the kept row's note.
+- A row whose `origin` is `cv:<source_id>` belongs to the `ledger_id` on that CV source. After a merge the source's owner is the survivor, and a row left on the retired id follows it. The activity id is not recomputed (production leaves it).
 
 ## Data model (ledger)
 

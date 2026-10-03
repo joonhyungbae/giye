@@ -29,6 +29,19 @@ Collection policy (not an F-rule): robots.txt is checked before every request. A
 | T1 | A record whose name looks like a team or collective is never merged with a person. | planned |
 | X1 | Hangul and Latin spellings are candidate matches when their romanized keys intersect (`giye.resolve.names`); a candidate is merged only with E1–E4 evidence. | ported |
 
+## Ledger invariants (stage 3)
+
+These are not sampling or identity rules. They are how the ledger keeps a fact attached to a source and to a permanent id. `giye.ledger` implements them.
+
+| Invariant | Why |
+|---|---|
+| A `gy_id` is never reused and never renumbered from the row's position. The next id is one past the highest ever issued, retired ids included. | A published URL must keep working. Filling a gap, or numbering by the current sort order, would give someone else's page to a new row. |
+| A merge retires the dropped `gy_id` into `gy_retired.csv` (`gy_id` → `merged_into_ledger_id`) and rewrites older retirements to the final survivor. | A chain of merges still redirects in one step. `Ledger.redirects()` maps each retired id to the survivor's current `gy_id`. |
+| A merge requires an evidence string and a rule id (E1–E4 or whichever rule decided). | A retired id without a reason cannot be audited. The note on the kept row stores `merge_evidence=` and `rule=`. |
+| An activity id is uuid5 of a fixed key (person, source, normalised title, year, type, venue, and the frame code for a collector row). The same key in one write gets an ordinal. | The same fact must keep its id across runs. Case and punctuation in a title are not a different fact; a different venue spelling is, because a tour has one row per stop. |
+| A CV-derived row (`origin` `cv:<source_id>`) belongs to the owner of that CV source. | The extraction file keeps the ledger id it was made for. A merge updates `cv_sources.ledger_id` and can leave the activity on the retired id. The source's owner is the person the row belongs to. |
+| Every ledger write of an existing file is copied to `data/work/backups/<file>-<YYYYMMDD>-before-<task>.csv` first. | A script must be able to put the previous bytes back. The task name says which write replaced them. |
+
 ## Derived values (stage 5)
 
 | ID | Rule | Status |

@@ -3,10 +3,11 @@
 
 A programme collector is a short subclass. It yields editions; this class fetches
 each page (robots.txt, snapshot) and turns the people into roster rows that carry
-``source_url`` and ``collected_at``. Production did the ledger upsert in
-``scripts/collectors/base.py`` (``upsert_people``). That write waits for the ledger
-port: ``run()`` returns the rows and, for now, writes them to a CSV under the
-configured work directory.
+``source_url`` and ``collected_at``. ``run()`` writes those rows into the ledger
+(people with permanent ``gy_id``s, frame membership, one activity per appearance)
+and keeps a copy under the configured work directory. Production did the upsert
+in ``scripts/collectors/base.py`` (``upsert_people``). Same-person matching across
+spellings is rules E1–E4 and X1, not this write.
 
     class ExampleResidency(RosterCollector):
         frame = "EXAMPLE-RESIDENCY"
@@ -33,6 +34,7 @@ from pathlib import Path
 
 from giye.collect.fetch import Fetcher, Page, fetcher_from_config
 from giye.collect.snapshot import MAX_BYTES, SnapshotStore
+from giye.ledger import Ledger
 
 ROSTER_FIELDS = ["frame_code", "year", "name", "name_ko", "name_en", "source_url", "collected_at"]
 _HANGUL = re.compile(r"[가-힣]")
@@ -115,16 +117,16 @@ class RosterCollector:
         return page
 
     def run(self, *, collected_at: str | None = None) -> list[dict[str, str]]:
-        """Return roster rows and write them to ``<work>/rosters/<frame>.csv``.
+        """Return roster rows, upsert them into the ledger, and write ``<work>/rosters/<frame>.csv``.
 
         Each row has ``source_url`` and ``collected_at``. ``collected_at`` is the UTC
         calendar date. Production used the machine-local date (``date.today()``); UTC
         keeps a row from depending on the operator's timezone. The snapshot manifest
         stores a full UTC timestamp.
 
-        TODO(P2): write these rows through the ledger API (``giye.ledger``) instead of
-        this CSV. The ledger is the source of truth; the file is only a stand-in so
-        collection can be tested before that port.
+        The ledger is the source of truth: a new person gets a ``gy_id``, the frame
+        gains a membership, and each appearance is an activity. The CSV is the
+        collection report for this run.
         """
         stamp = collected_at or datetime.now(timezone.utc).date().isoformat()
         rows: list[dict[str, str]] = []
@@ -141,6 +143,7 @@ class RosterCollector:
                         "collected_at": stamp,
                     }
                 )
+        Ledger.open(self.config).apply_roster(self.frame, rows, task="collect")
         self.write_csv(rows)
         return rows
 

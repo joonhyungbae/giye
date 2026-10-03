@@ -2,7 +2,8 @@
 
 A synthetic field used to reproduce the pipeline without real people.
 
-Roster collection runs offline (local HTML fixtures, robots.txt still checked):
+Roster collection runs offline (local HTML fixtures, robots.txt still checked) and writes the
+ledger (people, frame membership, one activity per appearance) as well as a roster CSV:
 
 ```bash
 giye collect --config examples/demo/giye.toml
