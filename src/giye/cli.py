@@ -129,6 +129,28 @@ def _normalize(args: argparse.Namespace) -> int:
     return 0
 
 
+def _export(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from giye.config import load
+    from giye.export.rocrate import export_ro_crate
+    from giye.export.warc import export_warc
+
+    config = load(args.config)
+    output = Path(args.output) if args.output else None
+    if args.export_cmd == "warc":
+        result = export_warc(config, output, wacz=args.wacz)
+        print(result.warc)
+        if result.wacz is not None:
+            print(result.wacz)
+        return 0
+    if args.export_cmd == "ro-crate":
+        print(export_ro_crate(config, output, config_path=Path(args.config)))
+        return 0
+    print("giye export: expected 'warc' or 'ro-crate'", file=sys.stderr)
+    return 2
+
+
 def _name_keys(args: argparse.Namespace) -> int:
     for name in args.names:
         keys = hangul_name_keys(name) or latin_name_keys(name)
@@ -164,6 +186,19 @@ def main(argv: list[str] | None = None) -> int:
     demo.add_argument("--output", default=None, help="data directory; default is a new temporary directory")
     render_cmd = sub.add_parser("render", help="write one plain HTML page per person from the site snapshot")
     render_cmd.add_argument("--config", default="giye.toml")
+    export = sub.add_parser("export", help="write the snapshot store as WARC, or the run as an RO-Crate")
+    export_sub = export.add_subparsers(dest="export_cmd", required=True)
+    warc = export_sub.add_parser("warc", help="WARC 1.1 of kept snapshot bodies (optional WACZ)")
+    warc.add_argument("--config", default="giye.toml")
+    warc.add_argument("--output", default=None, help="WARC path; default is <data>/work/export/snapshots.warc.gz")
+    warc.add_argument("--wacz", action="store_true", help="also write a WACZ 1.1.1 package next to the WARC")
+    crate = export_sub.add_parser("ro-crate", help="RO-Crate 1.1 metadata for this run")
+    crate.add_argument("--config", default="giye.toml")
+    crate.add_argument(
+        "--output",
+        default=None,
+        help="directory or ro-crate-metadata.json path; default is <data>/work/export/ro-crate/",
+    )
     args = ap.parse_args(argv)
     if args.cmd == "name-keys":
         return _name_keys(args)
@@ -183,6 +218,8 @@ def main(argv: list[str] | None = None) -> int:
         return _render(args)
     if args.cmd == "demo":
         return _demo(args)
+    if args.cmd == "export":
+        return _export(args)
     return _not_ported(args.cmd)
 
 

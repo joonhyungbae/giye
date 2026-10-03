@@ -15,10 +15,14 @@ Ported from ``scripts/archive_evidence.py``. For each cited URL:
    to that existing-capture lookup, as production did.
 
 Policy difference from production, pending the author's decision: when robots.txt
-disallows the URL, do **not** use the Archive. Record ``robots_disallowed`` and
-stop. Set ``evidence.archive_fallback_for_disallowed = true`` to restore the
-production behaviour (Archive lookup, still without requesting the disallowed host).
-The default is false.
+disallows the URL, or could not be reached (HTTP 5xx, timeout, network error),
+do **not** use the Archive. Record ``robots_disallowed`` and stop. The ``reason``
+is ``robots`` for a parsed disallow and ``robots_unreachable`` when the file could
+not be fetched, so a later run can tell them apart. Set
+``evidence.archive_fallback_for_disallowed = true`` to restore the production
+behaviour (Archive lookup, still without requesting the refused host). The
+default is false. The switch covers both refusals: each one is a complete
+disallow of that origin for this run.
 """
 
 from __future__ import annotations
@@ -33,7 +37,8 @@ from urllib.parse import urlencode, urlparse
 import requests
 import yaml
 
-from giye.collect.fetch import Fetcher, Page, RobotsDisallowed, fetcher_from_config
+from giye.collect.fetch import Fetcher, Page, fetcher_from_config
+from giye.collect.robots import VERDICT_UNREACHABLE, RobotsRefused
 from giye.collect.snapshot import MAX_BYTES, SnapshotStore, utc_now
 
 # Production list. Their terms forbid automated collection.
@@ -81,11 +86,12 @@ def settle_url(
     page: Page | None
     try:
         page = fetcher.get(url)
-    except RobotsDisallowed:
-        # Public default: a disallow is final. Production called wayback() here.
+    except RobotsRefused as exc:
+        # Public default: a disallow is final, including an unreachable robots.txt.
+        # Production called wayback() here for both. RobotsDisallowed is a subclass.
+        reason = "robots_unreachable" if exc.verdict == VERDICT_UNREACHABLE else "robots"
         if not archive_fallback_for_disallowed:
-            return {"status": "robots_disallowed", "at": now, "reason": "robots"}
-        reason = "robots"
+            return {"status": "robots_disallowed", "at": now, "reason": reason, "robots": exc.verdict}
         page = None
     except requests.RequestException as exc:
         reason = type(exc).__name__
@@ -104,6 +110,8 @@ def settle_url(
                 run_id=run_id,
                 tls_unverified=page.tls_unverified,
                 via="direct",
+                robots=page.robots,
+                **({"robots_tls_unverified": True} if page.robots_tls_unverified else {}),
             )
             if path is not None:
                 result = {
@@ -133,6 +141,8 @@ def settle_url(
             via="archive.org",
             archived_at=timestamp,
             direct_failure=reason,
+            robots=captured_page.robots,
+            **({"robots_tls_unverified": True} if captured_page.robots_tls_unverified else {}),
         )
         if path is not None:
             return {
@@ -153,7 +163,7 @@ def _existing_capture(url: str, fetcher: Fetcher) -> tuple[bytes, str, Page] | N
     query = urlencode({"url": url})
     try:
         listed = fetcher.get(f"{WAYBACK_AVAILABLE}?{query}")
-    except (RobotsDisallowed, requests.RequestException):
+    except (RobotsRefused, requests.RequestException):
         return None
     if not listed.ok:
         return None
@@ -171,7 +181,7 @@ def _existing_capture(url: str, fetcher: Fetcher) -> tuple[bytes, str, Page] | N
     raw_url = f"https://web.archive.org/web/{timestamp}id_/{url}"
     try:
         raw = fetcher.get(raw_url)
-    except (RobotsDisallowed, requests.RequestException):
+    except (RobotsRefused, requests.RequestException):
         return None
     if raw.ok and raw.content and len(raw.content) <= MAX_BYTES:
         return raw.content, timestamp, raw

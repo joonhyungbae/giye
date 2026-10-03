@@ -76,7 +76,9 @@ def test_offline_fixture_still_checks_robots_and_does_not_use_the_network():
     assert fetcher.session.calls == []  # type: ignore[attr-defined]
 
 
-def test_robots_cache_survives_a_later_disallow(tmp_path: Path):
+def test_robots_cache_is_kept_for_the_process(tmp_path: Path):
+    from giye.collect.robots import clear_cache
+
     root = tmp_path / "site"
     root.mkdir()
     (root / "robots.txt").write_text("User-agent: *\nAllow: /\n", encoding="utf-8")
@@ -85,34 +87,67 @@ def test_robots_cache_survives_a_later_disallow(tmp_path: Path):
     fetcher = Fetcher(UA, min_delay_s=0, offline_roots={"https://example.org": root})
     assert fetcher.get("https://example.org/a").text == "<p>a</p>"
     (root / "robots.txt").write_text("User-agent: *\nDisallow: /\n", encoding="utf-8")
-    # Cached robots.txt still allows the second page. A new Fetcher would refuse it.
+    # The outcome is remembered for this process, including a second Fetcher.
     assert "b" in fetcher.get("https://example.org/b").text
+    again = Fetcher(UA, min_delay_s=0, offline_roots={"https://example.org": root})
+    assert "b" in again.get("https://example.org/b").text
+    clear_cache()
+    blocked = Fetcher(UA, min_delay_s=0, offline_roots={"https://example.org": root})
+    with pytest.raises(RobotsDisallowed):
+        blocked.get("https://example.org/b")
 
 
-def test_missing_or_http_error_robots_allows_the_page():
+def test_robots_404_is_unavailable_and_the_page_is_fetched():
+    """RFC 9309: a 4xx robots.txt is unavailable, so the URL may be fetched."""
+    from giye.collect.robots import VERDICT_UNAVAILABLE
+
     def handler(url, **kwargs):
+        assert kwargs.get("allow_redirects") is False
         if url.endswith("/robots.txt"):
-            return FakeResponse(503, "unavailable", url, "text/plain")
+            return FakeResponse(404, "missing", url, "text/plain")
         return FakeResponse(200, "<p>page</p>", url)
 
     session = FakeSession(handler)
     fetcher = Fetcher(UA, min_delay_s=0, timeout_s=11, robots_timeout_s=7, session=session)  # type: ignore[arg-type]
     page = fetcher.get("https://example.org/page")
     assert page.status == 200
+    assert page.robots == VERDICT_UNAVAILABLE
     assert session.calls[0]["timeout"] == 7
     assert session.calls[1]["timeout"] == 11
     assert session.calls[1]["url"] == "https://example.org/page"
 
 
-def test_robots_connection_error_allows_the_page():
+def test_robots_5xx_refuses_before_the_page_is_sent():
+    """RFC 9309: a 5xx robots.txt is unreachable, a complete disallow for this process."""
+    from giye.collect.robots import VERDICT_UNREACHABLE, RobotsRefused
+
     def handler(url, **kwargs):
         if url.endswith("/robots.txt"):
-            raise requests.exceptions.ConnectionError("down")
-        return FakeResponse(200, "ok", url)
+            return FakeResponse(503, "unavailable", url, "text/plain")
+        raise AssertionError(url)
 
     session = FakeSession(handler)
     fetcher = Fetcher(UA, min_delay_s=0, session=session)  # type: ignore[arg-type]
-    assert fetcher.get("https://example.org/page").status == 200
+    with pytest.raises(RobotsRefused) as caught:
+        fetcher.get("https://example.org/page")
+    assert caught.value.verdict == VERDICT_UNREACHABLE
+    assert [call["url"] for call in session.calls] == ["https://example.org/robots.txt"]
+
+
+def test_robots_connection_error_refuses_the_page():
+    from giye.collect.robots import VERDICT_UNREACHABLE, RobotsRefused
+
+    def handler(url, **kwargs):
+        if url.endswith("/robots.txt"):
+            raise requests.exceptions.ConnectionError("down")
+        raise AssertionError(url)
+
+    session = FakeSession(handler)
+    fetcher = Fetcher(UA, min_delay_s=0, session=session)  # type: ignore[arg-type]
+    with pytest.raises(RobotsRefused) as caught:
+        fetcher.get("https://example.org/page")
+    assert caught.value.verdict == VERDICT_UNREACHABLE
+    assert [call["url"] for call in session.calls] == ["https://example.org/robots.txt"]
 
 
 def test_tls_failure_retries_unverified_and_sets_the_flag():

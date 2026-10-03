@@ -1,20 +1,28 @@
 # SPDX-License-Identifier: MIT
-"""HTTP fetcher that checks robots.txt before every request.
+"""HTTP fetcher that checks robots.txt before every request and every redirect hop.
 
-Ported from ``scripts/archive_evidence.py`` (``allowed``, ``get_tls_lenient``) and the
-per-host pause collectors used around it. Decisions kept from production:
+Ported from ``scripts/collectors/robots.py`` (``decide``, ``guarded_request``) and the
+per-host pause collectors used around the evidence keeper. Decisions kept from production:
 
-- robots.txt is fetched once per ``scheme://host`` and cached. HTTP status >= 400, or a
-  connection error while reading robots.txt, is treated as "no robots file" and the URL
-  is allowed (production ``allowed()``). RFC 9309 would treat a 5xx as a disallow; that
-  difference is recorded in the port report.
+- robots.txt is judged by RFC 9309 fetch status, not by ``urllib.robotparser``. HTTP 2xx is
+  parsed. HTTP 4xx, including 404 and 403, is ``unavailable_allowed`` (the URL may be fetched).
+  HTTP 5xx, a timeout, or a network error is ``unreachable_disallowed`` for this process only:
+  nothing is written to disk, and a later process fetches robots.txt again.
+- Allow and Disallow use the RFC 9309 §2.2.2 longest match. Group selection uses the product
+  token (§2.2.1). The path ``/robots.txt`` is always allowed.
+- A page fetch does not follow redirects automatically. ``decide`` runs before every hop,
+  including the first. A hop that is not permitted raises ``RobotsDisallowed`` or
+  ``RobotsRefused`` and is not sent. The ceiling is the session's ``max_redirects`` (30 when
+  the session has none), the same ceiling ``requests`` already used. It is not the five-redirect
+  limit that applies only to robots.txt itself.
 - A certificate failure is retried once with verification off. The page result carries
-  ``tls_unverified=True``. The robots check itself is unchanged.
-- The configured User-Agent is sent on every request, including robots.txt. It must
-  contain a contact URL or email so an operator can be reached (production sent
-  ``GiyeArchiveBot/0.2 (+https://… )``).
+  ``tls_unverified``. When the robots.txt fetch needed that retry, ``robots_tls_unverified``
+  is set as well. The path verdict does not depend on the flag.
+- The configured User-Agent is sent on every request, including robots.txt. It must contain
+  a contact URL or email.
 
-A URL robots.txt disallows raises ``RobotsDisallowed`` and is never requested.
+A disallowed or unreachable URL is never requested. The public evidence default still does
+not fall back to the Internet Archive for that refusal (see ``giye.collect.evidence``).
 """
 
 from __future__ import annotations
@@ -22,25 +30,42 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import unquote, urlparse
-from urllib.robotparser import RobotFileParser
+from types import SimpleNamespace
+from urllib.parse import unquote, urldefrag, urlparse
 
 import requests
 
+from giye.collect.robots import (
+    MAX_ROBOTS_BYTES,
+    REDIRECT_STATUSES,
+    VERDICT_DISALLOWED,
+    VERDICT_NOT_CHECKED,
+    RobotsDisallowed,
+    RobotsRefused,
+    _location,
+    decide,
+)
 
-class RobotsDisallowed(Exception):
-    """robots.txt disallows this URL. No request for the URL was sent."""
+__all__ = [
+    "Fetcher",
+    "Page",
+    "RobotsDisallowed",
+    "RobotsRefused",
+    "fetcher_from_config",
+    "require_contact",
+]
 
-    def __init__(self, url: str):
-        self.url = url
-        super().__init__(f"robots.txt disallows fetching {url}")
+# Used when a session has no max_redirects. 30 is requests' own default.
+_PAGE_REDIRECT_LIMIT = 30
 
 
 @dataclass
 class Page:
     """One fetch. ``url`` is the final URL (after redirects); ``text`` is the decoded body.
 
-    The collector example uses ``page.text`` and ``page.url``.
+    ``requested_url`` is the URL the caller asked for, before redirects. ``robots`` is the
+    verdict for the hop whose bytes are in ``content`` (the last hop). A refused hop never
+    becomes a ``Page``: the fetcher raises before sending it.
     """
 
     url: str
@@ -49,6 +74,8 @@ class Page:
     content_type: str = ""
     tls_unverified: bool = False
     requested_url: str = ""
+    robots: str = VERDICT_NOT_CHECKED
+    robots_tls_unverified: bool = False
 
     def __post_init__(self) -> None:
         if not self.requested_url:
@@ -82,7 +109,7 @@ def require_contact(user_agent: str) -> str:
 
 
 class Fetcher:
-    """GET with a robots.txt check, a per-host delay, timeouts, and one TLS-lenient retry.
+    """GET with a robots.txt check on every hop, a per-host delay, timeouts, and one TLS retry.
 
     ``offline_roots`` maps a URL prefix to a local directory (the demo). Those reads never
     open a socket, but they still pass through the robots.txt file in that directory.
@@ -108,87 +135,138 @@ class Fetcher:
             roots.append((str(prefix).rstrip("/"), Path(dest)))
         roots.sort(key=lambda item: len(item[0]), reverse=True)
         self.offline_roots = tuple(roots)
-        self._robots: dict[str, RobotFileParser | None] = {}
         self._last: dict[str, float] = {}
         # Replaced in tests to avoid sleeping on the wall clock.
         self._now = time.monotonic
         self._sleep = time.sleep
 
     def get(self, url: str) -> Page:
-        """Fetch ``url``. Raises ``RobotsDisallowed`` before any request for a disallowed URL."""
-        if not self._allowed(url):
-            raise RobotsDisallowed(url)
-        offline = self._offline_file(url)
-        if offline is not None:
-            self._throttle(urlparse(url).netloc)
-            self._last[urlparse(url).netloc] = self._now()
-            if not offline.is_file():
-                return Page(url=url, status=404, content=b"", content_type="text/html", requested_url=url)
-            return Page(
-                url=url,
-                status=200,
-                content=offline.read_bytes(),
-                content_type=_content_type(offline),
-                tls_unverified=False,
-                requested_url=url,
+        """Fetch ``url``. A disallowed or unreachable hop raises before that hop is sent.
+
+        Redirects are followed one hop at a time. Each hop is passed to ``decide`` first.
+        """
+        original = url
+        current = urldefrag(str(url))[0]
+        limit = getattr(self.session, "max_redirects", None)
+        if limit is None:
+            limit = _PAGE_REDIRECT_LIMIT
+        limit = int(limit)
+        tls_unverified = False
+        robots_tls = False
+
+        for followed in range(limit + 1):
+            decision = decide(
+                current,
+                self.user_agent,
+                timeout=self.robots_timeout_s,
+                get=self._robots_get,
+                use_cache=True,
             )
-        response, unverified = self._raw_get(url, self.timeout_s)
-        content_type = ""
+            robots_tls = robots_tls or decision.tls_unverified
+            if not decision.permits:
+                if decision.verdict == VERDICT_DISALLOWED:
+                    raise RobotsDisallowed(current, decision.verdict)
+                raise RobotsRefused(current, decision.verdict)
+            if self._offline_root(current) is not None:
+                return self._offline_page(current, original, decision.verdict, robots_tls)
+            response, unverified = self._raw_get(current, self.timeout_s)
+            tls_unverified = tls_unverified or unverified
+            status = int(response.status_code)
+            if status not in REDIRECT_STATUSES:
+                return self._page_from_response(
+                    response,
+                    original=original,
+                    current=current,
+                    robots=decision.verdict,
+                    tls_unverified=tls_unverified,
+                    robots_tls=robots_tls,
+                )
+            if followed == limit:
+                _close(response)
+                raise requests.exceptions.TooManyRedirects(f"exceeded {limit} redirects: {current}")
+            nxt = _location(response, current)
+            _close(response)
+            if not nxt:
+                raise requests.exceptions.InvalidURL(f"redirect without a usable Location: {current}")
+            current = urldefrag(nxt)[0]
+        raise requests.exceptions.TooManyRedirects(f"exceeded {limit} redirects: {current}")
+
+    def _robots_get(self, url: str, timeout: float):
+        """One robots.txt hop for ``decide``. Redirects are not followed here.
+
+        An offline prefix is read from that directory. A missing file is a 404, which
+        RFC 9309 treats as unavailable (allowed). A TLS failure is retried once; the
+        response or the exception then carries ``tls_unverified``.
+        """
+        offline = self._offline_root(url)
+        if offline is not None:
+            return _offline_robots(offline[1], url)
+        response, unverified = self._raw_get(url, timeout)
+        # decide() reads this flag. A requests response accepts the attribute.
+        response.tls_unverified = unverified or bool(getattr(response, "tls_unverified", False))
+        return response
+
+    def _page_from_response(
+        self,
+        response,
+        *,
+        original: str,
+        current: str,
+        robots: str,
+        tls_unverified: bool,
+        robots_tls: bool,
+    ) -> Page:
         headers = getattr(response, "headers", None) or {}
+        content_type = ""
         if hasattr(headers, "get"):
             content_type = headers.get("Content-Type") or headers.get("content-type") or ""
         body = getattr(response, "content", b"") or b""
-        final = getattr(response, "url", None) or url
+        if isinstance(body, str):
+            body = body.encode("utf-8")
+        final = getattr(response, "url", None) or current
         return Page(
             url=final,
             status=int(response.status_code),
             content=body if isinstance(body, bytes) else bytes(body),
             content_type=content_type,
-            tls_unverified=unverified,
-            requested_url=url,
+            tls_unverified=tls_unverified,
+            requested_url=original,
+            robots=robots,
+            robots_tls_unverified=robots_tls,
         )
 
-    def _allowed(self, url: str) -> bool:
-        parser = self._robots_for(url)
-        if parser is None:
-            return True
-        return bool(parser.can_fetch(self.user_agent, url))
+    def _offline_page(self, url: str, original: str, robots: str, robots_tls: bool) -> Page:
+        netloc = urlparse(url).netloc
+        self._throttle(netloc)
+        self._last[netloc] = self._now()
+        offline = self._offline_file(url)
+        if offline is None or not offline.is_file():
+            return Page(
+                url=url,
+                status=404,
+                content=b"",
+                content_type="text/html",
+                requested_url=original,
+                robots=robots,
+                robots_tls_unverified=robots_tls,
+            )
+        return Page(
+            url=url,
+            status=200,
+            content=offline.read_bytes(),
+            content_type=_content_type(offline),
+            tls_unverified=False,
+            requested_url=original,
+            robots=robots,
+            robots_tls_unverified=robots_tls,
+        )
 
-    def _robots_for(self, url: str) -> RobotFileParser | None:
-        offline = self._offline_root(url)
-        if offline is not None:
-            key = "offline:" + offline[0]
-            if key not in self._robots:
-                self._robots[key] = _parser_from_file(offline[1] / "robots.txt")
-            return self._robots[key]
-        parts = urlparse(url)
-        host = f"{parts.scheme}://{parts.netloc}"
-        if host not in self._robots:
-            self._robots[host] = self._fetch_robots(host)
-        return self._robots[host]
+    def _raw_get(self, url: str, timeout: float) -> tuple[object, bool]:
+        """GET one hop. Redirects stay off so the caller can check robots.txt on the next URL.
 
-    def _fetch_robots(self, host: str) -> RobotFileParser | None:
-        """Load ``/robots.txt``. A missing file or an HTTP error allows every URL on the host.
-
-        Production ``allowed()``: status >= 400, or ``RequestException``, stores ``None``
-        and ``can_fetch`` is skipped (allowed). The robots.txt request is not itself
-        gated on robots.txt.
-        """
-        try:
-            response, _unverified = self._raw_get(f"{host}/robots.txt", self.robots_timeout_s)
-        except requests.RequestException:
-            return None
-        if int(response.status_code) >= 400:
-            return None
-        parser = RobotFileParser()
-        parser.parse(_response_text(response).splitlines())
-        return parser
-
-    def _raw_get(self, url: str, timeout: float) -> tuple[requests.Response, bool]:
-        """GET, retrying once without TLS verification after ``SSLError``.
-
-        The retry is immediate (production ``get_tls_lenient`` does not pause between
-        the two attempts). The per-host delay applies before the first attempt.
+        The retry after ``SSLError`` is immediate (production did not pause between the two
+        attempts). The per-host delay applies before the first attempt. ``allow_redirects``
+        is always false.
         """
         netloc = urlparse(url).netloc
         self._throttle(netloc)
@@ -198,13 +276,21 @@ class Fetcher:
         }
         try:
             try:
-                response = self.session.get(url, timeout=timeout, headers=headers)
+                response = self.session.get(
+                    url, timeout=timeout, headers=headers, allow_redirects=False
+                )
                 return response, False
             except requests.exceptions.SSLError:
                 import urllib3
 
                 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-                response = self.session.get(url, timeout=timeout, headers=headers, verify=False)
+                try:
+                    response = self.session.get(
+                        url, timeout=timeout, headers=headers, allow_redirects=False, verify=False
+                    )
+                except requests.RequestException as exc:
+                    exc.tls_unverified = True  # type: ignore[attr-defined]
+                    raise
                 return response, True
         finally:
             self._last[netloc] = self._now()
@@ -245,15 +331,28 @@ class Fetcher:
         return exact
 
 
-def _parser_from_file(path: Path) -> RobotFileParser | None:
-    """``None`` means allow, matching a missing or unreadable robots.txt in production."""
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        return None
-    parser = RobotFileParser()
-    parser.parse(text.splitlines())
-    return parser
+def _offline_robots(root: Path, url: str):
+    """A robots.txt response from a fixture directory. Missing file → 404 (unavailable, allowed)."""
+    path = root / "robots.txt"
+    if not path.is_file():
+        return SimpleNamespace(
+            status_code=404, headers={}, content=b"", text="", url=url, tls_unverified=False
+        )
+    content = path.read_bytes()[:MAX_ROBOTS_BYTES]
+    return SimpleNamespace(
+        status_code=200,
+        headers={"Content-Type": "text/plain; charset=utf-8"},
+        content=content,
+        text=content.decode("utf-8", errors="replace"),
+        url=url,
+        tls_unverified=False,
+    )
+
+
+def _close(response) -> None:
+    close = getattr(response, "close", None)
+    if callable(close):
+        close()
 
 
 def _under(root: Path, rel: str) -> Path:
@@ -278,16 +377,6 @@ def _content_type(path: Path) -> str:
     if suffix == ".txt":
         return "text/plain; charset=utf-8"
     return "application/octet-stream"
-
-
-def _response_text(response: requests.Response) -> str:
-    text = getattr(response, "text", None)
-    if isinstance(text, str):
-        return text
-    content = getattr(response, "content", b"") or b""
-    if isinstance(content, str):
-        return content
-    return content.decode("utf-8", errors="replace")
 
 
 def fetcher_from_config(config: object) -> Fetcher:

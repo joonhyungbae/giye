@@ -125,6 +125,9 @@ class RosterCollector:
         page = self.fetcher.get(url)
         if page.ok and page.content and len(page.content) <= MAX_BYTES:
             try:
+                extra: dict[str, object] = {}
+                if page.robots_tls_unverified:
+                    extra["robots_tls_unverified"] = True
                 self.store.keep(
                     self.frame,
                     page.requested_url,
@@ -136,6 +139,8 @@ class RosterCollector:
                     run_id=self.run_id,
                     tls_unverified=page.tls_unverified,
                     via="direct",
+                    robots=page.robots,
+                    **extra,
                 )
             except Exception as exc:  # noqa: BLE001 — archiving must not break collection
                 print(f"snapshot skipped for {url}: {type(exc).__name__}: {exc}", file=sys.stderr)

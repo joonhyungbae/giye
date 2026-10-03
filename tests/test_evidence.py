@@ -119,6 +119,22 @@ def test_robots_disallow_does_not_fall_back_to_the_archive(tmp_path: Path):
     assert session.calls == ["https://example.org/robots.txt"]
 
 
+def test_unreachable_robots_does_not_fall_back_to_the_archive(tmp_path: Path):
+    from giye.collect.robots import VERDICT_UNREACHABLE
+
+    def handler(url, **kwargs):
+        if urlparse(url).path == "/robots.txt":
+            return FakeResponse(503, "down", url, "text/plain")
+        raise AssertionError(f"request sent despite unreachable robots: {url}")
+
+    fetcher, session = _fetcher(handler)
+    result = settle_url(PAGE, fetcher=fetcher, store=SnapshotStore(tmp_path))
+    assert result["status"] == "robots_disallowed"
+    assert result["reason"] == "robots_unreachable"
+    assert result["robots"] == VERDICT_UNREACHABLE
+    assert session.calls == ["https://example.org/robots.txt"]
+
+
 def test_archive_fallback_switch_restores_production_behaviour(tmp_path: Path):
     def handler(url, **kwargs):
         parts = urlparse(url)

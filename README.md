@@ -68,7 +68,16 @@ giye resolve --config examples/demo/giye.toml
 giye normalize --config examples/demo/giye.toml
 giye publish --config examples/demo/giye.toml
 giye render --config examples/demo/giye.toml
+giye export warc --config examples/demo/giye.toml
+giye export warc --config examples/demo/giye.toml --wacz
+giye export ro-crate --config examples/demo/giye.toml
 ```
+
+`giye export warc` writes the snapshot store as WARC 1.1. Each kept body is a response
+record with a reconstructed status line and `Content-Type`. Original response headers were
+not stored before manifest version 2; the file says so. `--wacz` also writes a WACZ package.
+`giye export ro-crate` writes RO-Crate 1.1 metadata for the run (software version, config
+hash, roster and CV inputs, snapshot files, and one action per stage with its rule ids).
 
 `giye collect` on the demo config writes under `examples/demo/data/`. `giye demo` does not: it
 uses a separate output directory so the fixtures stay clean.
@@ -114,7 +123,7 @@ under a data-use agreement. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), "G
 
 ## Status
 
-Ported and tested: collection (F1–F5, robots.txt), the ledger, CV extraction with a replay cache,
+Ported and tested: collection (F1–F5, RFC 9309 robots.txt), WARC and RO-Crate export, the ledger, CV extraction with a replay cache,
 same-person resolution (E1–E4, T1, X1), normalisation (P1–P5, V1–V9), the site snapshot, and the
 offline demo. Exploration and the web front-end are still planned. Progress is tracked in
 [docs/ROADMAP.md](docs/ROADMAP.md).

@@ -64,6 +64,74 @@ def test_identical_content_is_stored_once_and_logged_twice(tmp_path: Path):
     assert objects == [first]
 
 
+def test_full_sha256_reuses_the_manifest_path_and_not_a_prefix_decoy(tmp_path: Path):
+    """Production lookup is the full hash on the manifest line, not the short name."""
+    content = b"hello-full-hash"
+    sha = hashlib.sha256(content).hexdigest()
+    folder = tmp_path / "frame" / "snapshots"
+    folder.mkdir(parents=True)
+    real = folder / f"real__{sha[:10]}.html"
+    real.write_bytes(content)
+    decoy = folder / f"decoy__{sha[:10]}.html"
+    decoy.write_bytes(b"not-the-same-bytes")
+    old = {
+        "url": "https://example.org/old",
+        "fetched_at": "2026-09-21T00:00:00Z",
+        "sha256": sha,
+        "path": f"snapshots/{real.name}",
+        "bytes": len(content),
+        "new": True,
+    }
+    manifest = folder / "manifest.jsonl"
+    manifest.write_text(json.dumps(old) + "\n", encoding="utf-8")
+
+    store = SnapshotStore(tmp_path)
+    path = store.keep(
+        "frame",
+        "https://example.org/new",
+        content,
+        status=200,
+        final_url="https://example.org/new",
+        content_type="text/html; charset=utf-8",
+        robots="not_checked",
+    )
+    assert path == real.resolve()
+    assert decoy.read_bytes() == b"not-the-same-bytes"
+    lines = manifest.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2
+    assert json.loads(lines[0]) == old
+    fresh = json.loads(lines[1])
+    assert fresh["new"] is False
+    assert fresh["sha256"] == sha
+    assert fresh["robots"] == "not_checked"
+    assert fresh["status"] == 200
+    assert fresh["final_url"] == "https://example.org/new"
+    assert fresh["content_type"] == "text/html; charset=utf-8"
+    assert fresh["manifest_version"] == 1
+
+
+def test_prefix_named_file_without_a_manifest_line_is_not_the_match(tmp_path: Path):
+    content = b"brand-new-bytes"
+    sha = hashlib.sha256(content).hexdigest()
+    folder = tmp_path / "frame" / "snapshots"
+    folder.mkdir(parents=True)
+    decoy = folder / f"decoy__{sha[:10]}.html"
+    decoy.write_bytes(b"different")
+    store = SnapshotStore(tmp_path)
+    path = store.keep("frame", "https://example.org/z", content, status=201, robots="allowed")
+    assert path is not None
+    assert path.read_bytes() == content
+    assert path.resolve() != decoy.resolve()
+    assert decoy.read_bytes() == b"different"
+    row = json.loads((folder / "manifest.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+    assert row["status"] == 201
+    assert row["final_url"] == "https://example.org/z"
+    assert row["content_type"] == ""
+    assert row["robots"] == "allowed"
+    assert row["new"] is True
+    assert sha in path.name
+
+
 def test_empty_or_oversized_body_is_not_stored(tmp_path: Path):
     store = SnapshotStore(tmp_path)
     assert store.keep("EXAMPLE-RESIDENCY", "https://example.org/empty", b"") is None

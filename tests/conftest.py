@@ -9,6 +9,18 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _clear_robots_cache():
+    """robots.txt outcomes are remembered for the process. Tests start from an empty cache."""
+    from giye.collect.robots import clear_cache
+
+    clear_cache()
+    yield
+    clear_cache()
+
 
 @contextmanager
 def serve(directory: Path):

@@ -40,24 +40,31 @@ network, so the whole chain after collection is deterministic and can be re-run 
 
 | Module | Stage | Responsibility |
 |---|---|---|
-| `giye.collect` | 1 | `Fetcher` (robots.txt before every request, rate limit, contact user agent, TLS-lenient retry), `SnapshotStore` (sha256, manifest.jsonl), `RosterCollector`, evidence copies, frame registry (eligibility F1–F5) |
+| `giye.collect` | 1 | `Fetcher` (RFC 9309 robots.txt before every request and every redirect hop, rate limit, contact user agent, TLS-lenient retry), `SnapshotStore` (sha256, manifest.jsonl), `RosterCollector`, evidence copies, frame registry (eligibility F1–F5) |
+| `giye.export` | — | WARC 1.1 of the snapshot store (optional WACZ) and an RO-Crate 1.1 description of a run |
 | `giye.extract` | 2 | CV source registry, fetch through `Fetcher` (snapshot only when the content hash changes), LLM extraction to a pydantic schema, validation, replay cache keyed by content hash, prompt hash, and model |
 | `giye.ledger` | 3 | table schemas, CSV I/O with locking and backups, permanent `gy_id` allocation, content-derived activity ids, merge and retirement, CV-row ownership |
 | `giye.resolve` | 4 | same-person evidence (E1–E4), cross-script candidates (X1, `names.py`), team guard (T1) and member expansion, review queue, merge through `giye.ledger` |
 | `giye.normalize` | 5 | text normalisation, place gazetteer, institution entities and their audit, derived artist attributes. Glossary and gazetteer are a language module |
 | `giye.explore` | 6 | feature schema, optional text-embedding backend, clustering with k chosen by bootstrap stability, cluster descriptors |
 | `giye.publish` | 7 | site snapshot (`<data>/site/*.json`), ID redirects and stubs, coverage per frame, dataset versions, APA/Chicago/BibTeX citations, plain HTML pages (`giye render`) |
-| `giye.cli` | all | `giye <stage>`, `giye render`, and `giye demo` for the synthetic field |
+| `giye.cli` | all | `giye <stage>`, `giye render`, `giye export`, and `giye demo` for the synthetic field |
 
 ## Stage 1 — collection
 
 `giye.collect` is the only stage that uses the network. The demo does not: `collect.offline_roots` maps a URL prefix to a local directory, and those reads still go through that directory's `robots.txt`.
 
-- `Fetcher` checks robots.txt (RFC 9309, `urllib.robotparser`) before every request and caches the file per host. The configured User-Agent, which must include a contact URL or email, is sent on every request including robots.txt. Requests to one host are spaced by `collect.min_delay_s`. Page fetches use `collect.timeout_s`; robots.txt uses `collect.robots_timeout_s`. A certificate failure is retried once without verification and the page is marked `tls_unverified`. A disallow raises `RobotsDisallowed` and that URL is not requested.
-- `SnapshotStore` writes each distinct body once under its SHA-256 and appends one `manifest.jsonl` line per fetch (`url`, `final_url`, `status`, `fetched_at` in UTC, `sha256`, `bytes`, `content_type`, `collector`, `run_id`, `tls_unverified`).
+- `Fetcher` checks robots.txt before every request and before every redirect hop, and caches the outcome per origin for the process. The matcher is RFC 9309 §2.2.2 (longest match), not `urllib.robotparser`. HTTP 2xx is parsed. HTTP 4xx, including 404, is `unavailable_allowed` (the URL may be fetched). HTTP 5xx, a timeout, or a network error is `unreachable_disallowed` for this process only. A sixth redirect of robots.txt itself is treated as unavailable (allowed), which is the RFC's "may assume unavailable". A page redirect uses the session's `max_redirects` (30 when unset), not that five-hop limit. The configured User-Agent, which must include a contact URL or email, is sent on every request including robots.txt. Requests to one host are spaced by `collect.min_delay_s`. Page fetches use `collect.timeout_s`; robots.txt uses `collect.robots_timeout_s`. A certificate failure is retried once without verification. The page is marked `tls_unverified`; a robots.txt retry sets `robots_tls_unverified`. A parsed disallow raises `RobotsDisallowed`. An unreachable file raises `RobotsRefused`. The hop is not sent. The path `/robots.txt` is always allowed.
+- `SnapshotStore` writes each distinct body once. A later fetch of the same bytes is found by the full sha256 on an existing manifest line, not by a short prefix in the file name. The public path is still the hash itself (`<frame>/snapshots/sha256/<sha[:2]>/<sha><ext>`). Each line records `url`, `final_url`, `status`, `fetched_at` (UTC), `sha256`, `bytes`, `content_type`, `robots`, `collector`, `run_id`, and `tls_unverified`. `robots` is the verdict for the hop whose bytes were stored. `not_checked` is only for bytes the caller already held. Manifest version 1 does not keep the original response headers. Version 2 would be the first to store them.
 - A `RosterCollector` subclass implements `editions()` and calls `fetch()`. `run()` returns roster rows with `source_url` and `collected_at`, writes `data/work/rosters/<frame>.csv`, and upserts the ledger. A new person receives a permanent `gy_id`. Membership is one row per person and frame. Each roster appearance is an activity. A re-run matches `name_ko` and `name_en` exactly and keeps both ids. Spelling variants stay on separate rows until rules E1–E4 and X1 merge them.
 - `frames.yml` holds each programme and its F1–F5 judgement. Coverage is members recorded / roster size.
-- Evidence keeps a copy of every cited URL. A gone page (HTTP 404 or 410, or a connection failure) is replaced with an existing Internet Archive capture (`via=archive.org` and the capture time). Save Page Now is never called. A robots.txt disallow is stored as `robots_disallowed` unless `evidence.archive_fallback_for_disallowed` is true (default false).
+- Evidence keeps a copy of every cited URL. A gone page (HTTP 404 or 410, or a connection failure) is replaced with an existing Internet Archive capture (`via=archive.org` and the capture time). Save Page Now is never called. A robots.txt disallow, and an unreachable robots.txt, are stored as `robots_disallowed` (reason `robots` or `robots_unreachable`) unless `evidence.archive_fallback_for_disallowed` is true (default false). The switch covers both refusals. Production used the Archive for both; this release does not, until that switch is set.
+
+## Export
+
+`giye export warc --config giye.toml` writes the snapshot store as WARC 1.1 (gzip). Each kept body is a `response` record with a reconstructed status line, `Content-Type`, and `Content-Length`. Each manifest line is a `metadata` record. Original response headers were not kept before manifest version 2, and the warcinfo record says so. `--wacz` also writes a WACZ 1.1.1 zip (the WARC, `pages/pages.jsonl`, a CDXJ index, `datapackage.json`).
+
+`giye export ro-crate --config giye.toml` writes `ro-crate-metadata.json` (RO-Crate 1.1) for the run: the software version, the sha256 of `giye.toml`, roster and CV URLs as `CreativeWork` (sha256 and `dateCreated` when the bytes were kept), snapshot files, and a `CreateAction` per stage. Collect, resolve, and normalize carry their rule ids (`F1`–`F5`, `E1`–`E4`, `T1`, `X1`, `P1`–`P5`, `V1`–`V9`, and the derived-value ids). Extract, the ledger, and publish have no production letter id; the action says so.
 
 ## Stage 2 — extract
 
@@ -142,10 +149,11 @@ The home-page ring (`rim_order.json`) and the embedding flight file are not buil
    site redirects it; a hidden record keeps its URL.
 3. **Rules, not hand judgement.** Every inclusion, identity and normalisation decision is made by a
    named rule (docs/RULES.md) and logged. Items no rule can decide go to the review queue.
-4. **Respectful collection.** robots.txt is checked before every request; disallowed hosts are
-   never fetched (rosters there must be transcribed by hand with a source URL per entry). A gone
-   page may be replaced with an existing Internet Archive capture. A disallow is not sent to the
-   Archive unless `evidence.archive_fallback_for_disallowed` is turned on.
+4. **Respectful collection.** robots.txt is checked before every request and every redirect hop;
+   a disallowed or unreachable URL is never fetched (rosters there must be transcribed by hand
+   with a source URL per entry). A gone page may be replaced with an existing Internet Archive
+   capture. A disallow, including an unreachable robots.txt, is not sent to the Archive unless
+   `evidence.archive_fallback_for_disallowed` is turned on.
 5. **No bulk export.** The website is for reading. It does not offer dataset downloads or an API,
    and ships a scrape guard. Person-level data are shared on request under a data-use agreement.
 6. **Equality.** Nothing ranks, recommends or features a person. Listing order is random or
