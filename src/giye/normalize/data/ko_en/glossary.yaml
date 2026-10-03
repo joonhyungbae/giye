@@ -1,0 +1,108 @@
+# Generic institution words for the Korean–English module (rule V9).
+# Each key is a source-script word. Each list item is one reading: an ordered
+# list of tokens in the other script. The first reading is the primary one
+# (현대 = contemporary, then modern). An empty reading is dropped: 시립·도립·군립·구립
+# have no English counterpart in most house names (서울시립미술관 = Seoul Museum of Art).
+# Not personal names.
+
+아트센터:
+- [art, center]
+예술센터:
+- [art, center]
+문화센터:
+- [culture, center]
+미술관:
+- [art, museum]
+박물관:
+- [museum]
+뮤지엄:
+- [museum]
+갤러리:
+- [gallery]
+화랑:
+- [gallery]
+스페이스:
+- [space]
+공간:
+- [space]
+플랫폼:
+- [platform]
+아트:
+- [art]
+예술:
+- [art]
+미술:
+- [art]
+센터:
+- [center]
+랩:
+- [lab]
+연구소:
+- [lab]
+- [institute]
+팩토리:
+- [factory]
+공장:
+- [factory]
+극장:
+- [theater]
+스튜디오:
+- [studio]
+창작스튜디오:
+- [studio]
+레지던시:
+- [residency]
+문화:
+- [culture]
+- [cultural]
+재단:
+- [foundation]
+대학교:
+- [university]
+대학:
+- [university]
+미디어:
+- [media]
+코리아:
+- [korea]
+한국:
+- [korea]
+국제:
+- [international]
+페스티벌:
+- [festival]
+축제:
+- [festival]
+비엔날레:
+- [biennale]
+역:
+- [station]
+현대:
+- [contemporary]
+- [modern]
+국립:
+- [national]
+홀:
+- [hall]
+하우스:
+- [house]
+프로젝트:
+- [project]
+디자인:
+- [design]
+광장:
+- [plaza]
+도서관:
+- [library]
+아카이브:
+- [archive]
+크리에이티브:
+- [creative]
+시립:
+- []
+도립:
+- []
+군립:
+- []
+구립:
+- []

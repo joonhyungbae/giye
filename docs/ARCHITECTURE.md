@@ -42,7 +42,7 @@ network, so the whole chain after collection is deterministic and can be re-run 
 | `giye.extract` | 2 | CV source registry, fetch and change detection, LLM extraction to a pydantic schema, validation, cached responses for offline replay |
 | `giye.ledger` | 3 | table schemas, CSV I/O with locking and backups, permanent `gy_id` allocation, content-derived activity ids, merge and retirement, CV-row ownership |
 | `giye.resolve` | 4 | same-person evidence (E1–E4), cross-script candidates (X1, `names.py`), team guard (T1) and member expansion, review queue, merge through `giye.ledger` |
-| `giye.normalize` | 5 | text normalisation, place gazetteer, institution entities and their audit, derived artist attributes |
+| `giye.normalize` | 5 | text normalisation, place gazetteer, institution entities and their audit, derived artist attributes. Glossary and gazetteer are a language module |
 | `giye.explore` | 6 | feature schema, optional text-embedding backend, clustering with k chosen by bootstrap stability, cluster descriptors |
 | `giye.publish` | 7 | site snapshot builder, ID redirects and stubs, coverage per frame, dataset versions, citation metadata |
 | `giye.cli` | all | `giye <stage>` commands and `giye run` for the whole chain |
@@ -82,6 +82,18 @@ Then, in order:
 4. Same-script pairs no rule decided are queued (`possible_same_person`). They are not merged.
 
 Production's collectors queued a same-name pair before this script ran, and the script merged E2–E4 only for pairs already in that queue. This collector does not write that queue, so a pair the evidence rules accept is merged here. The evidence strings, the ±1 year window, the bracket rule, and the team-role prefix are the production ones.
+
+## Stage 5 — normalize
+
+`giye normalize` does not fetch and does not edit the ledger. It reads the ledger and writes `data/processed/` under the configured data directory: `activities.csv`, `artist_attributes.csv`, `venues.csv`, `venue_audit.md`, `manifest.json`, and `report.md`.
+
+- P1 flags a missing year, a year outside 1900 … this year + 2, and a year that is a period named in the title. Nothing is deleted.
+- P2 normalises title and venue text and records a script (`ko` / `en` / `mixed`).
+- P4 links a roster row to its frame edition, and a CV row to that edition when the title or venue names the frame's event in the same year.
+- P5 writes birth year (B1), base country and Korean region (L1), active-since (A1), and medium tags (M1). A value already on the artist row wins. A team CV is not that row's birth year.
+- V1–V9 resolve venue strings into institution and funder entities. V2 splits, V4 keys exactly, V5 joins parenthetical aliases, V7 strips titles, qualifiers, editions, and unstable Hangul spaces and joins Latin names with the same words, V8 joins a building or an acronym plus its city, V9 joins a Hangul name to a Latin name when the glossary, the gazetteer, and romanisation give one shared reading. `venue_audit.md` lists every merge with its rule id.
+
+Generic words and place names are a `LanguageModule`: `name_keys` (personal names, wrapping `giye.resolve.names` for Korean), `glossary`, `gazetteer`, and `romanise`. The Korean–English module is the default and reads packaged files. `[normalize] glossary` and `[normalize] gazetteer` replace those files. `[normalize] reference` points at a GeoNames tree (`geonames/` and `countries/`); that dump is CC BY 4.0 and is not in this repository. `[normalize] venue_name_rules` (or `giye normalize --venue-name-rules`) keeps a subset of V7, V8, V9, or `none`.
 
 ## Data model (ledger)
 

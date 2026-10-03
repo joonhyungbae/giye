@@ -41,6 +41,15 @@ Example (see examples/demo/giye.toml)::
 
     [resolve]
     cv_dir = "fixtures/cv"      # local HTML CVs, matched to people by name
+
+    # Optional. V7,V8,V9 is the default; "none" is the resolver from before those rules.
+    # reference is a directory with geonames/ and countries/ (GeoNames is not shipped).
+    # glossary and gazetteer replace the packaged Korean–English tables.
+    [normalize]
+    venue_name_rules = ""
+    # reference = "reference"
+    # glossary = "glossary.yaml"
+    # gazetteer = "cities.tsv"
 """
 
 from __future__ import annotations
@@ -77,6 +86,13 @@ class Config:
     event_patterns: tuple[tuple[str, str], ...] = ()
     # Local HTML CVs, read by name. Production reads data/work/cv_extract/<id>.json.
     cv_dir: Path | None = None
+    # Optional GeoNames tree (geonames/ + countries/). Unset uses the packaged gazetteer.
+    normalize_reference: Path | None = None
+    # Optional replacements for the packaged Korean–English glossary and city table.
+    normalize_glossary: Path | None = None
+    normalize_gazetteer: Path | None = None
+    # "" means V7, V8 and V9. "none" applies none of them. A comma-separated subset ablates.
+    venue_name_rules: str = ""
     extra: dict = field(default_factory=dict)
 
     @property
@@ -138,7 +154,10 @@ def load(path: str | Path) -> Config:
     resolve = raw.get("resolve") or {}
     if not isinstance(resolve, dict):
         raise TypeError(f"{path}: [resolve] must be a table")
-    known = {"archive", "paths", "collect", "evidence", "resolve"}
+    known = {"archive", "paths", "collect", "evidence", "resolve", "normalize"}
+    normalize = raw.get("normalize") or {}
+    if not isinstance(normalize, dict):
+        raise TypeError(f"{path}: [normalize] must be a table")
     cv_dir = resolve.get("cv_dir")
     cv_path = None
     if cv_dir:
@@ -162,8 +181,35 @@ def load(path: str | Path) -> Config:
         collector_modules=_collector_modules(collect),
         event_patterns=_event_patterns(resolve),
         cv_dir=cv_path,
+        normalize_reference=_optional_path(root, normalize.get("reference")),
+        normalize_glossary=_optional_path(root, normalize.get("glossary")),
+        normalize_gazetteer=_optional_path(root, normalize.get("gazetteer")),
+        venue_name_rules=_venue_name_rules(normalize.get("venue_name_rules", "")),
         extra={k: v for k, v in raw.items() if k not in known},
     )
+
+
+def _optional_path(root: Path, value: object) -> Path | None:
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str):
+        raise TypeError("a normalize path must be a string")
+    path = Path(value)
+    if not path.is_absolute():
+        path = root / path
+    return path.resolve()
+
+
+def _venue_name_rules(value: object) -> str:
+    if value is None or value == "":
+        return ""
+    if isinstance(value, list):
+        if not all(isinstance(item, str) for item in value):
+            raise TypeError("[normalize] venue_name_rules must be a string or a list of strings")
+        return ",".join(value)
+    if not isinstance(value, str):
+        raise TypeError("[normalize] venue_name_rules must be a string or a list of strings")
+    return value
 
 
 def _event_patterns(resolve: dict) -> tuple[tuple[str, str], ...]:

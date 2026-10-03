@@ -6,8 +6,9 @@ build/
 dist/
 .pytest_cache/
 .ruff_cache/
-# never commit real archive data
-data/
+# never commit real archive data (the top-level data/ tree). Packaged vocabulary
+# under src/giye/normalize/data/ is not archive data and stays in the tree.
+/data/
 !examples/demo/**
 # `giye collect` writes this, and the negation above would otherwise re-include it.
 examples/demo/data/

@@ -57,6 +57,15 @@ def _collect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _normalize(args: argparse.Namespace) -> int:
+    from giye.config import load
+    from giye.normalize.service import normalize
+
+    result = normalize(load(args.config), venue_name_rules=args.venue_name_rules)
+    print(result.report, end="")
+    return 0
+
+
 def _name_keys(args: argparse.Namespace) -> int:
     for name in args.names:
         keys = hangul_name_keys(name) or latin_name_keys(name)
@@ -73,6 +82,12 @@ def main(argv: list[str] | None = None) -> int:
         sp.add_argument("--config", default="giye.toml")
         if stage == "resolve":
             sp.add_argument("--dry-run", action="store_true", help="decide without writing the ledger")
+        if stage == "normalize":
+            sp.add_argument(
+                "--venue-name-rules",
+                default=None,
+                help="Ablation: comma-separated V7,V8,V9, or 'none'. Default: the config, else all three.",
+            )
     nk = sub.add_parser("name-keys", help="print romanized matching keys for names (rule X1)")
     nk.add_argument("names", nargs="+")
     args = ap.parse_args(argv)
@@ -82,6 +97,8 @@ def main(argv: list[str] | None = None) -> int:
         return _collect(args)
     if args.cmd == "resolve":
         return _resolve(args)
+    if args.cmd == "normalize":
+        return _normalize(args)
     return _not_ported(args.cmd)
 
 

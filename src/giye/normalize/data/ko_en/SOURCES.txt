@@ -1,0 +1,30 @@
+Korean–English language data for giye.normalize. Generic vocabulary only.
+No person names, no artist URLs.
+
+glossary.yaml
+    Institution words and their English readings. Transcribed from the production
+    preprocessor's glossary (generic words such as museum, gallery, municipal).
+    An empty reading means the word is dropped: municipal and provincial markers
+    have no English counterpart in most house names
+    (서울시립미술관 = Seoul Museum of Art). Rule V9.
+
+cities.tsv, admin1.tsv
+    Place names the default resolver knows without a GeoNames dump: Korean
+    first-level regions, a handful of cities the venue rules are tested on,
+    and their Latin names. This is not the GeoNames cities15000 list.
+    Population figures are coarse ranks so a duplicated name keeps one row;
+    they are not a copy of the GeoNames population column.
+
+us_postal.txt
+    USPS state and district abbreviations. Rule G6 reads one only when it is
+    not already an ISO country code. The list is the public postal set.
+
+countries/*.json
+    i18n-iso-countries 7.14.0 (CLDR names), MIT licence.
+    codes.json, langs/en.json, langs/ko.json.
+    Upstream: https://github.com/michaelwittig/node-i18n-iso-countries
+    Copied because they are country names, not people.
+
+GeoNames (cities15000.txt, admin1CodesASCII.txt) is CC BY 4.0 and is not
+shipped. Point [normalize] reference at a directory that contains geonames/
+and countries/ to use the production place index. See docs/ARCHITECTURE.md.

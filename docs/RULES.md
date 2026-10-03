@@ -48,14 +48,41 @@ These are not sampling or identity rules. They are how the ledger keeps a fact a
 
 ## Derived values (stage 5)
 
+Nothing in this stage edits the ledger. Checks become flags. Derivations become rows in `artist_attributes.csv`, each with the rule and the evidence. A value the artist row already holds wins (P5): `country` and `region` are derived only when both are empty, `active_since` only when that cell is empty, medium tags only when both `field` and `category` are empty. Birth year has no ledger column; it is only a derived row.
+
+Place names, generic institution words, and romanisation come from a language module (`giye.normalize.language`). The Korean–English module is the default. Its glossary and compact gazetteer are files. A GeoNames tree is optional (`[normalize] reference`) and is not shipped.
+
 | ID | Rule | Status |
 |---|---|---|
-| P1–P5 | Checks, normalisation and derived attributes (birth year from the artist's own CV, base country, active-since, medium tags); the ledger value always wins over a derived one. | planned |
-| V1 | A venue fragment is a place only when the whole fragment is a place name. | planned |
-| V2–V6 | Venue strings are split into fragments, classified, keyed exactly, and joined through parenthetical aliases written by two or more artists. | planned |
-| V7 | Spelling rules: work titles, qualifiers and edition markers are not part of a name; Hangul names ignore spaces; Latin names with the same words are one entity. | planned |
-| V8 | A part of a known entity (building, room, acronym + its city) is that entity. | planned |
-| V9 | A Hangul name and a Latin name are one entity when their glossary/gazetteer/romanization readings match one-to-one. | planned |
+| P1 | Year checks, flags only. Y0 `year_missing`: no year. Y1 `year_range`: outside 1900 … this year + 2. Y2 `year_from_title`: the year is a period the title names ("Art After 1945"). A start year of a range is not flagged. | ported |
+| P2 | Text normalisation: NFC, control characters removed, single spaces. A comparison key is case-folded letters and digits. `lang` is ko / en / mixed by the share of Hangul and Latin letters. | ported |
+| P3 | Place of a venue (V1) and institution entities (V2–V9). | ported |
+| P4 | A roster row is its frame edition. A CV row links to an edition the artist is on when the title or venue names that frame's event in that edition's year. Rows are not merged. Production's comment calls this check E1; that id is also the same-person website rule. The link stores the frame code. | ported |
+| P5 | Derived artist attributes. The ledger value wins, as above. | ported |
+| B1 | Birth year: exactly one plausible year (1900 … this year − 15) among birth phrases in the first 4,000 characters of the artist's own CV. Two years, or a team row, leave it empty. | ported |
+| L1 | Base country (and Korean region) from a "based in" / "lives and works" phrase, or the Korean equivalents, resolved through the gazetteer. The first CV that names a place wins. | ported |
+| A1 | `active_since`: earliest year among public practice rows (exhibition, screening, performance, festival, award, residency, release) that carry no year flag and are not marked upcoming. | ported |
+| M1 | A medium tag when at least two public rows name it in the title, role, or `strand=` note. A screening counts as 영상. The word list is the production media-art vocabulary. | ported |
+| V1 | A venue fragment is a place only when the whole fragment is a place name. A town inside an institution name is not a place. | ported |
+| V2 | Split on commas, slashes, pipes, middots, semicolons, and spaced hyphens. A parenthetical, or a Hangul name followed by an acronym, is an alias candidate. | ported |
+| V3 | First match: place, city plus its own country code, online, funder, institution (at least two letters), otherwise unclassified. | ported |
+| V4 | Entity key: case-folded, quotes and bracket characters removed, a leading or trailing "the" removed. No fuzzy match. | ported |
+| V5a | A parenthetical Hangul/Latin pair written by two or more artists joins those two institution keys. | ported |
+| V5d | An acronym that is a subsequence of a Latin name's initials (function words dropped) joins them, when two or more artists write the pair. A mixed-case house style is read by its capitals (V5d′: SeMA → SMA). | ported |
+| V5e | If a candidate component contains two or more distinct Hangul keys, the whole component stays unmerged. | ported |
+| V5f | One artist is enough for a Hangul/Latin pair when both names are specific (a proper word, not a date). Applied after V5e, and never into a group that would then hold two Hangul names. | ported |
+| V7a | A work title in 《》〈〉<>「」『』 is not part of the name. V4 would drop the brackets and keep the title. | ported |
+| V7b | A trailing qualifier (외, 등, 일대, 일원, etc., and others) is not the name. | ported |
+| V7c | An edition marker (leading 제N회 or Nth, a glued or separate 19xx/20xx year) is not the name. A series is one entity; co-presence is still year-bound. | ported |
+| V7d | A mostly-Hangul name ignores spaces. Korean spacing in names is not stable. | ported |
+| V7e | Two Latin names with the same bag of words are one entity when the bag holds a proper word. Order is free only when a place anchors the bag. of/the/and are dropped; centre/center; a plural -s only on generic words. Generic words alone name no place, so Museum of Modern Art and Modern Art Museum stay apart. The romanisation-tolerant skeleton is not used here: it would join ACC/AAS, BUG/Book, and MMCA/MCA. | ported |
+| V8 | A part of a known entity is that entity: a Hangul name plus a building or room word (본관, 서울관, 창고동, 전시실, …), a Latin name plus main building/annex/lobby/floor, or an acronym plus a place when that acronym's own rows are in that city (ZKM Karlsruhe, not a chain whose rows sit elsewhere). | ported |
+| V9 | A Hangul name and a Latin name are one entity when the Hangul name, read with the glossary, the gazetteer, and syllable romanisation for the rest, gives the same bag as the Latin name, the bag holds a proper word, and every link in the connected component uses that one reading. Two different readings in one component are ambiguous and are not merged. The first reading that matches anything is the one used (현대 = contemporary before modern). | ported |
+| G1 | An ISO alpha-2 or alpha-3 code is a country when the fragment is that code (`KR`, `KOR`). | ported |
+| G3 | An uppercase two- or three-letter token after a place inherits that place's country (and, for Korea, its region). `Los Angeles, CA` stays in the US. | ported |
+| G6 | A two-letter US postal abbreviation that is not itself a country code (`NY`) is the US, when G3 had no previous place. | ported |
+
+G2, G4, and G5 are not named in the production source. The audit header says G1–G6. The remaining lookup steps, in order, are a Korean first-level region in Hangul, a city (the more populous row wins), an admin1 name, then a country name. A Korean administrative suffix is stripped before the second try (서울시 → 서울). The packaged gazetteer is a compact table. The full GeoNames city list is CC BY 4.0 and is not shipped; `[normalize] reference` loads it when it is present.
 
 ## Exploration (stage 6)
 

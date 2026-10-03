@@ -28,6 +28,14 @@ giye = "giye.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+giye = [
+  "normalize/data/ko_en/*.yaml",
+  "normalize/data/ko_en/*.tsv",
+  "normalize/data/ko_en/*.txt",
+  "normalize/data/ko_en/countries/*.json",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
