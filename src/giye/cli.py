@@ -21,6 +21,23 @@ def _not_ported(stage: str) -> int:
     return 2
 
 
+def _collect(args: argparse.Namespace) -> int:
+    from giye.collect.base import run_configured
+    from giye.config import load
+
+    config = load(args.config)
+    results = run_configured(config)
+    if not results:
+        print(
+            "giye collect: no collectors configured (set collect.collector_modules in the config)",
+            file=sys.stderr,
+        )
+        return 2
+    for frame, rows, path in results:
+        print(f"{frame}\t{len(rows)}\t{path}")
+    return 0
+
+
 def _name_keys(args: argparse.Namespace) -> int:
     for name in args.names:
         keys = hangul_name_keys(name) or latin_name_keys(name)
@@ -40,6 +57,8 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.cmd == "name-keys":
         return _name_keys(args)
+    if args.cmd == "collect":
+        return _collect(args)
     return _not_ported(args.cmd)
 
 

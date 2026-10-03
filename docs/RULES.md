@@ -8,11 +8,15 @@ output (rule IDs are written next to derived values and in the audit files). Sta
 
 | ID | Rule | Status |
 |---|---|---|
-| F1 | The programme states a purpose within the field (e.g. art and technology). | planned |
-| F2 | It selects a cohort of participants. | planned |
-| F3 | It is held in the field's territory. | planned |
-| F4 | It publishes an official roster. | planned |
-| F5 | Its period can be identified. | planned |
+| F1 | Purpose: the programme's own public description states a purpose within the field. In the Korean media-art archive that is art–technology (or art–science) convergence, media art, new media, or digital art. The programme's document is the evidence, not the institution's reputation. | ported |
+| F2 | Cohort: participants are fixed by an open call, jury, selection, award, or residency. A curated or rented exhibition does not qualify. | ported |
+| F3 | Territory: the programme is held in the archive's configured territory (`archive.territory`). Production recorded the sentence as `f3_korea`; the loader accepts that key as an alias of `f3_territory`. | ported |
+| F4 | Roster: the participant list is verifiable in a public record (official page, catalogue, or press release). Coverage is members recorded / roster size. | ported |
+| F5 | Period: the programme has editions since 2010 and recurs at least twice. A single edition counts only when it represents the field that year. The 2010 bound is the production census rule and is stored in the frame's own sentence; the software does not hard-code a year. | ported |
+
+The five criteria were fixed before any candidate programme was examined (adopted 2026-09-20), so inclusion is not a judgement made after seeing who was selected. `giye.collect.frames` checks that each `frames.yml` entry records a decision (`included`, `excluded`, `adjacent`, and the production verdicts `planned` and `no_public_roster`) and a sentence for F1–F5. It does not re-decide them.
+
+Collection policy (not an F-rule): robots.txt is checked before every request. A disallowed URL raises `RobotsDisallowed` and is not fetched. When the live page is gone (HTTP 404 or 410, or the connection fails), an existing Internet Archive capture may be kept. Giye never asks the Archive to make a new capture. If robots.txt disallows the host, this public release records `robots_disallowed` and does not use the Archive unless `evidence.archive_fallback_for_disallowed` is true. That switch defaults to false; the production archive did use the Archive in the disallow case, and the difference is waiting on the author's decision. Platforms whose terms forbid collection (Instagram, Facebook, LinkedIn, X, Threads, TikTok) are not requested.
 
 ## Identity (stage 4)
 

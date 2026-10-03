@@ -1,0 +1,4 @@
+# Fixture robots.txt for the synthetic demo. Checked before every read.
+User-agent: *
+Disallow: /private
+Allow: /

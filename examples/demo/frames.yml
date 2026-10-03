@@ -1,0 +1,41 @@
+# Fictitious sampling frame. Eligibility text is the F1–F5 judgement, recorded rather than recomputed.
+version: 1
+frames:
+  - code: EXAMPLE-RESIDENCY
+    name_en: Example Residency
+    name_ko: 예시 레지던시
+    source_url: https://example.org/residency/alumni
+    roster_count: 4
+    eligibility:
+      decision: included
+      f1_purpose: The programme page states media art and art-and-technology as its purpose.
+      f2_cohort: Residents are selected by an open call and a jury.
+      f3_territory: Held in the configured territory (KR).
+      f4_roster: The official alumni page lists every resident.
+      f5_period: Editions in 2019 and 2020.
+  - code: EXAMPLE-WORKSHOP
+    name_en: Example Workshop
+    name_ko: 예시 워크숍
+    source_url: https://example.org/workshop/fellows
+    roster_count: 3
+    eligibility:
+      decision: adjacent
+      f1_purpose: The public text describes a general art workshop and does not state the field's purpose.
+      f2_cohort: Fellows are selected by a jury.
+      f3_territory: Held in the configured territory (KR).
+      f4_roster: The fellows page is a public roster.
+      f5_period: Editions in 2021 and 2022.
+      note: Adjacent because F1 is not met; the roster is kept public.
+  - code: EXAMPLE-GRANT
+    name_en: Example Open Grant
+    name_ko: 예시 공개 공모
+    source_url: https://example.org/grant/notice
+    roster_count: 0
+    eligibility:
+      decision: excluded
+      f1_purpose: The notice states art-and-technology support.
+      f2_cohort: No cohort is selected; the page is an announcement without a fixed participant group.
+      f3_territory: Held in the configured territory (KR).
+      f4_roster: No participant list is published.
+      f5_period: A single notice in 2018, not repeated.
+      note: Excluded because F2, F4, and F5 fail.

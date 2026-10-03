@@ -10,5 +10,16 @@ data = "data"
 frames = "frames.yml"
 
 [collect]
-user_agent = "GiyeDemo/0.1 (+https://example.org)"
+user_agent = "GiyeDemo/0.1 (+https://example.org/contact)"
 min_delay_s = 0.0
+timeout_s = 20
+robots_timeout_s = 10
+collector_modules = ["collectors.py"]
+
+# The demo never opens a socket. These prefixes are read from fixtures/ after robots.txt.
+[collect.offline_roots]
+"https://example.org" = "fixtures"
+
+[evidence]
+# Public default. A robots.txt disallow is not replaced with an Internet Archive capture.
+archive_fallback_for_disallowed = false

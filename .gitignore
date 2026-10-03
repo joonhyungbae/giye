@@ -9,3 +9,6 @@ dist/
 # never commit real archive data
 data/
 !examples/demo/**
+# `giye collect` writes this, and the negation above would otherwise re-include it.
+examples/demo/data/
+examples/demo/**/__pycache__/

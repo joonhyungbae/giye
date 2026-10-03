@@ -9,8 +9,8 @@ translated to English, made path-independent (configuration instead of fixed pat
 | 2 | Cross-script name keys (X1) | `scripts/name_utils.py` | `giye.resolve.names` | done |
 | 3 | Configuration (`giye.toml`): paths, field name, territory, frames file, glossaries | `ledger_lib.py` constants | `giye.config` | started |
 | 4 | Ledger schemas, CSV I/O, lock, backups, permanent IDs, retirement | `ledger_lib.py`, `merge_artists.py`, `build_site_dataset.py` (ID part) | `giye.ledger` | planned |
-| 5 | Fetcher with robots.txt on every request; snapshot store; collector base; frame registry | `collectors/base.py`, `collectors/snapshot.py`, `archive_evidence.py`, `frames.yml` | `giye.collect` | planned |
-| 6 | Example collector on a local HTML fixture (no live site) | one production collector, simplified | `examples/demo/` | planned |
+| 5 | Fetcher with robots.txt on every request; snapshot store; collector base; frame registry | `collectors/base.py`, `collectors/snapshot.py`, `archive_evidence.py`, `frames.yml` | `giye.collect` | done |
+| 6 | Example collector on a local HTML fixture (no live site) | one production collector, simplified | `examples/demo/` | done |
 | 7 | CV sources, fetch, LLM extraction with schema, cached replay | `discover_cv_sources.py`, `pull_cv_sources.py`, `extract_cvs_llm.py`, `apply_cv_extractions.py` | `giye.extract` | planned |
 | 8 | Same-person rules E1–E4, team guard, merge | `resolve_same_person.py`, `expand_team_members.py`, `merge_artists.py` | `giye.resolve` | planned |
 | 9 | Normalisation P1–P5, gazetteer, institutions V1–V9 with audit | `preprocess/` | `giye.normalize` | planned |
