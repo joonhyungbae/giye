@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "giye"
-version = "0.1.0.dev0"
-description = "Provenance-first census archives of creative fields: collect, extract, resolve, normalize, explore, publish."
+version = "0.1.0"
+description = "Evidence-gated, provenance-first archiving of a creative field from public rosters and CVs."
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Joonhyung Bae" }]

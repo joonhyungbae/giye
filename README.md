@@ -1,6 +1,6 @@
 # Giye
 
-**Giye** (기예, 技藝) is open-source software for building a **provenance-first census archive of a
+**Giye** (기예, 技藝) is open-source software for building an **evidence-gated, provenance-first archive of a
 creative field**: it collects the field's programme rosters and the public CVs of the people on
 them, keeps every fact with its source, resolves who is the same person across scripts and
 spellings, normalises institutions, and publishes a page for every person, with a permanent id
