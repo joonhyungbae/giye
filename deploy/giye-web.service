@@ -1,0 +1,29 @@
+# Giye website on the VPS. Installed by deploy/provision.sh. Steps: docs/DEPLOY.md
+# Listens on 127.0.0.1:3000 only; cloudflared (Cloudflare Tunnel) is the one way in.
+# GIYE_TRUSTED_IP_HEADER: Cloudflare sets cf-connecting-ip on every request it forwards and
+# nothing else can reach the port, so the scrape guard may count visitors by it.
+
+[Unit]
+Description=Giye website
+After=network.target
+
+[Service]
+Type=simple
+User=giye
+WorkingDirectory=/srv/giye
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=HOST=127.0.0.1
+Environment=GIYE_TRUSTED_IP_HEADER=cf-connecting-ip
+ExecStart=/usr/bin/node .output/server/index.mjs
+Restart=always
+RestartSec=2
+# The process only needs to read the snapshot and append to data/work/requests.jsonl.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/srv/giye/data/work
+
+[Install]
+WantedBy=multi-user.target

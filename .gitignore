@@ -19,3 +19,20 @@ web/.tanstack/
 web/.wrangler/
 web/.nitro/
 web/.vinxi/
+
+# Private operation of the reference instance (giye.org). These paths live in this working copy but are
+# versioned only by the private repository (.git-private, see AGENTS.md); they hold personal data or
+# code not yet ported to the package. Never force-add them here.
+/.git-private/
+/gitp
+/data/
+/research/
+/ref/
+/giye_paper/
+/archive/
+/scripts/
+/anno.sh
+/tools/annotate/
+/tools/regress*
+/tools/__pycache__/
+.env

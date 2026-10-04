@@ -25,7 +25,7 @@ HOST=127.0.0.1 PORT=3000 GIYE_SITE_DIR=/path/to/site node .output/server/index.m
 ## Run on the demo
 
 The synthetic field is fictitious people and example.org URLs. From the package root
-(`giye-public/`, where `giye` is installed):
+(the repository root, where `giye` is installed):
 
 ```bash
 giye demo --output /tmp/giye-demo-data
