@@ -1,0 +1,562 @@
+{
+ "vibes": {
+  "layers": 2,
+  "notes": [
+   {
+    "midi": 41,
+    "layer": 0,
+    "file": "vibes/41_0.mp3",
+    "gain": 12.0
+   },
+   {
+    "midi": 41,
+    "layer": 1,
+    "file": "vibes/41_1.mp3",
+    "gain": 1.841
+   },
+   {
+    "midi": 45,
+    "layer": 0,
+    "file": "vibes/45_0.mp3",
+    "gain": 12.0
+   },
+   {
+    "midi": 45,
+    "layer": 1,
+    "file": "vibes/45_1.mp3",
+    "gain": 1.718
+   },
+   {
+    "midi": 48,
+    "layer": 0,
+    "file": "vibes/48_0.mp3",
+    "gain": 10.839
+   },
+   {
+    "midi": 48,
+    "layer": 1,
+    "file": "vibes/48_1.mp3",
+    "gain": 4.121
+   },
+   {
+    "midi": 52,
+    "layer": 0,
+    "file": "vibes/52_0.mp3",
+    "gain": 7.328
+   },
+   {
+    "midi": 52,
+    "layer": 1,
+    "file": "vibes/52_1.mp3",
+    "gain": 1.841
+   },
+   {
+    "midi": 55,
+    "layer": 0,
+    "file": "vibes/55_0.mp3",
+    "gain": 10.233
+   },
+   {
+    "midi": 55,
+    "layer": 1,
+    "file": "vibes/55_1.mp3",
+    "gain": 2.265
+   },
+   {
+    "midi": 59,
+    "layer": 0,
+    "file": "vibes/59_0.mp3",
+    "gain": 12.0
+   },
+   {
+    "midi": 59,
+    "layer": 1,
+    "file": "vibes/59_1.mp3",
+    "gain": 1.462
+   },
+   {
+    "midi": 62,
+    "layer": 0,
+    "file": "vibes/62_0.mp3",
+    "gain": 10.116
+   },
+   {
+    "midi": 62,
+    "layer": 1,
+    "file": "vibes/62_1.mp3",
+    "gain": 1.0
+   },
+   {
+    "midi": 65,
+    "layer": 0,
+    "file": "vibes/65_0.mp3",
+    "gain": 10.593
+   },
+   {
+    "midi": 65,
+    "layer": 1,
+    "file": "vibes/65_1.mp3",
+    "gain": 1.622
+   },
+   {
+    "midi": 69,
+    "layer": 0,
+    "file": "vibes/69_0.mp3",
+    "gain": 12.0
+   },
+   {
+    "midi": 69,
+    "layer": 1,
+    "file": "vibes/69_1.mp3",
+    "gain": 0.989
+   },
+   {
+    "midi": 72,
+    "layer": 0,
+    "file": "vibes/72_0.mp3",
+    "gain": 7.079
+   },
+   {
+    "midi": 72,
+    "layer": 1,
+    "file": "vibes/72_1.mp3",
+    "gain": 0.741
+   },
+   {
+    "midi": 76,
+    "layer": 0,
+    "file": "vibes/76_0.mp3",
+    "gain": 12.0
+   },
+   {
+    "midi": 76,
+    "layer": 1,
+    "file": "vibes/76_1.mp3",
+    "gain": 1.135
+   }
+  ]
+ },
+ "marimba": {
+  "layers": 2,
+  "notes": [
+   {
+    "midi": 29,
+    "layer": 0,
+    "file": "marimba/29_0.mp3",
+    "gain": 2.57
+   },
+   {
+    "midi": 29,
+    "layer": 1,
+    "file": "marimba/29_1.mp3",
+    "gain": 7.943
+   },
+   {
+    "midi": 36,
+    "layer": 0,
+    "file": "marimba/36_0.mp3",
+    "gain": 0.724
+   },
+   {
+    "midi": 36,
+    "layer": 1,
+    "file": "marimba/36_1.mp3",
+    "gain": 8.414
+   },
+   {
+    "midi": 43,
+    "layer": 0,
+    "file": "marimba/43_0.mp3",
+    "gain": 1.778
+   },
+   {
+    "midi": 43,
+    "layer": 1,
+    "file": "marimba/43_1.mp3",
+    "gain": 11.35
+   },
+   {
+    "midi": 47,
+    "layer": 0,
+    "file": "marimba/47_0.mp3",
+    "gain": 3.311
+   },
+   {
+    "midi": 47,
+    "layer": 1,
+    "file": "marimba/47_1.mp3",
+    "gain": 8.61
+   },
+   {
+    "midi": 53,
+    "layer": 0,
+    "file": "marimba/53_0.mp3",
+    "gain": 1.531
+   },
+   {
+    "midi": 53,
+    "layer": 1,
+    "file": "marimba/53_1.mp3",
+    "gain": 7.413
+   },
+   {
+    "midi": 60,
+    "layer": 0,
+    "file": "marimba/60_0.mp3",
+    "gain": 1.202
+   },
+   {
+    "midi": 60,
+    "layer": 1,
+    "file": "marimba/60_1.mp3",
+    "gain": 4.074
+   },
+   {
+    "midi": 67,
+    "layer": 0,
+    "file": "marimba/67_0.mp3",
+    "gain": 1.288
+   },
+   {
+    "midi": 67,
+    "layer": 1,
+    "file": "marimba/67_1.mp3",
+    "gain": 5.012
+   },
+   {
+    "midi": 71,
+    "layer": 0,
+    "file": "marimba/71_0.mp3",
+    "gain": 1.161
+   },
+   {
+    "midi": 71,
+    "layer": 1,
+    "file": "marimba/71_1.mp3",
+    "gain": 4.955
+   },
+   {
+    "midi": 77,
+    "layer": 0,
+    "file": "marimba/77_0.mp3",
+    "gain": 2.113
+   },
+   {
+    "midi": 77,
+    "layer": 1,
+    "file": "marimba/77_1.mp3",
+    "gain": 12.0
+   },
+   {
+    "midi": 84,
+    "layer": 0,
+    "file": "marimba/84_0.mp3",
+    "gain": 1.175
+   },
+   {
+    "midi": 84,
+    "layer": 1,
+    "file": "marimba/84_1.mp3",
+    "gain": 8.913
+   }
+  ]
+ },
+ "glock": {
+  "layers": 2,
+  "notes": [
+   {
+    "midi": 67,
+    "layer": 0,
+    "file": "glock/67_0.mp3",
+    "gain": 3.162
+   },
+   {
+    "midi": 67,
+    "layer": 1,
+    "file": "glock/67_1.mp3",
+    "gain": 0.741
+   },
+   {
+    "midi": 72,
+    "layer": 0,
+    "file": "glock/72_0.mp3",
+    "gain": 3.758
+   },
+   {
+    "midi": 72,
+    "layer": 1,
+    "file": "glock/72_1.mp3",
+    "gain": 0.881
+   },
+   {
+    "midi": 79,
+    "layer": 0,
+    "file": "glock/79_0.mp3",
+    "gain": 2.455
+   },
+   {
+    "midi": 79,
+    "layer": 1,
+    "file": "glock/79_1.mp3",
+    "gain": 0.759
+   },
+   {
+    "midi": 84,
+    "layer": 0,
+    "file": "glock/84_0.mp3",
+    "gain": 2.723
+   },
+   {
+    "midi": 84,
+    "layer": 1,
+    "file": "glock/84_1.mp3",
+    "gain": 0.871
+   },
+   {
+    "midi": 91,
+    "layer": 0,
+    "file": "glock/91_0.mp3",
+    "gain": 2.6
+   },
+   {
+    "midi": 91,
+    "layer": 1,
+    "file": "glock/91_1.mp3",
+    "gain": 0.724
+   },
+   {
+    "midi": 96,
+    "layer": 0,
+    "file": "glock/96_0.mp3",
+    "gain": 2.541
+   },
+   {
+    "midi": 96,
+    "layer": 1,
+    "file": "glock/96_1.mp3",
+    "gain": 0.832
+   }
+  ]
+ },
+ "piano": {
+  "layers": 2,
+  "notes": [
+   {
+    "midi": 45,
+    "layer": 0,
+    "file": "piano/45_0.mp3",
+    "gain": 1.514
+   },
+   {
+    "midi": 45,
+    "layer": 1,
+    "file": "piano/45_1.mp3",
+    "gain": 1.096
+   },
+   {
+    "midi": 48,
+    "layer": 0,
+    "file": "piano/48_0.mp3",
+    "gain": 1.496
+   },
+   {
+    "midi": 48,
+    "layer": 1,
+    "file": "piano/48_1.mp3",
+    "gain": 0.944
+   },
+   {
+    "midi": 51,
+    "layer": 0,
+    "file": "piano/51_0.mp3",
+    "gain": 1.274
+   },
+   {
+    "midi": 51,
+    "layer": 1,
+    "file": "piano/51_1.mp3",
+    "gain": 0.912
+   },
+   {
+    "midi": 54,
+    "layer": 0,
+    "file": "piano/54_0.mp3",
+    "gain": 1.82
+   },
+   {
+    "midi": 54,
+    "layer": 1,
+    "file": "piano/54_1.mp3",
+    "gain": 1.096
+   },
+   {
+    "midi": 57,
+    "layer": 0,
+    "file": "piano/57_0.mp3",
+    "gain": 2.239
+   },
+   {
+    "midi": 57,
+    "layer": 1,
+    "file": "piano/57_1.mp3",
+    "gain": 1.161
+   },
+   {
+    "midi": 60,
+    "layer": 0,
+    "file": "piano/60_0.mp3",
+    "gain": 1.318
+   },
+   {
+    "midi": 60,
+    "layer": 1,
+    "file": "piano/60_1.mp3",
+    "gain": 0.75
+   },
+   {
+    "midi": 63,
+    "layer": 0,
+    "file": "piano/63_0.mp3",
+    "gain": 1.496
+   },
+   {
+    "midi": 63,
+    "layer": 1,
+    "file": "piano/63_1.mp3",
+    "gain": 0.912
+   },
+   {
+    "midi": 66,
+    "layer": 0,
+    "file": "piano/66_0.mp3",
+    "gain": 2.138
+   },
+   {
+    "midi": 66,
+    "layer": 1,
+    "file": "piano/66_1.mp3",
+    "gain": 1.175
+   },
+   {
+    "midi": 69,
+    "layer": 0,
+    "file": "piano/69_0.mp3",
+    "gain": 1.698
+   },
+   {
+    "midi": 69,
+    "layer": 1,
+    "file": "piano/69_1.mp3",
+    "gain": 1.072
+   },
+   {
+    "midi": 72,
+    "layer": 0,
+    "file": "piano/72_0.mp3",
+    "gain": 1.66
+   },
+   {
+    "midi": 72,
+    "layer": 1,
+    "file": "piano/72_1.mp3",
+    "gain": 1.109
+   },
+   {
+    "midi": 75,
+    "layer": 0,
+    "file": "piano/75_0.mp3",
+    "gain": 2.065
+   },
+   {
+    "midi": 75,
+    "layer": 1,
+    "file": "piano/75_1.mp3",
+    "gain": 1.288
+   },
+   {
+    "midi": 78,
+    "layer": 0,
+    "file": "piano/78_0.mp3",
+    "gain": 1.928
+   },
+   {
+    "midi": 78,
+    "layer": 1,
+    "file": "piano/78_1.mp3",
+    "gain": 1.148
+   },
+   {
+    "midi": 81,
+    "layer": 0,
+    "file": "piano/81_0.mp3",
+    "gain": 2.786
+   },
+   {
+    "midi": 81,
+    "layer": 1,
+    "file": "piano/81_1.mp3",
+    "gain": 1.161
+   },
+   {
+    "midi": 84,
+    "layer": 0,
+    "file": "piano/84_0.mp3",
+    "gain": 2.851
+   },
+   {
+    "midi": 84,
+    "layer": 1,
+    "file": "piano/84_1.mp3",
+    "gain": 0.955
+   },
+   {
+    "midi": 87,
+    "layer": 0,
+    "file": "piano/87_0.mp3",
+    "gain": 1.799
+   },
+   {
+    "midi": 87,
+    "layer": 1,
+    "file": "piano/87_1.mp3",
+    "gain": 0.955
+   },
+   {
+    "midi": 90,
+    "layer": 0,
+    "file": "piano/90_0.mp3",
+    "gain": 2.512
+   },
+   {
+    "midi": 90,
+    "layer": 1,
+    "file": "piano/90_1.mp3",
+    "gain": 1.259
+   },
+   {
+    "midi": 93,
+    "layer": 0,
+    "file": "piano/93_0.mp3",
+    "gain": 2.754
+   },
+   {
+    "midi": 93,
+    "layer": 1,
+    "file": "piano/93_1.mp3",
+    "gain": 1.496
+   },
+   {
+    "midi": 96,
+    "layer": 0,
+    "file": "piano/96_0.mp3",
+    "gain": 3.673
+   },
+   {
+    "midi": 96,
+    "layer": 1,
+    "file": "piano/96_1.mp3",
+    "gain": 1.531
+   }
+  ]
+ }
+}

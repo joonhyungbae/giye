@@ -19,3 +19,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t giye-demo .
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - working-directory: web
+        run: bun install && bunx tsc --noEmit -p . && bun run build

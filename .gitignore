@@ -13,3 +13,9 @@ dist/
 # `giye collect` writes this, and the negation above would otherwise re-include it.
 examples/demo/data/
 examples/demo/**/__pycache__/
+web/node_modules/
+web/.output/
+web/.tanstack/
+web/.wrangler/
+web/.nitro/
+web/.vinxi/

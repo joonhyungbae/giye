@@ -1,0 +1,58 @@
+# Giye — search engines and assistants that answer with a citation may read
+# pages. Training crawlers and bulk harvesters are refused. The scrape guard
+# (src/lib/scrape-guard.ts) refuses the same crawler tokens. A user agent can
+# be spoofed; this file is the public signal, and the guard applies the same
+# rule on the server.
+#
+# Reason: Content-Signal below is ai-train=no. A crawler whose vendor says it
+# collects pages for model training, or that publishes an open crawl corpus,
+# is disallowed. Search crawlers and user-triggered fetchers are not listed
+# here and fall through to User-agent: * (OAI-SearchBot, ChatGPT-User,
+# Claude-User, Claude-SearchBot, PerplexityBot, Googlebot, Bingbot, Yeti, Daum,
+# and the other tokens in the guard's allowed list).
+#
+# GPTBot — trains OpenAI foundation models.
+# https://developers.openai.com/api/docs/bots
+# Google-Extended — robots.txt token for Gemini training and grounding.
+# Google says it has no separate HTTP user agent; Search crawling is Googlebot,
+# which is allowed.
+# https://developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers
+# Applebot-Extended — robots.txt token for training Apple foundation models.
+# Apple says it does not crawl; Search crawling is Applebot, which is allowed.
+# https://support.apple.com/en-us/119829
+# ClaudeBot — collects pages that may train Anthropic models.
+# https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler
+# CCBot — Common Crawl's open web corpus.
+# https://commoncrawl.org/ccbot
+# Bytespider — Toutiao documents this as its search crawler and publishes no
+# separate token that opts the same crawl out of model training.
+# https://www.toutiao.com/article/6759451726496940557/
+# The remaining tokens are bulk and SEO harvesters the guard already refuses.
+
+User-agent: GPTBot
+User-agent: Google-Extended
+User-agent: Applebot-Extended
+User-agent: ClaudeBot
+User-agent: CCBot
+User-agent: Bytespider
+User-agent: Diffbot
+User-agent: Omgilibot
+User-agent: omgili
+User-agent: ImagesiftBot
+User-agent: DataForSeoBot
+User-agent: Scrapy
+User-agent: AhrefsBot
+User-agent: SemrushBot
+User-agent: MJ12bot
+User-agent: DotBot
+User-agent: BLEXBot
+User-agent: PetalBot
+Disallow: /
+
+User-agent: *
+Content-Signal: search=yes, ai-input=yes, ai-train=no
+Allow: /
+Disallow: /_serverFn/
+Disallow: /admin
+
+Sitemap: https://giye.org/sitemap.xml
