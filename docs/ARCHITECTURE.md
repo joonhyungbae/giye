@@ -58,7 +58,7 @@ network, so the whole chain after collection is deterministic and can be re-run 
 - `SnapshotStore` writes each distinct body once. A later fetch of the same bytes is found by the full sha256 on an existing manifest line, not by a short prefix in the file name. The public path is still the hash itself (`<frame>/snapshots/sha256/<sha[:2]>/<sha><ext>`). Each line records `url`, `final_url`, `status`, `fetched_at` (UTC), `sha256`, `bytes`, `content_type`, `robots`, `collector`, `run_id`, and `tls_unverified`. `robots` is the verdict for the hop whose bytes were stored. `not_checked` is only for bytes the caller already held. Manifest version 1 does not keep the original response headers. Version 2 would be the first to store them.
 - A `RosterCollector` subclass implements `editions()` and calls `fetch()`. `run()` returns roster rows with `source_url` and `collected_at`, writes `data/work/rosters/<frame>.csv`, and upserts the ledger. A new person receives a permanent `gy_id`. Membership is one row per person and frame. Each roster appearance is an activity. A re-run matches `name_ko` and `name_en` exactly and keeps both ids. Spelling variants stay on separate rows until rules E1–E4 and X1 merge them.
 - `frames.yml` holds each programme and its F1–F5 judgement. Coverage is members recorded / roster size.
-- Evidence keeps a copy of every cited URL. A gone page (HTTP 404 or 410, or a connection failure) is replaced with an existing Internet Archive capture (`via=archive.org` and the capture time). Save Page Now is never called. A robots.txt disallow, and an unreachable robots.txt, are stored as `robots_disallowed` (reason `robots` or `robots_unreachable`) unless `evidence.archive_fallback_for_disallowed` is true (default false). The switch covers both refusals. Production used the Archive for both; this release does not, until that switch is set.
+- Evidence keeps a copy of every cited URL. A gone page (HTTP 404 or 410, or a connection failure) is replaced with an existing Internet Archive capture (`via=archive.org` and the capture time). Save Page Now is never called. A robots.txt disallow records that capture's URL and timestamp (`archive_link_only`, `direct_failure=robots`) and does not download or keep the bytes. An unreachable robots.txt is stored as `robots_disallowed` with reason `robots_unreachable` and is not sent to the Archive.
 
 ## Export
 
@@ -152,8 +152,8 @@ The home-page ring (`rim_order.json`) and the embedding flight file are not buil
 4. **Respectful collection.** robots.txt is checked before every request and every redirect hop;
    a disallowed or unreachable URL is never fetched (rosters there must be transcribed by hand
    with a source URL per entry). A gone page may be replaced with an existing Internet Archive
-   capture. A disallow, including an unreachable robots.txt, is not sent to the Archive unless
-   `evidence.archive_fallback_for_disallowed` is turned on.
+   capture. A disallow records that capture's URL and time and does not keep the bytes. An
+   unreachable robots.txt is not sent to the Archive.
 5. **No bulk export.** The website is for reading. It does not offer dataset downloads or an API,
    and ships a scrape guard. Person-level data are shared on request under a data-use agreement.
 6. **Equality.** Nothing ranks, recommends or features a person. Listing order is random or

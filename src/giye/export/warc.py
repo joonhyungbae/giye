@@ -31,7 +31,7 @@ from warcio.statusandheaders import StatusAndHeaders
 from warcio.warcwriter import WARCWriter
 
 from giye import __version__
-from giye.collect.snapshot import HEADERS_NOT_KEPT, MANIFEST_VERSION
+from giye.collect.snapshot import HEADERS_NOT_KEPT, MANIFEST_VERSION, servable_rows
 from giye.config import Config
 
 _REASONS = {
@@ -84,6 +84,7 @@ def _entries(root: Path) -> list[tuple[dict, Path, bytes]]:
         return found
     base = root.resolve()
     for manifest in sorted(root.glob("*/snapshots/manifest.jsonl")):
+        parsed: list[dict] = []
         for raw in manifest.read_text(encoding="utf-8").splitlines():
             if not raw.strip():
                 continue
@@ -91,6 +92,10 @@ def _entries(root: Path) -> list[tuple[dict, Path, bytes]]:
                 row = json.loads(raw)
             except json.JSONDecodeError:
                 continue
+            if isinstance(row, dict):
+                parsed.append(row)
+        # A withdrawn URL is link-only. Its earlier body line is not exported.
+        for row in servable_rows(parsed):
             rel = row.get("path")
             if not isinstance(rel, str) or not rel or rel.startswith(("/", "\\")) or ".." in Path(rel).parts:
                 continue

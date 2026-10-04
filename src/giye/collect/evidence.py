@@ -13,16 +13,12 @@ Ported from ``scripts/archive_evidence.py``. For each cited URL:
    Giye never calls Save Page Now and never asks the Archive to create a capture.
 4. Other direct failures (HTTP 5xx, an empty or oversized body) also fall through
    to that existing-capture lookup, as production did.
-
-Policy difference from production, pending the author's decision: when robots.txt
-disallows the URL, or could not be reached (HTTP 5xx, timeout, network error),
-do **not** use the Archive. Record ``robots_disallowed`` and stop. The ``reason``
-is ``robots`` for a parsed disallow and ``robots_unreachable`` when the file could
-not be fetched, so a later run can tell them apart. Set
-``evidence.archive_fallback_for_disallowed = true`` to restore the production
-behaviour (Archive lookup, still without requesting the refused host). The
-default is false. The switch covers both refusals: each one is a complete
-disallow of that origin for this run.
+5. When robots.txt disallows the URL, record the existing capture's URL and
+   timestamp (``archive_link_only``, ``direct_failure=robots``) and do not
+   download, keep, or serve the bytes. The availability API is the only Archive
+   request. There is no switch that stores those bytes. An unreachable
+   robots.txt (HTTP 5xx, timeout, network error) is ``robots_disallowed`` with
+   reason ``robots_unreachable`` and is not sent to the Archive.
 """
 
 from __future__ import annotations
@@ -39,7 +35,7 @@ import yaml
 
 from giye.collect.fetch import Fetcher, Page, fetcher_from_config
 from giye.collect.robots import VERDICT_UNREACHABLE, RobotsRefused
-from giye.collect.snapshot import MAX_BYTES, SnapshotStore, utc_now
+from giye.collect.snapshot import MAX_BYTES, SnapshotStore, servable_rows, utc_now
 
 # Production list. Their terms forbid automated collection.
 SOCIAL_HOSTS = (
@@ -58,7 +54,14 @@ WAYBACK_AVAILABLE = "https://archive.org/wayback/available"
 URL_COLUMNS = {"source_url", "url", "fetch_url", "archive_url", "members_source"}
 URL_IN_TEXT = re.compile(r"https?://[^\s,'\"<>）)]+")
 SETTLED = frozenset(
-    {"fetched", "archive_org", "platform_excluded", "robots_disallowed", "collector_or_cv_snapshot"}
+    {
+        "fetched",
+        "archive_org",
+        "archive_link_only",
+        "platform_excluded",
+        "robots_disallowed",
+        "collector_or_cv_snapshot",
+    }
 )
 _TIMESTAMP = re.compile(r"\d{1,20}")
 
@@ -73,12 +76,16 @@ def settle_url(
     *,
     fetcher: Fetcher,
     store: SnapshotStore,
-    archive_fallback_for_disallowed: bool = False,
     frame: str = "_evidence",
     collector: str = "evidence",
     run_id: str = "",
 ) -> dict:
-    """Fetch ``url`` or an existing Archive capture. Never requests a new capture."""
+    """Fetch ``url`` or an existing Archive capture. Never requests a new capture.
+
+    A host whose robots.txt disallows the URL is link-only: the availability
+    API may run, and the capture URL and timestamp are recorded. The ``id_``
+    raw URL is not requested and no body is stored.
+    """
     now = utc_now()
     if is_social(url):
         return {"status": "platform_excluded", "at": now}
@@ -87,12 +94,23 @@ def settle_url(
     try:
         page = fetcher.get(url)
     except RobotsRefused as exc:
-        # Public default: a disallow is final, including an unreachable robots.txt.
-        # Production called wayback() here for both. RobotsDisallowed is a subclass.
+        # A parsed disallow records the capture link and does not download it.
+        # An unreachable robots.txt is not sent to the Archive.
         reason = "robots_unreachable" if exc.verdict == VERDICT_UNREACHABLE else "robots"
-        if not archive_fallback_for_disallowed:
+        if reason != "robots":
             return {"status": "robots_disallowed", "at": now, "reason": reason, "robots": exc.verdict}
-        page = None
+        linked = _archive_link(url, fetcher)
+        if linked is None:
+            return {"status": "unavailable", "at": now, "reason": reason, "robots": exc.verdict}
+        capture, timestamp = linked
+        return {
+            "status": "archive_link_only",
+            "at": now,
+            "capture_url": capture,
+            "archived_at": timestamp,
+            "direct_failure": "robots",
+            "robots": exc.verdict,
+        }
     except requests.RequestException as exc:
         reason = type(exc).__name__
         page = None
@@ -153,6 +171,38 @@ def settle_url(
                 "direct_failure": reason,
             }
     return {"status": "unavailable", "at": now, "reason": reason}
+
+
+def _archive_link(url: str, fetcher: Fetcher) -> tuple[str, str] | None:
+    """Capture URL and timestamp from the availability API. Does not fetch ``id_`` bytes."""
+    query = urlencode({"url": url})
+    try:
+        listed = fetcher.get(f"{WAYBACK_AVAILABLE}?{query}")
+    except (RobotsRefused, requests.RequestException):
+        return None
+    if not listed.ok:
+        return None
+    try:
+        payload = json.loads(listed.content.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    closest = ((payload or {}).get("archived_snapshots") or {}).get("closest") or {}
+    if not closest.get("available"):
+        return None
+    timestamp = str(closest.get("timestamp") or "")
+    if not _TIMESTAMP.fullmatch(timestamp):
+        return None
+    return _capture_url(closest, url, timestamp), timestamp
+
+
+def _capture_url(closest: dict, original: str, timestamp: str) -> str:
+    """Public replay URL. A raw ``id_`` URL is not provenance we store."""
+    found = str(closest.get("url") or "").strip().replace("id_/", "", 1)
+    if found.startswith("http://web.archive.org/"):
+        found = "https://" + found[len("http://"):]
+    if found.startswith("https://web.archive.org/web/"):
+        return found
+    return f"https://web.archive.org/web/{timestamp}/{original}"
 
 
 def _existing_capture(url: str, fetcher: Fetcher) -> tuple[bytes, str, Page] | None:
@@ -255,9 +305,9 @@ def archive_cited(
     """Settle cited URLs and write ``data/work/evidence/status.json``.
 
     URLs already settled in that file are left as they are (production's resumable
-    run). ``unavailable`` is retried only when ``retry_unavailable`` is set.
-    ``robots_disallowed`` is settled too: changing the archive switch later does not
-    by itself re-open those URLs.
+    run).     ``unavailable`` is retried only when ``retry_unavailable`` is set.
+    ``archive_link_only`` and ``robots_disallowed`` are settled: a later run does
+    not fetch the disallowed host again.
     """
     fetcher = fetcher or fetcher_from_config(config)
     store = store or SnapshotStore(Path(config.raw))  # type: ignore[attr-defined]
@@ -278,7 +328,6 @@ def archive_cited(
             status = loaded
 
     have = _already_snapshotted(config)
-    switch = bool(config.archive_fallback_for_disallowed)  # type: ignore[attr-defined]
     for url in sorted(where):
         if url in have:
             status[url] = {**status.get(url, {}), "status": "collector_or_cv_snapshot"}
@@ -293,7 +342,6 @@ def archive_cited(
                 url,
                 fetcher=fetcher,
                 store=store,
-                archive_fallback_for_disallowed=switch,
                 run_id=run_id,
             ),
             "cited_in": sorted(where[url]),
@@ -311,11 +359,15 @@ def _already_snapshotted(config: object) -> set[str]:
     if not raw.is_dir():
         return have
     for manifest in raw.glob("*/snapshots/manifest.jsonl"):
+        parsed: list[dict] = []
         for line in manifest.read_text(encoding="utf-8").splitlines():
             try:
                 row = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if isinstance(row, dict):
+                parsed.append(row)
+        for row in servable_rows(parsed):
             if row.get("url"):
                 have.add(row["url"])
             if row.get("final_url"):

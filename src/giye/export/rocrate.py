@@ -23,6 +23,7 @@ from pathlib import Path
 import yaml
 
 from giye import __version__
+from giye.collect.snapshot import servable_rows
 from giye.config import Config
 from giye.extract.paths import resolve_stored
 
@@ -299,6 +300,7 @@ def _manifest_files(config: Config) -> list[tuple[dict, Path]]:
         return rows
     base = raw.resolve()
     for manifest in sorted(raw.glob("*/snapshots/manifest.jsonl")):
+        parsed: list[dict] = []
         for line in manifest.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
@@ -306,6 +308,9 @@ def _manifest_files(config: Config) -> list[tuple[dict, Path]]:
                 row = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if isinstance(row, dict):
+                parsed.append(row)
+        for row in servable_rows(parsed):
             rel = row.get("path")
             if not isinstance(rel, str) or not rel or ".." in Path(rel).parts:
                 continue

@@ -51,10 +51,6 @@ url = "https://cv.example.org/minsoo-mixed"
 source_id = "CV-DEMO-MINSOO-mixed"
 note = "fictitious mixed-language CV"
 
-[evidence]
-# Public default. A robots.txt disallow is not replaced with an Internet Archive capture.
-archive_fallback_for_disallowed = false
-
 [resolve]
 # Local HTML CVs. Matched to a ledger row by data-name-ko and data-name-en.
 cv_dir = "fixtures/cv"

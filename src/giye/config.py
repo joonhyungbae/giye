@@ -29,11 +29,6 @@ Example (see examples/demo/giye.toml)::
     [collect.offline_roots]
     "https://example.org" = "fixtures"
 
-    [evidence]
-    # Production used the Internet Archive when robots.txt disallowed a host.
-    # The public release does not, unless this is set true. Default false.
-    archive_fallback_for_disallowed = false
-
     # Optional. Frame-code prefix = regex for rule E2. Added to the production
     # programme patterns; a prefix already in that list replaces its pattern.
     [resolve.event_patterns]
@@ -115,9 +110,6 @@ class Config:
     min_delay_s: float = 2.0
     timeout_s: float = 45.0
     robots_timeout_s: float = 20.0
-    # When false (the public default), a robots.txt disallow is recorded and not
-    # replaced with an Internet Archive capture. See giye.collect.evidence.
-    archive_fallback_for_disallowed: bool = False
     offline_roots: tuple[tuple[str, Path], ...] = ()
     collector_modules: tuple[str, ...] = ()
     # Extra E2 event patterns (frame-code prefix → regex). Production patterns stay
@@ -202,6 +194,8 @@ def load(path: str | Path) -> Config:
     raw = tomllib.loads(path.read_text(encoding="utf-8"))
     root = path.parent
     archive, paths, collect = raw.get("archive", {}), raw.get("paths", {}), raw.get("collect", {})
+    # archive_fallback_for_disallowed is not a setting. A disallowed host is
+    # link-only (giye.collect.evidence). A leftover key in this table is ignored.
     evidence = raw.get("evidence") or {}
     if "name" not in archive:
         raise ValueError(f"{path}: [archive] name is required")
@@ -238,7 +232,6 @@ def load(path: str | Path) -> Config:
         min_delay_s=float(collect.get("min_delay_s", 2.0)),
         timeout_s=float(collect.get("timeout_s", 45.0)),
         robots_timeout_s=float(collect.get("robots_timeout_s", 20.0)),
-        archive_fallback_for_disallowed=bool(evidence.get("archive_fallback_for_disallowed", False)),
         offline_roots=_offline_roots(root, collect),
         collector_modules=_collector_modules(collect),
         event_patterns=_event_patterns(resolve),

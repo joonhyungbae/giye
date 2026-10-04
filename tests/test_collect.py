@@ -41,9 +41,6 @@ min_delay_s = 0.0
 {modules_line}
 [collect.offline_roots]
 "https://example.org" = "{(DEMO / "fixtures").as_posix()}"
-
-[evidence]
-archive_fallback_for_disallowed = false
 """,
         encoding="utf-8",
     )

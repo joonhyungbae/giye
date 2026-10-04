@@ -47,6 +47,43 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def withdrawn_keys(rows: list[dict]) -> set[str]:
+    """URLs whose latest manifest decision is a withdrawal.
+
+    A line with ``withdrawn`` true records a capture link and is not a body.
+    Earlier lines for that URL, including a ``final_url`` they stored, are
+    withdrawn with it so an export does not serve the old bytes.
+    """
+    keys_of: dict[str, set[str]] = {}
+    withdrawn: set[str] = set()
+    for row in rows:
+        url = row.get("url") if isinstance(row.get("url"), str) else ""
+        final = row.get("final_url") if isinstance(row.get("final_url"), str) else ""
+        keys = {key for key in (url, final) if key}
+        if url:
+            keys_of.setdefault(url, set()).update(keys)
+        if row.get("withdrawn") and url:
+            withdrawn.add(url)
+    blocked: set[str] = set()
+    for url in withdrawn:
+        blocked.update(keys_of.get(url, {url}))
+    return blocked
+
+
+def servable_rows(rows: list[dict]) -> list[dict]:
+    """Lines whose bytes may be read. A withdrawn URL is link-only."""
+    blocked = withdrawn_keys(rows)
+    served: list[dict] = []
+    for row in rows:
+        if row.get("withdrawn"):
+            continue
+        url = row.get("url") if isinstance(row.get("url"), str) else ""
+        if url and url in blocked:
+            continue
+        served.append(row)
+    return served
+
+
 class SnapshotStore:
     """Keep response bodies under ``root`` (the archive's ``data/raw`` directory)."""
 
