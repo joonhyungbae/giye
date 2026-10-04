@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Decide whether this run may fetch a URL, from that origin's robots.txt.
 
 Ported from ``scripts/collectors/robots.py``. Path matching is this module, not

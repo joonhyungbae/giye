@@ -1,5 +1,8 @@
-# SPDX-License-Identifier: MIT
-"""The offline demo publishes a snapshot that matches the committed golden file.
+# SPDX-License-Identifier: AGPL-3.0-only
+"""The offline demo matches the committed golden file.
+
+The file holds the site JSON (including ``rim_order.json``) and the processed
+venue table, artist attributes, and venue audit.
 
 Timestamps and calendar dates are normalised before the comparison. The clock
 is frozen at 2026-01-15 because the synthetic CVs treat 2026 as the current
@@ -46,16 +49,25 @@ def test_demo_snapshot_matches_golden(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(socket.socket, "connect", refuse)
     result = run_demo(DEMO, tmp_path / "out", now=CLOCK)
     site = result.site
-    got = {path.name: normalise(json.loads(path.read_text(encoding="utf-8"))) for path in sorted(site.glob("*.json"))}
+    processed = result.output / "processed"
+    got = {
+        "site": {
+            path.name: normalise(json.loads(path.read_text(encoding="utf-8")))
+            for path in sorted(site.glob("*.json"))
+        },
+        "processed": {
+            name: normalise((processed / name).read_text(encoding="utf-8"))
+            for name in ("venues.csv", "artist_attributes.csv", "venue_audit.md")
+        },
+    }
     expected = json.loads(GOLDEN.read_text(encoding="utf-8"))
     assert got == expected
-    assert result.people == len(got["artists.json"])
-    assert result.activities == len(got["activities.json"])
-    assert result.roster_rows > 0
-    assert result.merges
-    assert "people:" in result.summary
-    assert "roster rows:" in result.summary
-    assert "activities:" in result.summary
+    assert "rim_order.json" in got["site"]
+    assert result.people == len(got["site"]["artists.json"])
+    assert result.activities == len(got["site"]["activities.json"])
+    assert result.roster_rows == 23
+    assert result.people == 20
+    assert result.activities == 37
     assert "merges: E1 1, E2 1, E3 1, E4 1, X1+E2 1" in result.summary
     assert "blocked: T1 1" in result.summary
     assert "queue items: 3" in result.summary
@@ -68,8 +80,7 @@ def test_demo_snapshot_matches_golden(tmp_path: Path, monkeypatch):
     assert "서울시립미술관 외" in text and "서울시립미술관 《빛》" in text
     assert "서울시립미술관 전시실" in text and "Seoul Museum of Art" in text
     assert "Example Residency" in text
-    assert "Open same-name review: GY-000023" in text
-    other = (site / "html" / "GY-000023.html").read_text(encoding="utf-8")
-    assert "Kim Haneul" in other and "Open same-name review: GY-000001" in other
+    assert "Open same-name review" not in text
     assert (site / "html" / "GY-000020.html").read_text(encoding="utf-8").count("GY-000001") >= 1
+    assert "Open same-name review: GY-000018" in (site / "html" / "GY-000007.html").read_text(encoding="utf-8")
     assert (site / "html" / "index.html").is_file()

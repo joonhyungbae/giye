@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Demo collectors: the RosterCollector API, offline, with source_url and collected_at on every row."""
 
 from __future__ import annotations
@@ -78,7 +78,6 @@ def test_demo_collectors_match_the_paper_api_and_keep_spelling_variants(tmp_path
         "노을 스튜디오",
         "서지우",
         "Kim Seoyeon",
-        "한별",
     ]
     assert {row["name_ko"] for row in residency} >= {"김하늘"}
     assert {row["name_en"] for row in residency} >= {"Kim Seoyeon"}
@@ -86,6 +85,7 @@ def test_demo_collectors_match_the_paper_api_and_keep_spelling_variants(tmp_path
     assert {row["collected_at"] for row in residency} == {"2026-10-04"}
     workshop = by_frame["EXAMPLE-WORKSHOP"]
     assert [row["name"] for row in workshop] == [
+        "한별",
         "Lee Haru",
         "이하루",
         "표은솔",
@@ -118,8 +118,8 @@ def test_cli_collect_runs_offline(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(requests.Session, "get", boom)
     assert main(["collect", "--config", str(_config(tmp_path))]) == 0
     out = capsys.readouterr().out
-    assert "EXAMPLE-RESIDENCY\t12\t" in out
-    assert "EXAMPLE-WORKSHOP\t10\t" in out
+    assert "EXAMPLE-RESIDENCY\t11\t" in out
+    assert "EXAMPLE-WORKSHOP\t11\t" in out
     assert "EXAMPLE-FORUM\t1\t" in out
 
 

@@ -60,7 +60,7 @@ One object per published person, in name order (`name_ko`, then `name_en`).
 | `bio_short` | Always null |
 | `birth_year`, `birth_year_source_url` | From `artist_attributes.csv` when normalize has run |
 | `active_since` | Ledger value, else the derived one |
-| `regions`, `countries`, `medium_tags` | Ledger text, else derived rows. Region tags and the field/category medium guess use the production Korean media-art lists |
+| `regions`, `countries`, `medium_tags` | Ledger text, else derived rows. Region tags and the field/category medium guess come from the field file |
 | `derived` | `{field: {rule, url?}}` for each derived value |
 | `technique_tags`, `theme_tags` | Always empty lists |
 | `frame_status`, `frame_codes` | Membership |
@@ -72,11 +72,7 @@ One object per published person, in name order (`name_ko`, then `name_en`).
 | `external_ids.ledger_id` | Internal id |
 | `created_at`, `updated_at` | Build time, or the ledger's `updated_at` |
 
-`frame_editions` follows production, including one special case: membership code
-`APE-2025` is frame `APE-CURRENT` at edition 2025 when that frame is in the registry.
-A code equal to a registry row uses `years_covered` when that cell is a single year.
-`UNFOLD-X-2022` is frame `UNFOLD-X`, edition `2022`, taking the longest matching code.
-`role` is the roster activity's role for that membership code (the last such row wins).
+`frame_editions` follows the registry. An edition alias in the field file maps a membership code to a frame and an edition when that frame is registered. A code equal to a registry row uses `years_covered` when that cell is a single year. Otherwise the longest matching registry code wins, and a trailing `-YYYY` is the edition. `role` is the roster activity's role for that membership code (the last such row wins).
 
 ### `activities.json`
 

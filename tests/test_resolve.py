@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Same-person rules E1–E4, team guard T1, candidates X1, and the review queue.
 
 People are fictitious (김하늘 / Haneul Kim and the demo cast). URLs are example.org.
@@ -141,26 +141,40 @@ def test_url_key_and_event_pattern_keep_production_thresholds():
     assert url_key("https://www.artist.example.org/cv") == url_key("http://artist.example.org/")
     assert url_key("https://blog.naver.com/haneul") != url_key("https://blog.naver.com/haru")
     assert url_key("https://blog.naver.com/haneul/index.html") == "blog.naver.com/haneul"
-    assert event_pattern("DAVINCI-2014")
-    assert event_pattern("UNFOLD-X-2020")
-    assert event_pattern("NOT-A-FRAME") is None
     table = pattern_table((("EXAMPLE-WORKSHOP", "example workshop"),))
-    assert event_pattern("EXAMPLE-WORKSHOP", table) == "example workshop"
+    assert event_pattern("EXAMPLE-WORKSHOP-2020", table) == "example workshop"
+    assert event_pattern("NOT-A-FRAME", table) is None
+    # A later layer replaces a prefix and keeps the earlier key's position.
+    replaced = pattern_table(table.items(), (("EXAMPLE-WORKSHOP", "workshop only"),))
+    assert event_pattern("EXAMPLE-WORKSHOP", replaced) == "workshop only"
     assert YEAR_WINDOW == 1
 
 
 def test_e2_uses_the_frame_code_year_when_the_code_ends_in_a_year():
-    patterns = pattern_table(())
-    # The activity says 2010. The frame code says 2014. Production uses 2014.
+    patterns = pattern_table((("EXAMPLE-RESIDENCY", "example residency"),))
+    # The activity says 2010. The frame code says 2014. The edition year is 2014.
     hit = cv_mentions(
-        [{"title": "다빈치", "venue": "", "year": 2010}],
-        "DAVINCI-2014",
+        [{"title": "Example Residency", "venue": "", "year": 2010}],
+        "EXAMPLE-RESIDENCY-2014",
         [2014],
         patterns,
     )
     assert hit is None
-    assert cv_mentions([{"title": "다빈치", "venue": "", "year": 2015}], "DAVINCI-2014", [2014], patterns)
-    assert cv_mentions([{"title": "다빈치", "venue": "", "year": 2012}], "DAVINCI-2014", [2014], patterns) is None
+    assert cv_mentions(
+        [{"title": "Example Residency", "venue": "", "year": 2015}],
+        "EXAMPLE-RESIDENCY-2014",
+        [2014],
+        patterns,
+    )
+    assert (
+        cv_mentions(
+            [{"title": "Example Residency", "venue": "", "year": 2012}],
+            "EXAMPLE-RESIDENCY-2014",
+            [2014],
+            patterns,
+        )
+        is None
+    )
 
 
 def test_e3_counts_only_bracketed_titles_and_e4_reads_the_team_role():
@@ -553,7 +567,6 @@ def test_demo_resolve_fires_each_rule(tmp_path: Path, monkeypatch: pytest.Monkey
     assert "EXAMPLE-WORKSHOP" in out and "E2" in out
     assert "푸른신호" in out
     assert "노을크루" in out
-    assert "same_script_exact" in out
     assert "romanization match: 서지우 ~ Jiwoo Seo" in out
     assert "same_name_blocked_team" in out
     ledger = Ledger.open(config)
@@ -573,13 +586,19 @@ def test_demo_resolve_fires_each_rule(tmp_path: Path, monkeypatch: pytest.Monkey
     assert "rule=E4" in notes
     assert len(rows_named("최민수")) == 2
     assert len(rows_named("배수아")) == 2
-    assert len(rows_named("김하늘")) == 1
-    haneul = rows_named("김하늘")[0]
+    # The forum row attaches to the workshop spelling (A2) before resolve.
+    # That row then has the extra roster activity, so X1+E2 keeps it.
+    # The demo path keeps 김하늘 because the Korean CV is applied first.
+    assert len(rows_named("김하늘")) == 0
+    haneul = rows_named("Haneul Kim")[0]
     assert haneul["name_en"] == "Haneul Kim"
     assert "rule=X1+E2" in (haneul.get("reviewer_note") or "")
-    assert not any(row["name_ko"] == "Haneul Kim" for row in artists)
-    assert any(row["name_ko"] == "Kim Haneul" for row in artists)
-    assert "romanization match: 김하늘 ~ Kim Haneul" in out
+    assert not any(row["name_ko"] == "Kim Haneul" for row in artists)
+    forum = [
+        row for row in ledger.read("frame_membership") if row["frame_code"] == "EXAMPLE-FORUM-2023"
+    ]
+    assert forum and forum[0]["attach_rule"] == "A2"
+    assert "X1+E2" in out and "EXAMPLE-RESIDENCY-2019" in out
     assert any(row["name_ko"] == "노을 스튜디오" for row in artists)
     assert any(row["name_ko"] == "김바다" for row in artists)
     bae = tuple(sorted(row["ledger_id"] for row in rows_named("배수아")))

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Resolve activity venue strings into institution and funder entities (P3, V1–V9).
 
 Deterministic string rules and the language module's gazetteer only: no fuzzy
@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from giye.normalize import venue_names
-from giye.normalize.language import KoreanEnglish, LanguageModule
+from giye.normalize.language import LanguageModule, load_language
 from giye.normalize.rules import norm_text
 
 VENUE_FIELDS = [
@@ -606,7 +606,7 @@ def build(
         raise ValueError(f"unknown venue name rules: {sorted(unknown)}")
     if write and out_dir is None:
         raise ValueError("out_dir is required when write is true")
-    language = lang or KoreanEnglish.load()
+    language = lang or load_language("giye.normalize.lang.ko_en:KoEn")
     token = _V7_SPELLING.set("V7" in rules)
     try:
         return _resolve(activity_rows, out_dir, rules, write, language)

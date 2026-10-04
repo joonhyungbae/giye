@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Stage 1: robots-checked fetching, original-byte snapshots, roster collectors, frame registry (F1–F5)."""
 
 from giye.collect.base import Edition, Person, RosterCollector, load_collectors, run_configured

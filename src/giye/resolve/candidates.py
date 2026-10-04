@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Candidate pairs and the review queue.
 
 X1. A Hangul personal name and a Latin-only row are a candidate when
@@ -261,6 +261,8 @@ def undecided_same_script(
     frames: dict[str, set[str]],
     identities: dict[str, list[str]],
     evidence_of,
+    *,
+    words: re.Pattern[str] | None = None,
 ) -> list[dict]:
     """Open a review item for an exact-name pair no rule has decided.
 
@@ -276,7 +278,7 @@ def undecided_same_script(
         if pair in known:
             continue
         row_a, row_b = by_id[pair[0]], by_id[pair[1]]
-        if team_person_mismatch(row_a, row_b):
+        if team_person_mismatch(row_a, row_b, words=words):
             continue
         if pinned_apart(identities.get(pair[0], []), identities.get(pair[1], [])):
             continue

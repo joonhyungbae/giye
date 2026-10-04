@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """WARC 1.1 and RO-Crate 1.1 export, checked on the synthetic demo. No network."""
 
 from __future__ import annotations

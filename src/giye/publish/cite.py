@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Citation text for a published record.
 
 The three strings are the ones the production site copies to the clipboard

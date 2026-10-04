@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Ledger: permanent ids, activity-id stability, retirement, backups, roster upsert.
 
 People in the fixtures are fictitious (김하늘 / Haneul Kim). URLs are example.org.
@@ -429,8 +429,10 @@ def test_demo_collectors_fill_the_ledger_and_keep_ids(tmp_path: Path, monkeypatc
     run_configured(config, collected_at="2026-10-04", run_id="2026-10-04T00:00:00Z")
     ledger = Ledger.open(config)
     artists = ledger.read("artists")
-    assert len(artists) == 23
-    assert [row["gy_id"] for row in artists] == [f"GY-{number:06d}" for number in range(1, 24)]
+    # A1 joins the two Lee/Haru spellings in one programme; A2 joins the forum
+    # row whose English tokens agree. 23 roster rows, 21 people.
+    assert len(artists) == 21
+    assert [row["gy_id"] for row in artists] == [f"GY-{number:06d}" for number in range(1, 22)]
     assert {row["source_url"] for row in artists} <= {
         "https://example.org/residency/alumni",
         "https://example.org/workshop/fellows",
@@ -440,21 +442,26 @@ def test_demo_collectors_fill_the_ledger_and_keep_ids(tmp_path: Path, monkeypatc
     names = {(row["name_ko"], row["name_en"]) for row in artists}
     assert ("김하늘", "") in names
     assert ("Haneul Kim", "Haneul Kim") in names
-    assert ("Kim Haneul", "Kim Haneul") in names
+    assert ("Lee Haru", "Lee Haru") in names
     assert ("이하루", "") in names
+    assert ("Kim Haneul", "Kim Haneul") not in names
     membership = ledger.read("frame_membership")
     assert len(membership) == 23
-    assert {row["frame_code"] for row in membership} == {
-        "EXAMPLE-RESIDENCY",
-        "EXAMPLE-WORKSHOP",
-        "EXAMPLE-FORUM",
+    edition_codes = {
+        "EXAMPLE-RESIDENCY-2019",
+        "EXAMPLE-RESIDENCY-2020",
+        "EXAMPLE-WORKSHOP-2020",
+        "EXAMPLE-WORKSHOP-2021",
+        "EXAMPLE-WORKSHOP-2022",
+        "EXAMPLE-FORUM-2023",
     }
+    assert {row["frame_code"] for row in membership} == edition_codes
     activities = ledger.read("activities")
     assert sorted(row["year"] for row in activities) == (
         ["2019"] * 10 + ["2020"] * 2 + ["2021"] * 8 + ["2022"] * 2 + ["2023"]
     )
-    assert {row["origin"] for row in activities} == {"EXAMPLE-RESIDENCY", "EXAMPLE-WORKSHOP", "EXAMPLE-FORUM"}
-    assert {row["title"] for row in activities} == {"EXAMPLE-RESIDENCY", "EXAMPLE-WORKSHOP", "EXAMPLE-FORUM"}
+    assert {row["origin"] for row in activities} == edition_codes
+    assert {row["title"] for row in activities} == edition_codes
     assert all(row["source_url"].startswith("https://example.org/") for row in activities)
     gy_ids = [row["gy_id"] for row in artists]
     ledger_ids = [row["ledger_id"] for row in artists]

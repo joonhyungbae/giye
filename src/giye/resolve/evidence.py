@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Same-person evidence (rules E1–E4).
 
 Two rows are merged only when one of these holds. A shared name, a romanized
@@ -9,16 +9,18 @@ E1. The same personal website. The key is the host, or host plus path on a
 shared platform, so two accounts on one host stay apart.
 
 E2. One row's CV names the event on the other's roster in that edition's year,
-give or take one year. The event regex is ``EVENT_WORDS`` (the production
-programme list) plus ``[resolve.event_patterns]`` in the config.
+give or take one year. The event regex comes from the field file
+(``[resolve.events]``) plus ``[resolve.event_patterns]`` in the archive config.
+A prefix in the config replaces the field file's pattern for that prefix.
 
 E3. A work title in brackets (``〈…〉``, ``<…>``, ``《…》``, and the same family)
 appears on both roster rows, or on one roster row and the other's CV, in the
 same year give or take one year. The normalised title is at least 3 characters.
 The event name itself is E2's business, so an unbracketed title does not count.
 
-E4. Both roster rows credit the same team in the role, written ``팀: <name>``.
-The normalised team name is at least 2 characters.
+E4. Both roster rows credit the same team in the role, written with the field
+file's team prefix (production: ``팀: <name>``). The normalised team name is
+at least 2 characters.
 """
 
 from __future__ import annotations
@@ -26,34 +28,6 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from collections.abc import Mapping
-
-# Production programme names. A frame code matches the first key it starts with
-# after a trailing ``-YYYY`` is removed (``DAVINCI-2014`` → ``DAVINCI``).
-# These are programme patterns, not people. Another field adds its own prefixes
-# in ``[resolve.event_patterns]``; a prefix listed there replaces this one.
-EVENT_WORDS: dict[str, str] = {
-    "DAVINCI": r"다빈치|da ?vinci|언폴드|unfold",
-    "UNFOLD-X": r"언폴드|unfold|서울융합예술",
-    "APE": r"에이프|ape ?camp|apecamp",
-    "PARADISE-ARTLAB": r"파라다이스|paradise",
-    "AKL": r"아트코리아랩|arts? ?korea ?lab|수퍼 ?테스트베드|super ?testbed",
-    "ARTIENCE": r"아티언스|artience",
-    "ACT": r"\bACT\b|아시아문화전당|asia culture center",
-    "NJP-RANDOMACCESS": r"랜덤 ?액세스|random ?access",
-    "NCA": r"뉴 ?콘텐츠 ?아카데미|new ?contents? ?academy|\bNCA\b",
-    # The institution's name alone does not distinguish this support programme from others.
-    "ARKO-ARTTECH": r"예술과 ?기술 ?융합|예술기술융합|아트앤테크|art ?and ?technology",
-    "ACC-CREATORS": r"ACC ?크리에이터|ACC ?creators|아시아문화전당.{0,20}레지던시|ACC.{0,15}residency",
-    "GMAF": r"광주 ?미디어 ?아트 ?페스티벌|gwangju media ?art ?festival|\bGMAF\b|G\.MAP",
-    "MEDIACITY-SEOUL": r"미디어 ?시티|media ?city",
-    "NEMAF": r"네마프|nemaf|뉴미디어 ?페스티벌|대안영상예술|new ?media ?festival|alt ?cinema",
-    "ZER01NE": r"제로원|zer01ne|zero ?one ?(day|creator)",
-    "VH-AWARD": r"vh ?award|브이에이치 ?어워드|현대 ?블루 ?프라이즈|hyundai.{0,20}vh",
-    "ISEA-KOREA": r"\bISEA ?20(19|25)\b",
-    "PLATFORM-L-PLAP": r"플랫폼 ?엘|platform[- ]?l\b|\bPLAP\b",
-    "NJP-AWARD": r"백남준 ?(국제)?예술상|nam ?june ?paik ?(art )?award",
-    "NABI-CREATIVE": r"창의 ?인재|creative ?mentoring|creative ?\+|나비.{0,20}멘티|멘티.{0,20}나비|nabi.{0,30}mentee|mentee.{0,30}nabi",
-}
 
 # E2. The CV year and the roster edition year may differ by at most this much.
 YEAR_WINDOW = 1
@@ -87,23 +61,23 @@ _WORK_MIN = 3
 _TEAM_MIN = 2
 
 
-def pattern_table(extra: tuple[tuple[str, str], ...] = ()) -> dict[str, str]:
-    """Production patterns, then config replacements and additions.
+def pattern_table(*layers: tuple[tuple[str, str], ...]) -> dict[str, str]:
+    """Merge pattern tables. A later layer replaces a key and keeps its position.
 
-    Updating an existing key keeps its position, so the first matching prefix
-    is still the production order.
+    The field file is the first layer. ``[resolve.event_patterns]`` is the next,
+    so a configured prefix overrides the field without reordering the rest.
     """
-    table = dict(EVENT_WORDS)
-    for key, pattern in extra:
-        table[key] = pattern
+    table: dict[str, str] = {}
+    for layer in layers:
+        for key, pattern in layer:
+            table[key] = pattern
     return table
 
 
-def event_pattern(frame_code: str, patterns: Mapping[str, str] | None = None) -> str | None:
+def event_pattern(frame_code: str, patterns: Mapping[str, str]) -> str | None:
     """Regex for a frame code, or None when the code names no known event (E2)."""
-    table = patterns if patterns is not None else EVENT_WORDS
     base = re.sub(r"-\d{4}$", "", frame_code or "")
-    for key, pattern in table.items():
+    for key, pattern in patterns.items():
         if base.startswith(key):
             return pattern
     return None
@@ -164,9 +138,9 @@ def edition_years(frame_code: str, rows: list[dict]) -> list[int]:
     """Years of one roster edition (E2).
 
     A frame code that ends in ``-YYYY`` uses that year and ignores activity
-    years, which is how the production ledger encoded an edition
-    (``DAVINCI-2014``). A frame code with no year uses the years on that
-    frame's roster activities. CV rows are not roster appearances.
+    years, which is how an edition is encoded (``EXAMPLE-2014``). A frame code
+    with no year uses the years on that frame's roster activities. CV rows are
+    not roster appearances.
     """
     match = re.search(r"(\d{4})$", frame_code or "")
     if match:
@@ -232,11 +206,16 @@ def cv_lists_work(cv_rows: list[dict], works: set[tuple[str, int]]) -> str | Non
     return None
 
 
-def teams(rows: list[dict]) -> set[str]:
-    """Normalised team names credited as ``팀: …`` on roster roles (E4)."""
+def teams(rows: list[dict], *, prefix: str = "팀:") -> set[str]:
+    """Normalised team names credited with ``prefix`` on roster roles (E4).
+
+    ``prefix`` is the field file's marker. The default is the production
+    spelling so a caller that has not loaded a field still reads those credits.
+    """
     found: set[str] = set()
+    pattern = re.escape(prefix) + r" ?([^|;]+)"
     for row in rows:
-        for name in re.findall(r"팀: ?([^|;]+)", row.get("role") or ""):
+        for name in re.findall(pattern, row.get("role") or ""):
             key = norm_title(name)
             if len(key) >= _TEAM_MIN:
                 found.add(key)
@@ -250,6 +229,8 @@ def evidence_e2_e4(
     rows_of: Mapping[str, list[dict]],
     cvs: Mapping[str, list[dict]],
     patterns: Mapping[str, str],
+    *,
+    team_prefix: str = "팀:",
 ) -> str | None:
     """First of E2, E3, E4 that holds, checked in that order, either direction.
 
@@ -284,7 +265,9 @@ def evidence_e2_e4(
         if evidence:
             break
     if not evidence:
-        shared = teams(rows_of.get(left, [])) & teams(rows_of.get(right, []))
+        shared = teams(rows_of.get(left, []), prefix=team_prefix) & teams(
+            rows_of.get(right, []), prefix=team_prefix
+        )
         if shared:
             evidence = f"E4 both credited in team {min(shared)}"
     return evidence

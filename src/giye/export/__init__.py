@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Export a run: WARC 1.1 (and optional WACZ) of the snapshot store, and an RO-Crate."""
 
 from giye.export.rocrate import export_ro_crate

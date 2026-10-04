@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Write an RO-Crate 1.1 description of one Giye run.
 
 The crate is ``ro-crate-metadata.json``. It records the software version, the
@@ -29,7 +29,7 @@ from giye.extract.paths import resolve_stored
 
 # Rule ids the stage applies. Empty means the stage has no production letter id.
 STAGE_RULES: dict[str, tuple[str, ...]] = {
-    "collect": ("F1", "F2", "F3", "F4", "F5"),
+    "collect": ("F1", "F2", "F3", "F4", "F5", "A1", "A2", "A3", "A4", "A5", "A6"),
     "extract": (),
     "ledger": (),
     "resolve": ("E1", "E2", "E3", "E4", "T1", "X1"),

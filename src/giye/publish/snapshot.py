@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Build the site snapshot (``<data>/site/*.json``) from the ledger.
 
 Ported from ``scripts/build_site_dataset.py``. The JSON objects keep the
@@ -34,6 +34,7 @@ import yaml
 from giye.collect.frames import load_frames
 from giye.config import Config
 from giye.extract.apply import PRIVATE_TITLE
+from giye.field import Field, edition_alias
 from giye.ledger.ids import activity_id_for, activity_id_key, gy_number, mint_id
 from giye.ledger.ledger import Ledger
 from giye.ledger.schemas import split_pipe
@@ -112,7 +113,7 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
     years_by_frame = {str(row.get("code") or ""): str(row.get("years_covered") or "") for row in frame_rows}
 
     def edition_of(mem_code: str) -> tuple[str, str | None] | None:
-        return resolve_frame_edition(mem_code, frame_codes, years_by_frame)
+        return resolve_frame_edition(mem_code, frame_codes, years_by_frame, field=config.field_config)
 
     mem_by_ledger: dict[str, list[str]] = {}
     for row in membership:
@@ -160,6 +161,7 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
             same_name=same_name.get(artist["ledger_id"], []),
             stamp=stamp,
             today=today,
+            tags=config.field_config.resolved(),
         )
         for artist in publishable
     ]
@@ -263,20 +265,26 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
 
 
 def resolve_frame_edition(
-    mem_code: str, registry: list[str], years_by_frame: dict[str, str]
+    mem_code: str,
+    registry: list[str],
+    years_by_frame: dict[str, str],
+    *,
+    field: Field | None = None,
 ) -> tuple[str, str | None] | None:
     """Membership code → ``(registry frame, edition year)``.
 
-    ``UNFOLD-X-2022`` → ``(UNFOLD-X, 2022)`` when ``UNFOLD-X`` is the longest
-    registry code that is a prefix. A code equal to a registry row uses that
-    row's ``years_covered`` when it is a single year.
+    ``NORTH-2022`` → ``(NORTH, 2022)`` when ``NORTH`` is the longest registry
+    code that is a prefix. A code equal to a registry row uses that row's
+    ``years_covered`` when it is a single year.
 
-    Production special-cases one live programme: membership ``APE-2025`` is the
-    frame ``APE-CURRENT`` at edition 2025, when that frame is in the registry.
-    The code is kept so the same ledger builds the same snapshot.
+    A field file may declare an edition alias: a membership code that names a
+    registry frame and an edition even when the code is not that frame plus a
+    year. The alias applies only when the target frame is in the registry.
     """
-    if mem_code == "APE-2025" and "APE-CURRENT" in registry:
-        return "APE-CURRENT", "2025"
+    if field is not None:
+        aliased = edition_alias(mem_code, registry, field)
+        if aliased:
+            return aliased
     best: tuple[str, str] | None = None
     for code in registry:
         if mem_code == code:
@@ -288,54 +296,39 @@ def resolve_frame_edition(
     return best
 
 
-def region_tags(country: str, region: str) -> list[str]:
-    """Coarse region tags the production snapshot stored on each person.
+def region_tags(country: str, region: str, *, field: Field | None = None) -> list[str]:
+    """Coarse region tags from the field file's needle list.
 
-    The needles are the Korean media-art archive's list. Incheon is tagged
-    ``경기``, which is what that script wrote.
+    A home-country pattern with no finer tag, or any other non-empty text that
+    matched nothing, becomes the field's fallback tag. An empty field list
+    returns nothing.
     """
+    vocab = (field or Field()).resolved()
     text = f"{country} {region}".strip()
-    if not text:
+    if not text or not vocab.region_map:
         return []
-    mapping = [
-        ("서울", "서울"),
-        ("경기", "경기"),
-        ("부산", "부산"),
-        ("대구", "대구"),
-        ("광주", "광주"),
-        ("대전", "대전"),
-        ("인천", "경기"),
-    ]
     out: list[str] = []
-    for needle, tag in mapping:
+    for needle, tag in vocab.region_map:
         if needle in text and tag not in out:
             out.append(tag)
-    if re.search(r"한국|대한민국|korea", text, re.IGNORECASE):
-        if not out:
-            out.append("기타")
-    elif text and not out:
-        out.append("기타")
+    if vocab.home_pattern and re.search(vocab.home_pattern, text, re.IGNORECASE):
+        if not out and vocab.region_fallback:
+            out.append(vocab.region_fallback)
+    elif text and not out and vocab.region_fallback:
+        out.append(vocab.region_fallback)
     return out
 
 
-def guess_medium(field_name: str, category: str) -> list[str]:
+def guess_medium(field_name: str, category: str, *, field: Field | None = None) -> list[str]:
     """Medium tags guessed from the artist row's field and category.
 
-    The patterns are the production list. Derived ``medium`` values are used
+    The patterns are the field file's. Derived ``medium`` values are used
     when this returns nothing.
     """
+    vocab = (field or Field()).resolved()
     text = f"{field_name} {category}".lower()
     tags: list[str] = []
-    rules = [
-        (r"영상|video|film|motion", "영상"),
-        (r"사운드|sound|music|audio", "사운드"),
-        (r"인터랙|interactive", "인터랙티브"),
-        (r"생성|generative|ai|연산", "생성·연산"),
-        (r"네트워크|network|web3", "네트워크"),
-        (r"피지컬|arduino|sensor|physical", "피지컬 컴퓨팅"),
-        (r"xr|vr|ar|metaverse", "XR"),
-    ]
-    for pattern, tag in rules:
+    for tag, pattern in vocab.medium_guess:
         if re.search(pattern, text, re.IGNORECASE):
             tags.append(tag)
     return tags
@@ -484,6 +477,7 @@ def _artist_record(
     same_name: list[str],
     stamp: str,
     today: str,
+    tags: Field | None = None,
 ) -> dict:
     editions = []
     seen = []
@@ -509,10 +503,10 @@ def _artist_record(
         "birth_year": _derived_value(derived, "birth_year", int),
         "birth_year_source_url": derived.get("birth_year", {}).get("evidence_url") or None,
         "active_since": parse_year(artist.get("active_since")) or _derived_value(derived, "active_since", int),
-        "regions": region_tags(artist.get("country") or "", artist.get("region") or "")
+        "regions": region_tags(artist.get("country") or "", artist.get("region") or "", field=tags)
         or split_pipe(derived.get("region", {}).get("value")),
         "countries": split_pipe(derived.get("country", {}).get("value")),
-        "medium_tags": guess_medium(artist.get("field") or "", artist.get("category") or "")
+        "medium_tags": guess_medium(artist.get("field") or "", artist.get("category") or "", field=tags)
         or derived.get("medium", {}).get("values", []),
         "derived": {
             name: {"rule": row["rule"], **({"url": row["evidence_url"]} if row.get("evidence_url") else {})}

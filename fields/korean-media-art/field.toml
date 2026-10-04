@@ -1,0 +1,140 @@
+# Korean media-art field. Programme names live in this file, not in the package.
+# Tag lists are this field's vocabulary. inherit is false because this file is the source.
+
+[tags]
+inherit = false
+home_pattern = '한국|대한민국|korea'
+fallback = '기타'
+screening_tag = '영상'
+medium_min_rows = 2
+
+# Coarse region tags the site snapshot stores. Incheon is tagged 경기 because
+# that is what the production snapshot wrote.
+[[tags.region]]
+needle = '서울'
+tag = '서울'
+[[tags.region]]
+needle = '경기'
+tag = '경기'
+[[tags.region]]
+needle = '부산'
+tag = '부산'
+[[tags.region]]
+needle = '대구'
+tag = '대구'
+[[tags.region]]
+needle = '광주'
+tag = '광주'
+[[tags.region]]
+needle = '대전'
+tag = '대전'
+[[tags.region]]
+needle = '인천'
+tag = '경기'
+
+[[tags.medium_guess]]
+pattern = '영상|video|film|motion'
+tag = '영상'
+[[tags.medium_guess]]
+pattern = '사운드|sound|music|audio'
+tag = '사운드'
+[[tags.medium_guess]]
+pattern = '인터랙|interactive'
+tag = '인터랙티브'
+[[tags.medium_guess]]
+pattern = '생성|generative|ai|연산'
+tag = '생성·연산'
+[[tags.medium_guess]]
+pattern = '네트워크|network|web3'
+tag = '네트워크'
+[[tags.medium_guess]]
+pattern = '피지컬|arduino|sensor|physical'
+tag = '피지컬 컴퓨팅'
+[[tags.medium_guess]]
+pattern = 'xr|vr|ar|metaverse'
+tag = 'XR'
+
+# M1. A tag when at least medium_min_rows public rows name it. A screening row
+# also counts as screening_tag.
+[[tags.medium]]
+tag = '영상'
+pattern = 'video|film|moving image|single[- ]channel|영상|비디오|필름|싱글\s?채널|다큐멘터리|documentary|animation|애니메이션'
+[[tags.medium]]
+tag = '사운드'
+pattern = 'sound|audio|music|noise|acoustic|사운드|음악|오디오|소리|노이즈|음향'
+[[tags.medium]]
+tag = '인터랙티브'
+pattern = 'interactive|interaction|participatory|인터랙티브|인터랙션|상호작용|참여형'
+[[tags.medium]]
+tag = '생성·연산'
+pattern = 'generative|algorithm|artificial intelligence|\bA\.?I\.?\b|machine learning|deep learning|neural|computational|\bGAN\b|인공지능|알고리즘|머신\s?러닝|딥\s?러닝|생성형|제너러티브|연산'
+[[tags.medium]]
+tag = '네트워크'
+pattern = 'network|net\s?art|internet|web\s?art|blockchain|\bNFT\b|네트워크|넷\s?아트|인터넷|블록체인'
+[[tags.medium]]
+tag = '피지컬 컴퓨팅'
+pattern = 'robot|kinetic|sensor|arduino|physical computing|mechatronic|로봇|키네틱|센서|아두이노|피지컬'
+[[tags.medium]]
+tag = 'XR'
+pattern = '\bVR\b|\bAR\b|\bXR\b|\bMR\b|virtual reality|augmented reality|mixed reality|metaverse|가상\s?현실|증강\s?현실|메타버스'
+
+[resolve]
+# E4 and the ring read a team credit written with this prefix. Production stores `팀: <name>`.
+team_prefix = '팀:'
+# T1. A name containing one of these words is a group. A false positive only skips a merge.
+team_words = '(컴퍼니|프로젝트|스튜디오|콜렉티브|컬렉티브|무브먼트|프로덕션|그룹|팀|랩\b|연구소|공작소|크루|company|studio|collective|project|production|movement|group|crew|\blab\b|labs|ensemble)'
+
+# E2. Frame-code prefix → regex. First matching prefix wins. A code's trailing -YYYY is removed first.
+# The institution's name alone is not used where it would not distinguish the programme.
+[resolve.events]
+DAVINCI = '다빈치|da ?vinci|언폴드|unfold'
+UNFOLD-X = '언폴드|unfold|서울융합예술'
+APE = '에이프|ape ?camp|apecamp'
+PARADISE-ARTLAB = '파라다이스|paradise'
+AKL = '아트코리아랩|arts? ?korea ?lab|수퍼 ?테스트베드|super ?testbed'
+ARTIENCE = '아티언스|artience'
+ACT = '\bACT\b|아시아문화전당|asia culture center'
+NJP-RANDOMACCESS = '랜덤 ?액세스|random ?access'
+NCA = '뉴 ?콘텐츠 ?아카데미|new ?contents? ?academy|\bNCA\b'
+ARKO-ARTTECH = '예술과 ?기술 ?융합|예술기술융합|아트앤테크|art ?and ?technology'
+ACC-CREATORS = 'ACC ?크리에이터|ACC ?creators|아시아문화전당.{0,20}레지던시|ACC.{0,15}residency'
+GMAF = '광주 ?미디어 ?아트 ?페스티벌|gwangju media ?art ?festival|\bGMAF\b|G\.MAP'
+MEDIACITY-SEOUL = '미디어 ?시티|media ?city'
+NEMAF = '네마프|nemaf|뉴미디어 ?페스티벌|대안영상예술|new ?media ?festival|alt ?cinema'
+ZER01NE = '제로원|zer01ne|zero ?one ?(day|creator)'
+VH-AWARD = 'vh ?award|브이에이치 ?어워드|현대 ?블루 ?프라이즈|hyundai.{0,20}vh'
+ISEA-KOREA = '\bISEA ?20(19|25)\b'
+PLATFORM-L-PLAP = '플랫폼 ?엘|platform[- ]?l\b|\bPLAP\b'
+NJP-AWARD = '백남준 ?(국제)?예술상|nam ?june ?paik ?(art )?award'
+NABI-CREATIVE = '창의 ?인재|creative ?mentoring|creative ?\+|나비.{0,20}멘티|멘티.{0,20}나비|nabi.{0,30}mentee|mentee.{0,30}nabi'
+
+# A1 families. A trailing -YYYY is stripped, then the first matching prefix, then an exact base.
+# APE* is one camp. Unfold X and Davinci are one support-programme lineage.
+# The two NeMaf strands are one festival.
+[[attach.prefix]]
+prefix = 'APE'
+family = 'APE'
+reason = 'Every APE code is one camp: a later edition and the archive page are the same programme.'
+
+[attach.exact]
+UNFOLD-X = 'SFAC-ARTTECH'
+DAVINCI = 'SFAC-ARTTECH'
+NEMAF-FILM = 'NEMAF'
+
+# The live year's roster is filed as frame APE-CURRENT (years_covered is that year).
+# Membership rows keep the edition code APE-2025, the same FRAME-YYYY shape as other
+# programmes. The alias is the whole rule: when APE-CURRENT is in the registry,
+# APE-2025 is that frame at edition 2025. No branch in the resolver names the programme.
+[[rim.alias]]
+membership = 'APE-2025'
+frame = 'APE-CURRENT'
+edition = '2025'
+reason = 'The current-year roster frame is APE-CURRENT; membership rows keep the edition year in the code.'
+
+# R5. APE and APE-* are one programme on the ring. The label is the one the programme rim used.
+[[rim.family]]
+prefix = 'APE'
+family = 'APE'
+label_ko = '에이프캠프'
+label_en = 'APE CAMP'
+reason = 'Archive, current, and dated codes are one camp, so the ring counts them once.'

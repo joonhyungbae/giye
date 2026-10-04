@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Local fixture server. Tests must not open a socket except to 127.0.0.1."""
 
 from __future__ import annotations

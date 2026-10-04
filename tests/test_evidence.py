@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Evidence copies: existing Internet Archive captures only.
 
 A robots.txt disallow records the capture URL and timestamp and does not keep the bytes.

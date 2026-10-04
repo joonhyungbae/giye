@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Stage 3: ledger tables, CSV I/O with backups, permanent IDs and their retirement.
 
 People are ``artists.csv``. A ``gy_id`` is never reused or renumbered. Activity

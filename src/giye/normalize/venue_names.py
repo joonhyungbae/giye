@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Name rules that join spellings of one institution (P3 V7–V9).
 
 Why: V4 keys are exact and V5 needs a parenthetical pair written by two artists,

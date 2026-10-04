@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Fetcher: robots.txt before every request, contact User-Agent, per-host delay, TLS retry."""
 
 from __future__ import annotations

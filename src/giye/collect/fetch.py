@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """HTTP fetcher that checks robots.txt before every request and every redirect hop.
 
 Ported from ``scripts/collectors/robots.py`` (``decide``, ``guarded_request``) and the

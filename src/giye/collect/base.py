@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Roster collector base class.
 
 A programme collector is a short subclass. It yields editions; this class fetches
@@ -6,8 +6,8 @@ each page (robots.txt, snapshot) and turns the people into roster rows that carr
 ``source_url`` and ``collected_at``. ``run()`` writes those rows into the ledger
 (people with permanent ``gy_id``s, frame membership, one activity per appearance)
 and keeps a copy under the configured work directory. Production did the upsert
-in ``scripts/collectors/base.py`` (``upsert_people``). Same-person matching across
-spellings is rules E1–E4 and X1, not this write.
+in ``scripts/collectors/base.py`` (``upsert_people``). A roster row joins an
+existing person only under A1–A6. Merging two existing records is E1–E4 and X1.
 
     class ExampleResidency(RosterCollector):
         frame = "EXAMPLE-RESIDENCY"
@@ -68,6 +68,7 @@ class Person:
     role: str = ""
     members: str = ""
     aliases: str = ""
+    identity: str = ""
 
     def __post_init__(self) -> None:
         if not self.name_ko and not self.name_en:

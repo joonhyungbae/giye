@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Frame registry: F1–F5 judgements are recorded in full, and coverage is members / roster size."""
 
 from __future__ import annotations

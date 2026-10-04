@@ -37,20 +37,36 @@ These decisions come from `extract_cvs_llm.py` and `apply_cv_extractions.py`. Pr
 
 ## Identity (stage 4)
 
+Two steps, and they are not the same decision.
+
+**Attachment** joins a new roster row to a person who is already in the ledger. It runs when the row is collected. One of A1–A6 has to fire. The rule id is written on that membership row (`attach_rule`). A row that no rule attaches becomes a new person, and the membership says `first`. A same-name candidate that no rule takes is queued (`possible_same_person`). It is not attached.
+
+**Merging** joins two records that already exist. It runs in `giye resolve`, and only on written evidence (E1–E4, with X1 when the scripts differ). A team is not merged with a person (T1). An exact Korean and English name pair, across programmes, is not by itself a join.
+
+A later merge closes an attachment queue item when the item's detail names the dropped ledger id. The item was the near-miss; the merge is the evidence decision. Whether that close should stay is an open question (the ledger already did this for any `possible_same_person` item).
+
 | ID | Rule | Status |
 |---|---|---|
+| A1 | The same name keys are already on a row in this event family. A re-run and a later edition of the same programme repeat one participant. The family is the field file: a year suffix is stripped, then a declared prefix or an exact code. A Korean personal name shared with someone in a different programme is not the same person. | ported |
+| A2 | The name keys match and the English names agree: at least two Latin tokens, order ignored, against `name_en` or a Latin alias. One Latin token is too common. Checked before A3, so a group whose English names agree is A2. | ported |
+| A3 | The name is not a bare Korean personal name (two to four Hangul syllables starting with a listed surname). A group, a studio, or any other spelling reuses the first same-key row. A Latin-only name that failed the two-token test takes this branch for the same reason. | ported |
+| A4 | A same-key row exists and it has no roster membership yet. The first roster attaches to it. Only a bare Korean personal name reaches this branch. | ported |
+| A5 | The collector's identity key matches a key already stored on a row. Checked before the name rules. A miss does not fall through, so two people the roster pinned apart stay apart. | ported |
+| A6 | The same own website (not a social link) is owned by exactly one existing row, when the name rules and the identity key did not choose. It can join a different spelling. A link owned by two rows is not used. Two different bare Korean personal names are not joined by a shared link. | ported |
 | E1 | Two records are the same person when they share a personal website. The key is the host, or host plus path on a shared platform (a blog host, a portfolio host, a video host). `www` and a trailing slash do not make a second site. Social links are not a personal site. The rows also need an overlapping name (Hangul with spaces removed, otherwise the lower-cased string). | ported |
-| E2 | … when one's CV lists the other's roster appearance: the CV text matches that frame's event pattern and the CV year is within one year of the edition. A frame code ending in `-YYYY` uses that year (`DAVINCI-2014`). A code with no year uses the years on that frame's roster activities. Patterns are the production programme list plus `[resolve.event_patterns]`. | ported |
+| E2 | … when one's CV lists the other's roster appearance: the CV text matches that frame's event pattern and the CV year is within one year of the edition. A frame code ending in `-YYYY` uses that year (`EXAMPLE-WORKSHOP-2021`). A code with no year uses the years on that frame's roster activities. Patterns come from the field file, then `[resolve.event_patterns]` replaces a key. | ported |
 | E3 | … when a bracketed work title (`〈…〉`, `<…>`, `《…》`, and the same family) on one roster row also appears on the other's roster row or CV, in the same year ±1. The normalised title is at least 3 characters. An unbracketed title is not a work (that is E2). | ported |
-| E4 | … when both roster rows credit the same team in the role, written `팀: <name>`. The normalised team name is at least 2 characters. This joins two rows of one candidate pair; it does not collapse every member of a team into one person. | ported |
-| T1 | A record whose name looks like a team or collective is never merged with a person. A team row has `members=` or `rep=` in the note, two or more person-shaped aliases, or a team word in the name (`스튜디오`, `collective`, `lab`, …). Exactly one side being a team blocks the merge. Two team rows may still merge with each other on E1. X1 drops a pair when either side is a team. | ported |
+| E4 | … when both roster rows credit the same team in the role, written with the field file's team prefix (`팀:` in the Korean media-art field). The normalised team name is at least 2 characters. This joins two rows of one candidate pair; it does not collapse every member of a team into one person. | ported |
+| T1 | A record whose name looks like a team or collective is never merged with a person. A team row has `members=` or `rep=` in the note, two or more person-shaped aliases, or a team word from the field file in the name. Exactly one side being a team blocks the merge. Two team rows may still merge with each other on E1. X1 drops a pair when either side is a team. | ported |
 | X1 | Hangul and Latin spellings are candidate matches when their romanized keys intersect (`giye.resolve.names`). A candidate is merged only with E1–E4 evidence, recorded as `X1+E1` … `X1+E4`. No evidence queues the pair (`possible_same_person`). A shared frame code, a collector identity pin, or a team row drops the pair. A Korean row that already has a matching Latin name is not paired again. | ported |
 
 A same-script exact name (Unicode NFC, spaces removed, case folded) that no rule accepts is queued the same way, reason `possible_same_person`, detail `rule=same_script_exact`. It is not merged. A pair already named by an open item is not queued again. A done item whose pair was never actually joined is reopened (`reopened=wrong_close`) unless a person recorded `decided=same` or `decided=different`.
 
 Every merge stores `merge_evidence=` (the rule and the concrete website key, CV line, work title, or team) and `rule=` on the kept row, and retires the dropped `gy_id` through `giye.ledger.merge`.
 
-The synthetic demo fires each of these once. E1–E4 are same-script. X1 finds `kim/haneul` for 김하늘 on one programme and Haneul Kim on another; the English CV names the first programme in the same year, so the stored rule is `X1+E2`. A different Kim Haneul, on a third programme and with no evidence, is queued. T1 leaves the person 배수아 and the team row of the same name unmerged. See `examples/demo/EXPECTED.md`.
+The synthetic demo fires E1–E4, X1+E2, and T1 once each, and records A1 and A2 on membership rows. See `examples/demo/EXPECTED.md`.
+
+Attachment A1 and derived-value A1 (`active_since`, below) are different rules that share a letter. They are not renamed here.
 
 ## Ledger invariants (stage 3)
 
@@ -80,8 +96,8 @@ Place names, generic institution words, and romanisation come from a language mo
 | P5 | Derived artist attributes. The ledger value wins, as above. | ported |
 | B1 | Birth year: exactly one plausible year (1900 … this year − 15) among birth phrases in the first 4,000 characters of the artist's own CV. Two years, or a team row, leave it empty. | ported |
 | L1 | Base country (and Korean region) from a "based in" / "lives and works" phrase, or the Korean equivalents, resolved through the gazetteer. The first CV that names a place wins. | ported |
-| A1 | `active_since`: earliest year among public practice rows (exhibition, screening, performance, festival, award, residency, release) that carry no year flag and are not marked upcoming. | ported |
-| M1 | A medium tag when at least two public rows name it in the title, role, or `strand=` note. A screening counts as 영상. The word list is the production media-art vocabulary. | ported |
+| A1 | `active_since`: earliest year among public practice rows (exhibition, screening, performance, festival, award, residency, release) that carry no year flag and are not marked upcoming. This is not attachment rule A1. | ported |
+| M1 | A medium tag when at least two public rows name it in the title, role, or `strand=` note. A screening counts as the field file's screening tag. The word list is that file's medium vocabulary. | ported |
 | V1 | A venue fragment is a place only when the whole fragment is a place name. A town inside an institution name is not a place. | ported |
 | V2 | Split on commas, slashes, pipes, middots, semicolons, and spaced hyphens. A parenthetical, or a Hangul name followed by an acronym, is an alias candidate. | ported |
 | V3 | First match: place, city plus its own country code, online, funder, institution (at least two letters), otherwise unclassified. | ported |
@@ -124,7 +140,7 @@ These are the production site builder's decisions. They do not have E/F/P/V ids 
 
 `giye publish` does not rewrite `frames.yml`. Production saved the new counts back into that file. The counts are in `frames.json` and `coverage.json`.
 
-Region tags (`서울`, `경기`, …) and the medium guess from `field` / `category` are the production Korean media-art lists, copied as written. Incheon is tagged `경기` because that script did so. Another field's tags belong in a later language module; they are not re-decided here. Membership code `APE-2025` still resolves to frame `APE-CURRENT` at edition 2025 when that frame is registered. That special case is one live programme, kept so the same ledger builds the same editions.
+Region tags, the medium guess from `field` / `category`, and edition aliases are declared in the field file (`fields/` for a shipped field, or the path in `[paths] field`). An alias maps a membership code to a frame and an edition when that frame is registered. Another field supplies its own lists. They are not compiled into the package.
 
 ## Exploration (stage 6)
 
@@ -132,3 +148,5 @@ Region tags (`서울`, `경기`, …) and the medium guess from `field` / `categ
 |---|---|---|
 | C1 | The number of clusters is the k with the highest bootstrap stability (mean adjusted Rand index), ties to the smaller k; stability is published with the clusters. | planned |
 | C2 | Clusters are described by their most over-represented features, never by people. | planned |
+
+R1–R7, the entry-generation ring, ship in `giye.explore` and are written by `giye explore`. See [EXPLORE.md](EXPLORE.md). C1 and C2 do not.

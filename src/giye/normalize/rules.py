@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Preprocessing rules: checks (P1), text normalisation (P2), derived attributes (P5).
 
 Every rule is a function of the ledger (and the CV text the ledger points at).
@@ -166,41 +166,47 @@ def active_since(rows: list[dict], flags: dict[str, list[str]]) -> tuple[int, st
     return best
 
 
-# Production controlled vocabulary for the Korean media-art field. A tag is a
-# medium, not a person. Another field would replace this list; it is kept here
-# so the same titles get the same tags as production.
-MEDIUM_WORDS = {
-    "영상": r"video|film|moving image|single[- ]channel|영상|비디오|필름|싱글\s?채널|다큐멘터리|documentary|animation|애니메이션",
-    "사운드": r"sound|audio|music|noise|acoustic|사운드|음악|오디오|소리|노이즈|음향",
-    "인터랙티브": r"interactive|interaction|participatory|인터랙티브|인터랙션|상호작용|참여형",
-    "생성·연산": (
-        r"generative|algorithm|artificial intelligence|\bA\.?I\.?\b|machine learning|deep learning|neural|"
-        r"computational|\bGAN\b|인공지능|알고리즘|머신\s?러닝|딥\s?러닝|생성형|제너러티브|연산"
-    ),
-    "네트워크": r"network|net\s?art|internet|web\s?art|blockchain|\bNFT\b|네트워크|넷\s?아트|인터넷|블록체인",
-    "피지컬 컴퓨팅": r"robot|kinetic|sensor|arduino|physical computing|mechatronic|로봇|키네틱|센서|아두이노|피지컬",
-    "XR": r"\bVR\b|\bAR\b|\bXR\b|\bMR\b|virtual reality|augmented reality|mixed reality|metaverse|가상\s?현실|증강\s?현실|메타버스",
-}
-MEDIUM_RE = {tag: re.compile(pattern, re.IGNORECASE) for tag, pattern in MEDIUM_WORDS.items()}
+# Floor used when a caller does not pass the field file's minimum. The vocabulary
+# itself is the field file (``[[tags.medium]]``).
 MEDIUM_MIN_ROWS = 2
 
 
-def medium_tags(rows: list[dict]) -> dict[str, list[str]]:
-    """M1 (P5): a tag when at least two distinct public rows name it in the title or role.
+def medium_tags(
+    rows: list[dict],
+    *,
+    words: tuple[tuple[str, str], ...] | None = None,
+    screening_tag: str | None = None,
+    min_rows: int | None = None,
+) -> dict[str, list[str]]:
+    """M1 (P5): a tag when at least ``min_rows`` public rows name it in the title or role.
 
-    A screening row counts as 영상. One mention can be incidental; two is a pattern.
-    A NeMaf strand in the note (``strand=…``) counts as well. Returns ``{tag: [activity_id, …]}``.
+    ``words`` is ``(tag, regex)`` from the field file. When it is omitted, the
+    shipped Korean media-art list is used. A screening row counts as
+    ``screening_tag`` (that file's tag for film). One mention can be incidental;
+    two is a pattern. A strand note (``strand=…``) counts as well.
+    Returns ``{tag: [activity_id, …]}``.
     """
+    if words is None or screening_tag is None or min_rows is None:
+        from giye.field import shipped_field
+
+        shipped = shipped_field().resolved()
+        if words is None:
+            words = shipped.medium_words
+        if screening_tag is None:
+            screening_tag = shipped.screening_tag
+        if min_rows is None:
+            min_rows = shipped.medium_min_rows
+    compiled = [(tag, re.compile(pattern, re.IGNORECASE)) for tag, pattern in words]
     hits: dict[str, list[str]] = {}
     for row in rows:
         if row.get("publishable") != "yes":
             continue
         note = re.search(r"strand=[^;]*", row.get("reviewer_note") or "")
         text = f"{row.get('title', '')} {row.get('role', '')} {note.group(0) if note else ''}"
-        for tag, pattern in MEDIUM_RE.items():
-            if pattern.search(text) or (tag == "영상" and row.get("activity_type") == "screening"):
+        for tag, pattern in compiled:
+            if pattern.search(text) or (screening_tag and tag == screening_tag and row.get("activity_type") == "screening"):
                 hits.setdefault(tag, []).append(row["activity_id"])
-    return {tag: ids for tag, ids in hits.items() if len(ids) >= MEDIUM_MIN_ROWS}
+    return {tag: ids for tag, ids in hits.items() if len(ids) >= min_rows}
 
 
 def venue_place(venue: str, gazetteer: Gazetteer) -> tuple[str, str]:

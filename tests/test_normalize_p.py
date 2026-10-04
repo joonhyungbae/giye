@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Derived values P1–P5. People are fictitious. CV text is a local file, not a fetch."""
 
 from __future__ import annotations

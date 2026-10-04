@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Institution rules V1–V9, the audit, and the language-module interface.
 
 People in the surrounding ledger tests are fictitious. Institution names here are

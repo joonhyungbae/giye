@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """CSV reads and writes, the ledger lock, and a backup before every write.
 
 The production writer is ``write_csv(path, fields, rows)``. That order is easy

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """RFC 9309 robots.txt status and path rules, including the browser document guard. No network.
 
 Adapted from the production ``tests/test_robots.py``. Fetch refusal goes through

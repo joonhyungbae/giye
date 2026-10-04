@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """The file-backed ledger: open, read, write, merge, and roster upsert.
 
 A ``gy_id`` is permanent (docs/ARCHITECTURE.md, Permanence). ``merge`` is the
@@ -213,32 +213,90 @@ class Ledger:
     def apply_roster(self, frame: str, rows: Iterable[Mapping[str, Any]], *, task: str = "collect") -> None:
         """Upsert roster appearances for one frame.
 
-        A new person receives a new ``ledger_id`` and a new ``gy_id``. A person
-        already stored under the same ``name_ko`` and ``name_en`` (after the
-        same empty-name fallback the insert uses) keeps both ids. Membership is
-        one row per person and frame. Each appearance becomes an activity whose
-        id is the collector uuid5, so a second run of the same roster rewrites
-        the same ids. Activities this frame wrote earlier for those people are
-        replaced; other origins are left in place.
+        A row joins an existing person only under A1–A6 (``giye.resolve.attach``).
+        The rule id is stored on the new membership (``attach_rule``). A row no
+        rule attaches becomes a new person, ``attach_rule`` ``first``, and a
+        same-name near-miss opens ``possible_same_person``. An exact
+        ``(name_ko, name_en)`` pair is not by itself a join.
+
+        A new person receives a new ``ledger_id`` and a new ``gy_id``. Membership
+        is one row per person and frame. Each appearance becomes an activity
+        whose id is the collector uuid5, so a second run of the same roster
+        rewrites the same ids. Activities this frame wrote earlier for those
+        people are replaced; other origins are left in place.
         """
+        # Imported here: giye.resolve.teams imports Ledger, and attach imports teams.
+        from giye.field import frame_family
+        from giye.resolve.attach import attach_row
+
         if not frame or "/" in frame or "\\" in frame:
             raise ValueError("frame code must not contain a path separator")
         roster = list(rows)
+        field = self.config.field_config
         artists = self.read("artists")
         activities = self.read("activities")
         membership = self.read("frame_membership")
+        links = self.read("links") if self.path("links").exists() else []
+        review = self.read("review_queue") if self.path("review_queue").exists() else []
         issued = [row.get("gy_id", "") for row in artists]
         issued += [row.get("gy_id", "") for row in self.read("gy_retired")]
         taken = {row["ledger_id"] for row in artists}
-        by_name = {(_stored_name(row.get("name_ko", ""), row.get("name_en", ""))): row for row in artists}
+        by_id = {row["ledger_id"]: row for row in artists}
+        families: dict[str, set[str]] = {}
+        for row in membership:
+            families.setdefault(row["ledger_id"], set()).add(frame_family(row.get("frame_code", ""), field))
+        open_review = {
+            (row.get("ledger_id", ""), row.get("reason", ""), row.get("detail") or "")
+            for row in review
+            if row.get("status") == "open"
+        }
+        seen_links = {(row.get("ledger_id", ""), row.get("url", "")) for row in links}
         stamp = _now()
         assigned: list[str] = []
+        rules: list[str] = []
+        links_added = False
+        review_added = False
         for row in roster:
-            key = _stored_name(str(row.get("name_ko") or ""), str(row.get("name_en") or ""))
-            artist = by_name.get(key)
+            raw_ko = str(row.get("name_ko") or "").strip()
+            raw_en = str(row.get("name_en") or "").strip()
+            aliases = str(row.get("aliases") or "")
+            identity = str(row.get("identity") or "").strip()
+            website = str(row.get("website") or "").strip()
+            websites = [website] if website.startswith("http") else []
             source_url = str(row.get("source_url") or "").strip()
             collected = str(row.get("collected_at") or "")[:10]
-            if artist is None:
+            decision = attach_row(
+                artists=artists,
+                families_by_lid=families,
+                links=links,
+                frame_code=frame,
+                name_ko=raw_ko,
+                name_en=raw_en,
+                aliases=aliases,
+                identity=identity,
+                websites=websites,
+                field=field,
+                team_lid=str(row.get("team_lid") or ""),
+            )
+            stored_ko, stored_en = _stored_name(raw_ko, raw_en)
+            attached = bool(decision.ledger_id and decision.ledger_id in by_id)
+            if attached:
+                artist = by_id[decision.ledger_id or ""]
+                rule = decision.rule or ""
+                if not artist.get("name_ko") and stored_ko:
+                    artist["name_ko"] = stored_ko
+                if not artist.get("name_en") and stored_en:
+                    artist["name_en"] = stored_en
+                if not artist.get("gy_id"):
+                    gy = allocate_gy_id(issued, prefix=self._prefix)
+                    artist["gy_id"] = gy
+                    issued.append(gy)
+                if not artist.get("source_url") and source_url:
+                    artist["source_url"] = source_url
+                    artist["source_type"] = artist.get("source_type") or "PUBLIC_RECORD"
+                artist["updated_at"] = stamp
+            else:
+                rule = "first"
                 lid = _new_ledger_id(taken)
                 gy = allocate_gy_id(issued, prefix=self._prefix)
                 issued.append(gy)
@@ -246,8 +304,9 @@ class Ledger:
                     ARTISTS_FIELDS,
                     ledger_id=lid,
                     gy_id=gy,
-                    name_ko=key[0],
-                    name_en=key[1],
+                    name_ko=stored_ko,
+                    name_en=stored_en,
+                    aliases=aliases,
                     cv_link_ok="no",
                     frame_status="IN_FRAME",
                     verification="UNVERIFIED",
@@ -258,18 +317,48 @@ class Ledger:
                     updated_at=stamp,
                 )
                 artists.append(artist)
-                by_name[key] = artist
-            else:
-                if not artist.get("gy_id"):
-                    gy = allocate_gy_id(issued, prefix=self._prefix)
-                    artist["gy_id"] = gy
-                    issued.append(gy)
-                if not artist.get("source_url") and source_url:
-                    artist["source_url"] = source_url
-                    artist["source_type"] = artist.get("source_type") or "PUBLIC_RECORD"
-                artist["updated_at"] = stamp
+                by_id[lid] = artist
+            if identity:
+                marker = f"identity={identity}"
+                note = artist.get("reviewer_note") or ""
+                if marker not in note:
+                    artist["reviewer_note"] = f"{note}; {marker}".strip("; ")
             _stamp_roster_person(artist, row)
-            assigned.append(artist["ledger_id"])
+            lid = artist["ledger_id"]
+            assigned.append(lid)
+            rules.append(rule)
+            families.setdefault(lid, set()).add(frame_family(frame, field))
+            if websites and (lid, website) not in seen_links:
+                links.append(
+                    empty_row(
+                        self.fields("links"),
+                        link_id=str(uuid.uuid4()),
+                        ledger_id=lid,
+                        label="website",
+                        url=website,
+                        link_type="website",
+                        origin=frame,
+                    )
+                )
+                seen_links.add((lid, website))
+                links_added = True
+            if decision.ambiguous and not attached:
+                detail = f"{raw_ko or raw_en or stored_ko} ({frame}) shares a name with {', '.join(decision.ambiguous)}"
+                key = (lid, "possible_same_person", detail)
+                if key not in open_review:
+                    review.append(
+                        empty_row(
+                            self.fields("review_queue"),
+                            queue_id=str(uuid.uuid4()),
+                            ledger_id=lid,
+                            reason="possible_same_person",
+                            detail=detail,
+                            status="open",
+                            created_at=stamp,
+                        )
+                    )
+                    open_review.add(key)
+                    review_added = True
 
         touched = set(assigned)
         activities = [
@@ -279,7 +368,7 @@ class Ledger:
         for row, lid in zip(roster, assigned, strict=True):
             activities.append(_roster_activity(frame, row, lid, counters))
         mem_keys = {(row.get("ledger_id", ""), row.get("frame_code", "")) for row in membership}
-        for row, lid in zip(roster, assigned, strict=True):
+        for row, lid, rule in zip(roster, assigned, rules, strict=True):
             if (lid, frame) in mem_keys:
                 continue
             membership.append(
@@ -289,13 +378,17 @@ class Ledger:
                     frame_code=frame,
                     source_url=str(row.get("source_url") or "").strip(),
                     collected_at=str(row.get("collected_at") or "")[:10],
+                    attach_rule=rule,
                 )
             )
             mem_keys.add((lid, frame))
         self.write("artists", artists, task=task)
         self.write("activities", activities, task=task)
         self.write("frame_membership", membership, task=task)
-        self._write_roster_links(frame, roster, assigned, task=task)
+        if links_added:
+            self.write("links", links, task=task)
+        if review_added:
+            self.write("review_queue", review, task=task)
 
     def _write_roster_links(self, frame: str, roster: list[Mapping[str, Any]], assigned: list[str], *, task: str) -> None:
         """Store a personal website from a roster row. A second run does not add the URL again.

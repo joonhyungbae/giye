@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Snapshot store: one object per SHA-256, one manifest line per fetch."""
 
 from __future__ import annotations

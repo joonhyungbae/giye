@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Place names → (country, Korean region).
 
 Ported from the production preprocessor. The lookup order is the production one.

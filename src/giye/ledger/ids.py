@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Permanent person ids and content-derived activity ids.
 
 ``gy_id`` is issued once, as one past the highest number ever used, including

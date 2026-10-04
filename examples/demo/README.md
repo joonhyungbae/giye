@@ -26,14 +26,17 @@ Same-person resolution runs on that ledger and on the HTML CVs in `fixtures/cv/`
 giye resolve --config examples/demo/giye.toml
 ```
 
-The fixtures are arranged so each identity rule fires once: a shared website (E1), a CV line
-naming the other row's roster edition in the same year ±1 (E2 for 표은솔, and X1+E2 for
-김하늘 / Haneul Kim), a bracketed work title (E3), a shared `팀:` credit (E4). 김하늘 is on
-the residency roster and Haneul Kim on the workshop roster; the English CV names Example
-Residency in 2019, and X1's key is `kim/haneul`. Kim Haneul on the forum shares that key and
-has no evidence, so the pair is queued. Another same-name pair with no evidence is queued
-too. A team row that shares a name and a website with a person is left unmerged (T1).
-Spelling variants that share a frame are not treated as evidence.
+The fixtures are arranged so each merge rule fires once, and so attachment records its rule.
+Lee Haru and Haru Lee share the workshop family, so the later edition attaches by A1.
+Kim Haneul on the forum agrees in English with Haneul Kim on the workshop, so that row
+attaches by A2. A shared website (E1, the two 정다운 rows, pinned apart by identity keys so
+A6 does not attach them at collection), a CV line naming the other row's roster edition
+(E2 for 표은솔, and X1+E2 for 김하늘 / Haneul Kim), a bracketed work title on two programmes
+(E3), and a shared `팀:` credit (E4) each merge one pair. The person 배수아 and the team
+row of the same name are left unmerged (T1); the team row does not repeat the person's
+site, because A6 would attach them. A same-name pair that no rule attaches is queued.
+Spelling variants that share an edition code (`<FRAME>-<YYYY>`) are not treated as merge
+evidence. The field phrases and team words are `examples/demo/field.toml`.
 
 CV extraction replays a hand-written cache (no network, no API key):
 

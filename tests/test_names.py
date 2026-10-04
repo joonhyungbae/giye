@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Rule X1: Hangul and Latin spellings of one name share a romanized key."""
 
 from giye.resolve.names import hangul_name_keys, latin_name_keys

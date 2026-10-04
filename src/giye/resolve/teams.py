@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Team rows and the team/person guard (rule T1).
 
 T1. A row that looks like a team or collective is never merged with a person.
@@ -30,12 +30,11 @@ KOREAN_SURNAMES = set(
     "김이박최정강조윤장임한오서신권황안송류유홍전고문양손배백허남심노하곽성차주우구민진나지엄채원천방공현함변염여추도소석선설마길연위표명기반왕금옥육인맹제모탁국어은편용예경봉사부가복태목형피두감음빈동온호범좌팽승간상갈"
 )
 
-# A name containing one of these words is a group. A false positive only skips a merge.
-TEAM_WORDS = re.compile(
-    r"(컴퍼니|프로젝트|스튜디오|콜렉티브|컬렉티브|무브먼트|프로덕션|그룹|팀|랩\b|연구소|공작소|크루|"
-    r"company|studio|collective|project|production|movement|group|crew|\blab\b|labs|ensemble)",
-    re.IGNORECASE,
-)
+def _default_team_words() -> re.Pattern[str]:
+    """T1 words from the shipped field file. A configured archive passes its own."""
+    from giye.field import shipped_field
+
+    return shipped_field().compiled_team_words()
 
 _HANGUL = re.compile(r"[가-힣]")
 
@@ -45,12 +44,14 @@ def person_like(name_ko: str) -> bool:
     return bool(re.fullmatch(r"[가-힣]{2,4}", name_ko or "")) and (name_ko or "")[:1] in KOREAN_SURNAMES
 
 
-def team_like(artist: Mapping[str, str]) -> str:
+def team_like(artist: Mapping[str, str], *, words: re.Pattern[str] | None = None) -> str:
     """Why this row is a team or group, or "" when it is a person (T1).
 
     ``team=`` is also written on a person (the team they belong to), so it does
     not mark a team row. A team row carries ``members=`` or ``rep=``, or a
     non-person name with two or more person-shaped aliases, or a team word.
+    ``words`` is the field file's pattern. Callers that have no config (the CV
+    registry) use the shipped Korean media-art list.
     """
     note = artist.get("reviewer_note") or ""
     for mark in ("members=", "rep="):
@@ -60,17 +61,20 @@ def team_like(artist: Mapping[str, str]) -> str:
     members = [alias for alias in _split_pipe(artist.get("aliases") or "") if person_like(alias)]
     if not person_like(name) and len(members) >= 2:
         return "aliases"
-    if not person_like(name) and TEAM_WORDS.search(f"{name} {artist.get('name_en') or ''}"):
+    pattern = words if words is not None else _default_team_words()
+    if not person_like(name) and pattern.search(f"{name} {artist.get('name_en') or ''}"):
         return "team_name"
     return ""
 
 
-def team_person_mismatch(row_a: Mapping[str, str], row_b: Mapping[str, str]) -> bool:
+def team_person_mismatch(
+    row_a: Mapping[str, str], row_b: Mapping[str, str], *, words: re.Pattern[str] | None = None
+) -> bool:
     """True when one row is a team and the other is a person (T1).
 
     Two team rows are not a mismatch: E1 may still merge them with each other.
     """
-    return bool(team_like(row_a)) != bool(team_like(row_b))
+    return bool(team_like(row_a, words=words)) != bool(team_like(row_b, words=words))
 
 
 def team_members(person: Mapping[str, object]) -> list[dict[str, str]]:
@@ -166,8 +170,13 @@ def member_rows(
     source_url: str,
     source_type: str,
     collected: str,
+    team_prefix: str = "팀:",
 ) -> list[dict]:
-    """Rows for a team's members: the team's activities credited as ``팀: <team>``."""
+    """Rows for a team's members: the team's activities credited as ``<prefix> <team>``.
+
+    ``team_prefix`` is the field file's E4 marker. The default is the production
+    spelling so a caller without a field file still writes a credit E4 can read.
+    """
     name = str(team.get("name_ko") or "").strip() or str(team.get("name_en") or "").strip()
     # The first note segment is the collector's label. ``members=`` / ``rep=`` mark
     # the team itself (T1); copying them would make the member a team and the
@@ -180,7 +189,7 @@ def member_rows(
         note = "; ".join(part for part in [head, f"팀 구성원: {name} ({team_lid})"] if part)
         activities = []
         for activity in team.get("activities") or []:  # type: ignore[union-attr]
-            activities.append({**activity, "role": f"팀: {name}"})  # type: ignore[arg-type]
+            activities.append({**activity, "role": f"{team_prefix} {name}"})  # type: ignore[arg-type]
         rows.append(
             {
                 **member,
@@ -241,6 +250,7 @@ def expand_teams(ledger: Ledger, *, dry_run: bool = False) -> list[str]:
                 source_url=source,
                 source_type=artist.get("source_type") or "PUBLIC_RECORD",
                 collected=collected,
+                team_prefix=ledger.config.field_config.team_prefix or "팀:",
             ):
                 existing = _find_member(artists, row)
                 if existing is None and _ambiguous(artists, row):

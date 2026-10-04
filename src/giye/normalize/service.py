@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Run normalisation: ledger → ``data/processed`` (the configured data directory).
 
 The ledger is not modified. Derived rows name the rule that produced them.
@@ -24,10 +24,9 @@ from pathlib import Path
 
 from giye.config import Config
 from giye.ledger.io import read_csv, write_csv
-from giye.normalize.language import KoreanEnglish, packaged_dir
+from giye.normalize.language import load_language, packaged_dir
 from giye.normalize.rules import (
     HEAD_CHARS,
-    MEDIUM_MIN_ROWS,
     active_since,
     based_in,
     birth_year,
@@ -138,7 +137,8 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
     """
     raw_rules = venue_name_rules if venue_name_rules is not None else config.venue_name_rules
     name_rules = parse_name_rules(raw_rules if raw_rules else None)
-    language = KoreanEnglish.load(
+    language = load_language(
+        config.language_module,
         glossary=config.normalize_glossary,
         cities=config.normalize_gazetteer,
         reference=config.normalize_reference,
@@ -158,7 +158,8 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
     for membership in read_csv(config.ledger / "frame_membership.csv"):
         frames_of[membership.get("ledger_id") or ""].append(membership.get("frame_code") or "")
 
-    patterns = pattern_table(config.event_patterns)
+    patterns = pattern_table(config.field_config.event_patterns, config.event_patterns)
+    tags = config.field_config.resolved()
 
     def pattern_for(code: str) -> str | None:
         return event_pattern(code, patterns)
@@ -218,7 +219,7 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
         ledger_id = artist["ledger_id"]
         rows = by_artist.get(ledger_id, [])
         # A team CV lists members' births, so it is not that row's birth year.
-        texts = [] if team_like(artist) else _cv_texts(config, sources.get(ledger_id, []))
+        texts = [] if team_like(artist, words=tags.compiled_team_words()) else _cv_texts(config, sources.get(ledger_id, []))
         # B1 has no ledger column. It is still only a derived row, never a ledger edit.
         born = birth_year([text for text, _url in texts])
         if born:
@@ -241,8 +242,15 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
             if got:
                 put(ledger_id, "active_since", got[0], "A1 earliest public practice row", got[1])
         if not (artist.get("field") or artist.get("category")):
-            for tag, ids in sorted(medium_tags(rows).items()):
-                put(ledger_id, "medium", tag, f"M1 ≥{MEDIUM_MIN_ROWS} rows name it", "|".join(ids[:20]))
+            for tag, ids in sorted(
+                medium_tags(
+                    rows,
+                    words=tags.medium_words,
+                    screening_tag=tags.screening_tag,
+                    min_rows=tags.medium_min_rows,
+                ).items()
+            ):
+                put(ledger_id, "medium", tag, f"M1 ≥{tags.medium_min_rows} rows name it", "|".join(ids[:20]))
 
     write_csv(path=out / "activities.csv", fields=ACT_FIELDS, rows=activity_out)
     write_csv(path=out / "artist_attributes.csv", fields=ATTR_FIELDS, rows=attributes)
@@ -338,7 +346,7 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
         f"| country | {filled['country']} | L1 based-in wording on the artist's own CV → place-name gazetteer |",
         f"| region | {filled['region']} | L1, Korean region only |",
         f"| active_since | {filled['active_since']} | A1 earliest year among public activities (flagged years excluded) |",
-        f"| medium | {medium_artists} | M1 at least {MEDIUM_MIN_ROWS} rows whose title, role, or strand name the same medium |",
+        f"| medium | {medium_artists} | M1 at least {tags.medium_min_rows} rows whose title, role, or strand name the same medium |",
     ]
     report = "\n".join(lines) + "\n"
     (out / "report.md").write_text(report, encoding="utf-8")

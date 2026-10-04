@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Write the snapshot store as a WARC 1.1 file, and optionally a WACZ package.
 
 Each manifest line with a readable body becomes two records:

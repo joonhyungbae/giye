@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """CV activities the same-person rules read.
 
 Production stores one JSON file per person at ``data/work/cv_extract/<ledger_id>.json``

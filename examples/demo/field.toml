@@ -1,0 +1,13 @@
+# Synthetic demo field. No real programme. Tag lists are inherited from the shipped
+# Korean media-art vocabulary (medium and region words); event patterns are not.
+
+[tags]
+inherit = true
+
+[resolve]
+team_prefix = '팀:'
+team_words = '(스튜디오|콜렉티브|컬렉티브|랩\b|크루|company|studio|collective|project|group|crew|\blab\b|labs|ensemble)'
+
+[resolve.events]
+EXAMPLE-RESIDENCY = '예시 ?레지던시|example residency'
+EXAMPLE-WORKSHOP = '예시 ?워크숍|example workshop'

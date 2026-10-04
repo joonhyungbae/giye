@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Sampling-frame registry (``frames.yml``) and eligibility F1–F5.
 
 Production records one judgement per programme in ``data/frames.yml`` and publishes

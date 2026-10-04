@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Run same-person resolution against a ledger.
 
 Order, matching production ``resolve_same_person.py``:
@@ -90,6 +90,7 @@ def resolve_ledger(ledger: Ledger, *, dry_run: bool = False) -> ResolveResult:
         state.frames,
         state.identities,
         lambda left, right: _evidence(state, left, right),
+        words=state.team_words,
     )
     # T1 blocks that the queue skips are still part of the result.
     _record_same_script_blocks(state, result)
@@ -104,7 +105,9 @@ def resolve_ledger(ledger: Ledger, *, dry_run: bool = False) -> ResolveResult:
 class _State:
     def __init__(self, ledger: Ledger) -> None:
         self.ledger = ledger
-        self.patterns = pattern_table(ledger.config.event_patterns)
+        self.patterns = pattern_table(ledger.config.field_config.event_patterns, ledger.config.event_patterns)
+        self.team_prefix = ledger.config.field_config.team_prefix or "팀:"
+        self.team_words = ledger.config.field_config.compiled_team_words()
         self.cvs = load_cv_activities(ledger, ledger.config)
         self.artists: list[dict] = []
         self.by_id: dict[str, dict] = {}
@@ -147,7 +150,7 @@ class _State:
 
 def _evidence(state: _State, left: str, right: str) -> str | None:
     return evidence_e1(left, right, state.sites) or evidence_e2_e4(
-        left, right, state.frames, state.rows_of, state.cvs, state.patterns
+        left, right, state.frames, state.rows_of, state.cvs, state.patterns, team_prefix=state.team_prefix
     )
 
 
@@ -220,7 +223,7 @@ def _merge_by_website(state: _State, result: ResolveResult, *, dry_run: bool) ->
                 for group in groups:
                     person = state.by_id[lid]
                     head = state.by_id[group[0]]
-                    if bool(team_like(person)) != bool(team_like(head)):
+                    if bool(team_like(person, words=state.team_words)) != bool(team_like(head, words=state.team_words)):
                         if _names(person) & _names(head):
                             result.blocked_team.append(tuple(sorted((lid, group[0]))))
                         continue
@@ -261,7 +264,7 @@ def _merge_same_script(state: _State, result: ResolveResult, *, dry_run: bool) -
             if left not in state.frames or right not in state.frames:
                 continue
             row_a, row_b = state.by_id[left], state.by_id[right]
-            if team_person_mismatch(row_a, row_b):
+            if team_person_mismatch(row_a, row_b, words=state.team_words):
                 result.blocked_team.append(tuple(sorted((left, right))))
                 continue
             if pinned_apart(state.identities.get(left, []), state.identities.get(right, [])):
@@ -289,7 +292,7 @@ def _merge_or_queue_x1(state: _State, result: ResolveResult, *, dry_run: bool) -
         if ko_id not in state.by_id or en_id not in state.by_id:
             continue
         pair = (state.by_id[ko_id], state.by_id[en_id])
-        if team_like(pair[0]) or team_like(pair[1]):
+        if team_like(pair[0], words=state.team_words) or team_like(pair[1], words=state.team_words):
             result.blocked_team.append(tuple(sorted((ko_id, en_id))))
             continue
         if pinned_apart(state.identities.get(ko_id, []), state.identities.get(en_id, [])):
@@ -321,5 +324,5 @@ def _record_same_script_blocks(state: _State, result: ResolveResult) -> None:
     for left, right, _script in same_script_pairs(state.artists):
         if left not in state.by_id or right not in state.by_id:
             continue
-        if team_person_mismatch(state.by_id[left], state.by_id[right]):
+        if team_person_mismatch(state.by_id[left], state.by_id[right], words=state.team_words):
             result.blocked_team.append(tuple(sorted((left, right))))

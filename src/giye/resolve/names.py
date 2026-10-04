@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Name keys for matching Korean (Hangul) and Latin-script spellings of the same person.
 
 Part of the identity-resolution stage (rule X1 in docs/RULES.md). Ported from the Giye archive.

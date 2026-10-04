@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Ledger table schemas.
 
 People live in ``artists.csv``. ``ledger_id`` is the internal key (``LED-…``).
@@ -72,11 +72,15 @@ LINKS_FIELDS = [
 
 # Who is on which programme. The key is (ledger_id, frame_code): editions of one
 # programme are activities, not extra membership rows.
+# attach_rule is `first` when this membership created the person row, and A1–A6
+# when the roster row joined someone already there. Empty on rows written
+# before the column existed.
 MEMBERSHIP_FIELDS = [
     "ledger_id",
     "frame_code",
     "source_url",
     "collected_at",
+    "attach_rule",
 ]
 
 # Items no rule can decide. A person keeps their row until a human closes it.

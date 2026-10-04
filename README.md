@@ -22,7 +22,7 @@ pytest
 ruff check src tests
 ```
 
-The optional `llm` extra is the live extraction client. The demo does not need it.
+The optional `llm` extra is the Anthropic client. A local OpenAI-compatible server uses `requests`, which is already installed. The demo does not need either.
 
 ## One-command demo
 
@@ -67,11 +67,15 @@ giye extract --config examples/demo/giye.toml --replay-only
 giye resolve --config examples/demo/giye.toml
 giye normalize --config examples/demo/giye.toml
 giye publish --config examples/demo/giye.toml
+giye explore --config examples/demo/giye.toml
 giye render --config examples/demo/giye.toml
+giye run --config examples/demo/giye.toml
 giye export warc --config examples/demo/giye.toml
 giye export warc --config examples/demo/giye.toml --wacz
 giye export ro-crate --config examples/demo/giye.toml
 ```
+
+`giye explore` writes `<data>/site/rim_order.json`. With both `--assignment` (a JSON object of person id to group) and `--ties` (a JSON list of pairs) it also prints coverage, group count, lift, AUC, and stability. `giye run` runs collect, extract, resolve, normalize, publish, and explore. The ledger command only prints counts, so it is not one of those steps. Extract with no API key reads the replay cache.
 
 `giye export warc` writes the snapshot store as WARC 1.1. Each kept body is a response
 record with a reconstructed status line and `Content-Type`. Original response headers were
@@ -88,15 +92,34 @@ An archive is a `giye.toml` next to its `frames.yml`. Paths in the file are rela
 not to the process. See `examples/demo/giye.toml`.
 
 - `[archive]` — name, `id_prefix` (default `GY`), territory (frame rule F3), languages
-- `[paths]` — `data` (ledger, processed, site) and `frames`
+- `[paths]` — `data` (ledger, processed, site), `frames`, and `field` (the field file: event patterns, team words, tag lists, rim aliases)
 - `[collect]` — contact user agent, delay, timeouts, collector modules, offline fixtures
-- `[extract]` — model, replay cache, CV locations
-- `[resolve]` — local CV directory, extra event patterns for rule E2
-- `[normalize]` — glossary, gazetteer, GeoNames tree, which of V7–V9 to apply
+- `[extract]` — `provider` (`anthropic` or `openai_compatible`), `model`, `base_url`, `api_key_env`, replay cache, CV locations
+- `[resolve]` — local CV directory, extra event patterns for rule E2 (they replace a field-file key of the same code)
+- `[normalize]` — `language_module` (default `giye.normalize.lang.ko_en:KoEn`), glossary, gazetteer, GeoNames tree, which of V7–V9 to apply
 - `[publish]` — `site_url`, `dataset_version` (default `0.2`), `dataset_title`, `citation_author`
 
 The default citation author is `기예 Giye` and the default site origin is `https://giye.org`,
 matching the reference deployment. A demo or another field sets its own.
+
+## Running extraction on a local model
+
+CV text can stay on the machine. Ollama, vLLM, and llama.cpp each serve an OpenAI-compatible
+chat endpoint. `provider = "openai_compatible"` posts the same prompt and CV there, and asks
+for the extraction JSON schema. No API key is required, and the `llm` extra is not installed
+for this path. When the environment variable named by `[extract] api_key_env` is set (default
+`GIYE_LLM_API_KEY`), that value is sent as a Bearer token. The default `[extract] provider`
+is `anthropic`, so an existing config keeps the hosted call.
+
+```bash
+ollama pull qwen2.5:14b
+giye extract --config giye.toml --provider openai_compatible \
+  --base-url http://localhost:11434/v1 --model qwen2.5:14b
+```
+
+`[extract] base_url` defaults to `http://localhost:11434/v1`. `[extract] model` is the id sent
+to that server, or to Anthropic when the provider is `anthropic`. The flags override the file.
+The replay cache key is the CV hash, the prompt hash, and that model string as given.
 
 ## Extending to another field
 
@@ -107,13 +130,15 @@ matching the reference deployment. A demo or another field sets its own.
 2. **Collector.** Subclass `giye.collect.RosterCollector`, set `frame` to that code, and yield
    `Edition`s from `editions()` after `self.fetch(url)`. Point `[collect] collector_modules` at
    the module. `fetch` checks `robots.txt` before every request.
-3. **Language.** Person-name keys, institution glossaries, and the place gazetteer are a
-   language module (`giye.normalize.language`). The Korean–English module is the default.
-   `[normalize] glossary` and `[normalize] gazetteer` replace its tables. `[resolve.event_patterns]`
-   adds the phrases rule E2 looks for in a CV.
+3. **Language and field.** Person-name keys, institution glossaries, and the place gazetteer are a
+   language module selected by `[normalize] language_module`. The Korean–English module is the default.
+   `[normalize] glossary` and `[normalize] gazetteer` replace its tables. Programme phrases, the team
+   prefix, team words, tag lists, and rim aliases live in the field file (`[paths] field`), not in the
+   package. `[resolve.event_patterns]` replaces a phrase for one frame code.
+4. **Website.** `web/` reads the snapshot. Origin, contact address, and the field name in both
+   languages are `VITE_GIYE_*` (see `web/README.md`). Point `GIYE_SITE_DIR` at `<data>/site`.
 
-Identity rules E1–E4, the team guard T1, and the cross-script keys X1 stay as they are. Derived
-values P1–P5 and institution rules V1–V9 read those tables.
+Identity is two steps. A new roster row joins an existing person only under attachment rules A1–A6, and the membership row records the rule. Two existing records merge only on written evidence (E1–E4, X1, with the team guard T1). Derived values P1–P5 and institution rules V1–V9 read the language module and the field file.
 
 ## Data policy
 
@@ -123,14 +148,17 @@ under a data-use agreement. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), "G
 
 ## Status
 
-Ported and tested: collection (F1–F5, RFC 9309 robots.txt), WARC and RO-Crate export, the ledger, CV extraction with a replay cache,
-same-person resolution (E1–E4, T1, X1), normalisation (P1–P5, V1–V9), the site snapshot, and the
-offline demo. Exploration and the web front-end are still planned. Progress is tracked in
+Ported and tested: collection (F1–F5, RFC 9309 robots.txt, attachment A1–A6), WARC and RO-Crate export, the ledger, CV extraction with a replay cache,
+same-person resolution (E1–E4, T1, X1), normalisation (P1–P5, V1–V9), the site snapshot, the entry-generation rim and division scores (`giye explore`), the
+offline demo, and the web front-end (`web/`). Feature embeddings and cluster descriptors (C1, C2) are not ported. Progress is tracked in
 [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Licence
 
-MIT (see [LICENSE](LICENSE)). Reference data used by some rules (e.g. GeoNames) keep their own
+GNU Affero General Public License v3.0 only (AGPL-3.0-only; see [LICENSE](LICENSE)). Anyone may use, study and change
+the code, including to run their own archive; if you run a modified version as a network service, you must offer its users
+the source of that version under the same licence. The archive's data are not part of the software and are not released.
+Reference data used by some rules (e.g. GeoNames) keep their own
 licences and are downloaded separately.
 
 ## Citation

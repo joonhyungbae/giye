@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Command line: ``giye <stage> --config giye.toml`` or ``giye run`` for the whole chain.
 
 Stages that are not yet ported say so and exit with status 2, so scripts fail loudly instead
@@ -25,7 +25,7 @@ def _resolve(args: argparse.Namespace) -> int:
     from giye.config import load
     from giye.resolve.service import resolve
 
-    result = resolve(load(args.config), dry_run=args.dry_run)
+    result = resolve(load(args.config), dry_run=getattr(args, "dry_run", False))
     for item in result.merges:
         print(f"same person: {item.evidence} → keep {item.kept}, merge {item.dropped}")
     for left, right in result.blocked_team:
@@ -58,10 +58,25 @@ def _collect(args: argparse.Namespace) -> int:
 
 
 def _extract(args: argparse.Namespace) -> int:
+    from dataclasses import replace
+
     from giye.config import load
     from giye.extract.service import extract
 
-    result = extract(load(args.config), replay_only=args.replay_only)
+    config = load(args.config)
+    overrides = {}
+    provider = getattr(args, "provider", None)
+    base_url = getattr(args, "base_url", None)
+    model = getattr(args, "model", None)
+    if provider is not None:
+        overrides["extract_provider"] = provider
+    if base_url is not None:
+        overrides["extract_base_url"] = base_url.rstrip("/")
+    if model is not None:
+        overrides["extract_model"] = model
+    if overrides:
+        config = replace(config, **overrides)
+    result = extract(config, replay_only=getattr(args, "replay_only", False))
     print(
         f"registered={result.registered} pull={result.pull or '-'} "
         f"extracted={len(result.extracted)} replay_miss={len(result.replay_misses)} "
@@ -124,7 +139,7 @@ def _normalize(args: argparse.Namespace) -> int:
     from giye.config import load
     from giye.normalize.service import normalize
 
-    result = normalize(load(args.config), venue_name_rules=args.venue_name_rules)
+    result = normalize(load(args.config), venue_name_rules=getattr(args, "venue_name_rules", None))
     print(result.report, end="")
     return 0
 
@@ -151,6 +166,71 @@ def _export(args: argparse.Namespace) -> int:
     return 2
 
 
+def _explore(args: argparse.Namespace) -> int:
+    """Write the rim order. With ``--assignment`` and ``--ties``, also score a division."""
+    import json
+    from pathlib import Path
+
+    from giye.config import load
+    from giye.explore.evaluate import evaluate
+    from giye.explore.rim import build_rim_order, write_rim_order
+
+    config = load(args.config)
+    document = build_rim_order(config)
+    path = write_rim_order(document, config.site)
+    artists = sum(int(family.get("n") or 0) for family in document.get("families") or [])
+    print(f"rim\t{path}\tartists={artists}\tarcs={len(document.get('families') or [])}")
+    assignment_path = getattr(args, "assignment", None)
+    ties_path = getattr(args, "ties", None)
+    if not assignment_path and not ties_path:
+        return 0
+    if not assignment_path or not ties_path:
+        print("giye explore: evaluation needs both --assignment and --ties", file=sys.stderr)
+        return 2
+    assignment = json.loads(Path(assignment_path).read_text(encoding="utf-8"))
+    raw_ties = json.loads(Path(ties_path).read_text(encoding="utf-8"))
+    if not isinstance(assignment, dict) or not isinstance(raw_ties, list):
+        print("giye explore: assignment is an object, ties is a list of pairs", file=sys.stderr)
+        return 2
+    ties = [tuple(pair) for pair in raw_ties]
+    scored = evaluate(assignment, ties)
+    lift = scored.get("lift")
+    auc = scored.get("auc")
+    share = scored["coverage"]["placed_share"]
+    stability = scored["stability"]["ari_mean"]
+    print(
+        f"coverage={share if share is None else f'{share:.3f}'} "
+        f"groups={scored['coverage']['n_groups']} "
+        f"lift={lift if lift is None else f'{lift:.3f}'} "
+        f"auc={auc if auc is None else f'{auc:.3f}'} "
+        f"stability={stability if stability is None else f'{stability:.3f}'}"
+    )
+    return 0
+
+
+def _run(args: argparse.Namespace) -> int:
+    """collect → extract → resolve → normalize → publish → explore.
+
+    ``ledger`` prints counts and does not change the ledger, so it is not a step.
+    Extract uses the config: with no API key it reads the replay cache and does
+    not call a model.
+    """
+    steps = (
+        ("collect", _collect),
+        ("extract", _extract),
+        ("resolve", _resolve),
+        ("normalize", _normalize),
+        ("publish", _publish),
+        ("explore", _explore),
+    )
+    for name, step in steps:
+        print(f"== {name} ==")
+        code = step(args)
+        if code:
+            return code
+    return 0
+
+
 def _name_keys(args: argparse.Namespace) -> int:
     for name in args.names:
         keys = hangul_name_keys(name) or latin_name_keys(name)
@@ -173,11 +253,38 @@ def main(argv: list[str] | None = None) -> int:
                 default=None,
                 help="Ablation: comma-separated V7,V8,V9, or 'none'. Default: the config, else all three.",
             )
+        if stage == "explore":
+            sp.add_argument(
+                "--assignment",
+                default=None,
+                help="JSON object of person id → group. With --ties, score the division.",
+            )
+            sp.add_argument(
+                "--ties",
+                default=None,
+                help="JSON list of [id, id] pairs the division was not built from.",
+            )
         if stage == "extract":
             sp.add_argument(
                 "--replay-only",
                 action="store_true",
                 help="Use the replay cache only. Do not call a model, even when an API key is set.",
+            )
+            sp.add_argument(
+                "--provider",
+                choices=("anthropic", "openai_compatible"),
+                default=None,
+                help="Override [extract] provider. Default is the config, else anthropic.",
+            )
+            sp.add_argument(
+                "--base-url",
+                default=None,
+                help="OpenAI-compatible base URL (default http://localhost:11434/v1). Appends /chat/completions.",
+            )
+            sp.add_argument(
+                "--model",
+                default=None,
+                help="Override [extract] model. The cache key records this string as given.",
             )
     nk = sub.add_parser("name-keys", help="print romanized matching keys for names (rule X1)")
     nk.add_argument("names", nargs="+")
@@ -220,6 +327,10 @@ def main(argv: list[str] | None = None) -> int:
         return _demo(args)
     if args.cmd == "export":
         return _export(args)
+    if args.cmd == "explore":
+        return _explore(args)
+    if args.cmd == "run":
+        return _run(args)
     return _not_ported(args.cmd)
 
 

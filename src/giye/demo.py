@@ -1,5 +1,5 @@
-# SPDX-License-Identifier: MIT
-"""One-command demo: collect → extract (replay) → ledger → resolve → normalize → publish.
+# SPDX-License-Identifier: AGPL-3.0-only
+"""One-command demo: collect → extract (replay) → ledger → resolve → normalize → publish → rim.
 
 The demo config is ``examples/demo/giye.toml``. Output goes to a directory the
 caller chooses (or a fresh temporary directory), never into the fixture tree.
@@ -27,6 +27,7 @@ from pathlib import Path
 
 from giye.collect.base import run_configured
 from giye.config import Config, load
+from giye.explore.rim import build_rim_order, write_rim_order
 from giye.extract.service import extract
 from giye.ledger.io import read_csv
 from giye.ledger.ledger import Ledger
@@ -101,11 +102,12 @@ def run_demo(
         resolve_result = resolve(cfg)
         norm = normalize(cfg)
         published = publish(cfg, now=now)
+        rim_path = write_rim_order(build_rim_order(cfg, now=now), cfg.site)
         pages = render(cfg)
     roster_rows = sum(len(rows) for _frame, rows, _path in roster)
     queue_items = sum(1 for row in Ledger.open(cfg).read("review_queue") if row.get("status") == "open")
     merges = dict(sorted(Counter(item.rule for item in resolve_result.merges).items()))
-    files = sorted({*published.files, *pages})
+    files = sorted({*published.files, *pages, rim_path})
     result = DemoResult(
         output=out,
         site=published.site,

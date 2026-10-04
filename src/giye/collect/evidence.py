@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Keep an original copy of every URL the archive cites.
 
 Ported from ``scripts/archive_evidence.py``. For each cited URL:

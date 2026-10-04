@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Site snapshot: who is published, tombstones, redirects, coverage, citations.
 
 People and URLs are fictitious. The sentences match production build_site_dataset.py
@@ -166,15 +166,30 @@ def test_region_and_medium_keep_the_production_lists():
     assert parse_year("") is None
 
 
-def test_ape_2025_membership_is_the_current_frame():
-    registry = ["APE-CURRENT", "UNFOLD-X"]
-    years = {"APE-CURRENT": "2024-2025", "UNFOLD-X": ""}
-    assert resolve_frame_edition("APE-2025", registry, years) == ("APE-CURRENT", "2025")
-    assert resolve_frame_edition("UNFOLD-X-2022", registry, years) == ("UNFOLD-X", "2022")
+def test_edition_alias_is_declared_in_the_field():
+    from giye.field import EditionAlias, Field, load_field, shipped_field_path
+
+    field = Field(
+        edition_aliases=(
+            EditionAlias("SYNFLD-2025", "SYNFLD-CURRENT", "2025", "the live year is filed under the current frame"),
+        )
+    )
+    registry = ["SYNFLD-CURRENT", "NORTH"]
+    years = {"SYNFLD-CURRENT": "2024-2025", "NORTH": ""}
+    assert resolve_frame_edition("SYNFLD-2025", registry, years, field=field) == ("SYNFLD-CURRENT", "2025")
+    assert resolve_frame_edition("NORTH-2022", registry, years, field=field) == ("NORTH", "2022")
     assert resolve_frame_edition("EXAMPLE-RESIDENCY", ["EXAMPLE-RESIDENCY"], {"EXAMPLE-RESIDENCY": "2019"}) == (
         "EXAMPLE-RESIDENCY",
         "2019",
     )
+    shipped = load_field(shipped_field_path())
+    assert shipped.edition_aliases
+    for alias in shipped.edition_aliases:
+        assert alias.reason
+        assert resolve_frame_edition(alias.membership, [alias.frame], {}, field=shipped) == (
+            alias.frame,
+            alias.edition,
+        )
 
 
 def test_published_page_keeps_source_year_and_coverage(tmp_path: Path):

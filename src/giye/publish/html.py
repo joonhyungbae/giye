@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Plain HTML pages, one per published person, from a site snapshot.
 
 The production site is a TanStack application. This renderer is the demo's

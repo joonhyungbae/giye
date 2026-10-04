@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Content-addressed copies of bytes a collector or the evidence pass fetched.
 
 Ported from ``scripts/collectors/snapshot.py``. Production stored

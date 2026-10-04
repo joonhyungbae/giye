@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Archive configuration (``giye.toml``).
 
 Why: the production archive fixed its paths and field-specific choices in code. Here every
@@ -16,6 +16,7 @@ Example (see examples/demo/giye.toml)::
     [paths]
     data = "data"               # ledger/, raw/, processed/, site/ live under here
     frames = "frames.yml"
+    field = "field.toml"        # programme phrases, team words, tags, ring aliases
 
     [collect]
     user_agent = "GiyeArchive/0.1 (+https://example.org/about)"
@@ -29,8 +30,8 @@ Example (see examples/demo/giye.toml)::
     [collect.offline_roots]
     "https://example.org" = "fixtures"
 
-    # Optional. Frame-code prefix = regex for rule E2. Added to the production
-    # programme patterns; a prefix already in that list replaces its pattern.
+    # Optional. Frame-code prefix = regex for rule E2. Merged with the field file;
+    # a prefix already in that file replaces its pattern.
     [resolve.event_patterns]
     EXAMPLE-RESIDENCY = "example residency"
 
@@ -40,15 +41,24 @@ Example (see examples/demo/giye.toml)::
     # Optional. V7,V8,V9 is the default; "none" is the resolver from before those rules.
     # reference is a directory with geonames/ and countries/ (GeoNames is not shipped).
     # glossary and gazetteer replace the packaged Korean–English tables.
+    # language_module defaults to giye.normalize.lang.ko_en:KoEn.
     [normalize]
     venue_name_rules = ""
     # reference = "reference"
     # glossary = "glossary.yaml"
     # gazetteer = "cities.tsv"
 
-    # CV extraction. model defaults to the production id. temperature is omitted
-    # unless set. cache defaults to <data>/work/cv_cache. sources are optional.
+    # CV extraction. provider defaults to anthropic, so a file that omits it
+    # keeps the hosted call. openai_compatible posts to base_url (Ollama's
+    # OpenAI endpoint unless set otherwise). model defaults to the production
+    # id. temperature is omitted unless set. cache defaults to <data>/work/cv_cache.
+    # api_key_env names the variable whose value is sent as a Bearer token
+    # when it is set. A local server does not need one. The default name is
+    # GIYE_LLM_API_KEY.
     [extract]
+    # provider = "anthropic"
+    # base_url = "http://localhost:11434/v1"
+    # api_key_env = "GIYE_LLM_API_KEY"
     model = "claude-opus-5"
 
     # Site snapshot. site_url is the public origin cited on each page.
@@ -70,6 +80,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from giye.field import Field, load_field
 
 try:  # Python 3.11+
     import tomllib
@@ -106,14 +118,20 @@ class Config:
     languages: tuple[str, ...] = ("en",)
     data: Path = Path("data")
     frames: Path = Path("frames.yml")
+    # Field file (programme phrases, team words, tags, ring aliases). None uses
+    # an empty field that inherits tag lists from the shipped Korean file.
+    field_file: Path | None = None
+    field_config: Field = field(default_factory=Field)
+    # ``module:Class`` with a ``load`` classmethod. Default is Korean–English.
+    language_module: str = "giye.normalize.lang.ko_en:KoEn"
     user_agent: str = "GiyeArchive/0.1 (+https://example.org/contact)"
     min_delay_s: float = 2.0
     timeout_s: float = 45.0
     robots_timeout_s: float = 20.0
     offline_roots: tuple[tuple[str, Path], ...] = ()
     collector_modules: tuple[str, ...] = ()
-    # Extra E2 event patterns (frame-code prefix → regex). Production patterns stay
-    # in giye.resolve.evidence; a key here replaces that prefix's pattern.
+    # Extra E2 event patterns (frame-code prefix → regex). Merged after the field
+    # file; a key here replaces that prefix's pattern.
     event_patterns: tuple[tuple[str, str], ...] = ()
     # Local HTML CVs, read by name. Production reads data/work/cv_extract/<id>.json.
     cv_dir: Path | None = None
@@ -124,10 +142,17 @@ class Config:
     normalize_gazetteer: Path | None = None
     # "" means V7, V8 and V9. "none" applies none of them. A comma-separated subset ablates.
     venue_name_rules: str = ""
-    # CV extraction. The model id is the production default. Temperature is sent
-    # only when the file sets it; production omitted the parameter.
+    # CV extraction. The provider defaults to Anthropic so existing configs and
+    # the demo keep the hosted call. openai_compatible calls a local server
+    # without a key unless the named environment variable is set, in which
+    # case that value is sent as a Bearer token. The model id is the production
+    # default. Temperature is sent only when the file sets it; production
+    # omitted the parameter.
+    extract_provider: str = "anthropic"
+    extract_base_url: str = "http://localhost:11434/v1"
     extract_model: str = "claude-opus-5"
     extract_temperature: float | None = None
+    extract_api_key_env: str = "GIYE_LLM_API_KEY"
     extract_cache: Path | None = None
     extract_allow_team: bool = False
     extract_sources: tuple[ExtractSource, ...] = ()
@@ -220,6 +245,7 @@ def load(path: str | Path) -> Config:
         cv_path = Path(str(cv_dir))
         if not cv_path.is_absolute():
             cv_path = (root / cv_path).resolve()
+    frames = (root / paths.get("frames", "frames.yml")).resolve()
     return Config(
         root=root,
         name=archive["name"],
@@ -227,7 +253,10 @@ def load(path: str | Path) -> Config:
         territory=archive.get("territory", ""),
         languages=tuple(archive.get("languages", ["en"])),
         data=(root / paths.get("data", "data")).resolve(),
-        frames=(root / paths.get("frames", "frames.yml")).resolve(),
+        frames=frames,
+        field_file=_optional_path(root, paths.get("field")),
+        field_config=_field_config(root, paths.get("field"), frames),
+        language_module=_language_module(normalize.get("language_module", "giye.normalize.lang.ko_en:KoEn")),
         user_agent=collect.get("user_agent", "GiyeArchive/0.1 (+https://example.org/contact)"),
         min_delay_s=float(collect.get("min_delay_s", 2.0)),
         timeout_s=float(collect.get("timeout_s", 45.0)),
@@ -240,8 +269,11 @@ def load(path: str | Path) -> Config:
         normalize_glossary=_optional_path(root, normalize.get("glossary")),
         normalize_gazetteer=_optional_path(root, normalize.get("gazetteer")),
         venue_name_rules=_venue_name_rules(normalize.get("venue_name_rules", "")),
+        extract_provider=_extract_provider(extract.get("provider", "anthropic")),
+        extract_base_url=_extract_base_url(extract.get("base_url", "http://localhost:11434/v1")),
         extract_model=_extract_model(extract.get("model", "claude-opus-5")),
         extract_temperature=_extract_temperature(extract),
+        extract_api_key_env=_extract_api_key_env(extract.get("api_key_env", "GIYE_LLM_API_KEY")),
         extract_cache=_optional_path(root, extract.get("cache")),
         extract_allow_team=bool(extract.get("allow_team", False)),
         extract_sources=_extract_sources(extract),
@@ -292,6 +324,26 @@ def _venue_name_rules(value: object) -> str:
     return value
 
 
+def _extract_provider(value: object) -> str:
+    """``anthropic`` is the default. A local server is ``openai_compatible``."""
+    if value is None or value == "":
+        return "anthropic"
+    if not isinstance(value, str):
+        raise TypeError("[extract] provider must be a string")
+    if value not in ("anthropic", "openai_compatible"):
+        raise ValueError("[extract] provider must be 'anthropic' or 'openai_compatible'")
+    return value
+
+
+def _extract_base_url(value: object) -> str:
+    """Ollama's OpenAI-compatible prefix. The provider appends ``/chat/completions``."""
+    if value is None or value == "":
+        return "http://localhost:11434/v1"
+    if not isinstance(value, str):
+        raise TypeError("[extract] base_url must be a string")
+    return value.rstrip("/")
+
+
 def _extract_model(value: object) -> str:
     if value is None or value == "":
         return "claude-opus-5"
@@ -305,6 +357,17 @@ def _extract_temperature(extract: dict) -> float | None:
     if "temperature" not in extract or extract["temperature"] is None:
         return None
     return float(extract["temperature"])
+
+
+def _extract_api_key_env(value: object) -> str:
+    """Name of the environment variable, not the key itself. Default ``GIYE_LLM_API_KEY``."""
+    if value is None or value == "":
+        return "GIYE_LLM_API_KEY"
+    if not isinstance(value, str):
+        raise TypeError("[extract] api_key_env must be a string")
+    if any(char.isspace() for char in value):
+        raise ValueError("[extract] api_key_env must be an environment variable name")
+    return value
 
 
 def _extract_sources(extract: dict) -> tuple[ExtractSource, ...]:
@@ -334,6 +397,30 @@ def _extract_sources(extract: dict) -> tuple[ExtractSource, ...]:
             )
         )
     return tuple(sources)
+
+
+def _field_config(root: Path, value: object, frames: Path | None = None) -> Field:
+    path = _optional_path(root, value)
+    if path is None:
+        return Field()
+    if not path.is_file() and frames is not None:
+        # A copied config often rewrites ``frames`` to an absolute path and
+        # leaves ``field`` as a filename. The field file sits next to frames.yml.
+        beside = frames.parent / path.name
+        if beside.is_file():
+            path = beside
+    if not path.is_file():
+        raise FileNotFoundError(f"field file not found: {path}")
+    return load_field(path)
+
+
+def _language_module(value: object) -> str:
+    """``package.module:Class``. The class provides ``load``."""
+    if value is None or value == "":
+        return "giye.normalize.lang.ko_en:KoEn"
+    if not isinstance(value, str) or ":" not in value or value.startswith(":") or value.endswith(":"):
+        raise ValueError("[normalize] language_module must be 'package.module:Class'")
+    return value
 
 
 def _event_patterns(resolve: dict) -> tuple[tuple[str, str], ...]:

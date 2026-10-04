@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Language module: name keys, glossary, gazetteer, romanisation.
 
 The venue rules (V7–V9) read generic words, place names, and romanisation
@@ -11,6 +11,7 @@ cross-syllable sound change), not those personal-name keys.
 
 from __future__ import annotations
 
+import importlib
 import re
 from pathlib import Path
 from typing import Protocol, runtime_checkable
@@ -135,3 +136,29 @@ class KoreanEnglish:
                 postal_path=data / "us_postal.txt",
             )
         return cls(load_glossary(glossary_path), gazetteer)
+
+
+def load_language(
+    spec: str,
+    *,
+    glossary: Path | None = None,
+    cities: Path | None = None,
+    reference: Path | None = None,
+) -> LanguageModule:
+    """Import ``package.module:Class`` and call its ``load`` classmethod.
+
+    The default spec is ``giye.normalize.lang.ko_en:KoEn``. A test selects a
+    toy module the same way.
+    """
+    module_name, separator, qualname = spec.partition(":")
+    if not separator or not module_name or not qualname:
+        raise ValueError(f"language_module must be 'package.module:Class', got {spec!r}")
+    module = importlib.import_module(module_name)
+    try:
+        cls = getattr(module, qualname)
+    except AttributeError as exc:
+        raise ImportError(f"{spec} has no {qualname}") from exc
+    loaded = cls.load(glossary=glossary, cities=cities, reference=reference)
+    if not isinstance(loaded, LanguageModule):
+        raise TypeError(f"{spec} did not return a LanguageModule")
+    return loaded
