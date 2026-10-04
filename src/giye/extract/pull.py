@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Fetch registered CVs and keep a snapshot only when the text hash changes.
 
 Every request goes through ``giye.collect.Fetcher``, which checks robots.txt

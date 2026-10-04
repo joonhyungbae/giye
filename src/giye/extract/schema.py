@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Activity schema for a CV extraction.
 
 The shape is the production ``Entry`` / ``Extraction`` models

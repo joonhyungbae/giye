@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Write validated CV rows into the ledger.
 
 Ported from ``scripts/apply_cv_extractions.py``. Decisions kept:

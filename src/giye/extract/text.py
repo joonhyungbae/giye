@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """CV URL kinds, text extraction, and the whitespace-free content hash.
 
 Ported from ``scripts/pull_cv_sources.py``. The hash ignores whitespace so a

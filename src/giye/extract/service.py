@@ -1,11 +1,15 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Run CV registration, fetch, cached extraction, and ledger apply.
 
 ``giye extract --config giye.toml`` does the four steps. ``--replay-only``
 never calls a model: a cache miss is reported and that artist is left for a
-later run. With no API key the same replay path is used, so the demo runs
-offline. A content-hash change (or a new prompt digest, or a new model) misses
-the previous cache entry and reads the CV again.
+later run. With no API key the Anthropic path does the same, so the demo runs
+offline. ``openai_compatible`` calls the local server on a miss. When the
+environment variable named by ``[extract] api_key_env`` is set, that value
+is sent as a Bearer token; a local server does not require one. A
+content-hash change (or a new prompt digest, or a new model) misses
+the previous cache entry and reads the CV again. The model string is stored
+as given, so a local id does not reuse a hosted response.
 """
 
 from __future__ import annotations
@@ -13,7 +17,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timezone
 
 from pydantic import ValidationError
 
@@ -22,7 +26,14 @@ from giye.config import Config
 from giye.extract.apply import ApplyStats, apply_extractions
 from giye.extract.paths import resolve_stored
 from giye.extract.prompt import prompt_sha256, prompt_text
-from giye.extract.provider import AnthropicProvider, CacheMiss, ProviderError, ReplayProvider
+from giye.extract.provider import (
+    AnthropicProvider,
+    CacheMiss,
+    OpenAICompatibleProvider,
+    ProviderError,
+    ReplayProvider,
+    write_cache,
+)
 from giye.extract.pull import pull_active
 from giye.extract.registry import register
 from giye.extract.schema import parse_extraction, without_unknown_sources
@@ -50,7 +61,9 @@ def api_key_configured() -> bool:
 
     Production also accepts an ``ant auth login`` profile. Probing that profile
     imports the SDK and can reach the network, so this release treats a missing
-    environment key as "replay the cache".
+    environment key as "replay the cache" for the Anthropic provider only.
+    ``openai_compatible`` does not consult this. Its bearer token, when one
+    is set, comes from the variable named by ``[extract] api_key_env``.
     """
     return bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
 
@@ -150,6 +163,9 @@ def _extract_pending(ledger: Ledger, config: Config, result: ExtractResult, *, r
                 model=model,
                 temperature=config.extract_temperature,
                 replay_only=replay_only,
+                provider=config.extract_provider,
+                base_url=config.extract_base_url,
+                api_key_env=config.extract_api_key_env,
             )
         except ProviderError:
             result.invalid.append(ledger_id)
@@ -226,17 +242,43 @@ def _complete(
     model: str,
     temperature: float | None,
     replay_only: bool,
+    provider: str,
+    base_url: str,
+    api_key_env: str,
 ) -> str | CacheMiss:
     replay = ReplayProvider(cache_dir, content_sha256=content_sha256, prompt_sha256=prompt_sha256, model=model)
     try:
         return replay.complete(prompt, document)
     except CacheMiss as miss:
-        if replay_only or not api_key_configured():
+        # A missing Anthropic key stays on the replay path. A local server does not.
+        if replay_only or (provider == "anthropic" and not api_key_configured()):
             return miss
+    response_mode: str | None = None
     try:
-        return AnthropicProvider(model, temperature).complete(prompt, document)
+        if provider == "openai_compatible":
+            live = OpenAICompatibleProvider(model, base_url, temperature, api_key_env=api_key_env)
+            text = live.complete(prompt, document)
+            response_mode = live.response_mode
+        elif provider == "anthropic":
+            text = AnthropicProvider(model, temperature).complete(prompt, document)
+        else:
+            raise ProviderError(f"unknown provider: {provider}")
     except ProviderError:
         raise
     except Exception as exc:
         # The SDK raises several types (auth, rate limit, connection). Skip this artist.
         raise ProviderError(str(exc)) from exc
+    # The next run replays this text. The key includes the model id as given,
+    # so a local name and a hosted name never share a file. response_mode is
+    # recorded and is not part of that key.
+    write_cache(
+        cache_dir,
+        content_sha256=content_sha256,
+        prompt_sha256=prompt_sha256,
+        model=model,
+        response=text,
+        temperature=temperature,
+        created_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        response_mode=response_mode,
+    )
+    return text

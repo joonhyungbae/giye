@@ -1,22 +1,24 @@
-# SPDX-License-Identifier: MIT
-"""Model providers: a live Anthropic call, or a replay of a stored raw response.
+# SPDX-License-Identifier: AGPL-3.0-only
+"""Model providers: a live Anthropic call, a local OpenAI-compatible server, or a replay.
 
 ``Provider.complete(prompt, document)`` returns the raw response text. Tests
 and the demo use ``ReplayProvider`` only. ``AnthropicProvider`` imports the
-SDK inside ``complete``, so importing this module does not import ``anthropic``
-and does not open a socket.
+SDK inside ``complete``, and ``OpenAICompatibleProvider`` imports ``requests``
+there too, so importing this module does not open a socket.
 
 The replay cache is one JSON file per ``(content sha256, prompt sha256, model)``.
 The file holds the raw response plus ``model``, ``prompt_sha256``,
 ``content_sha256``, ``created_at``, and ``temperature``. Temperature is
 recorded and is not part of the key: production's call does not set it, and
 two temperatures are not two extractions unless the caller changes the model
-or the prompt.
+or the prompt. A local call also stores ``response_mode`` (which structured-
+output shape the server accepted). That field is not part of the key either.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Protocol
@@ -59,8 +61,14 @@ def write_cache(
     temperature: float | None,
     created_at: str,
     synthetic: bool = False,
+    response_mode: str | None = None,
 ) -> Path:
-    """Write one replay record. ``response`` is the raw model text, not a parsed object."""
+    """Write one replay record. ``response`` is the raw model text, not a parsed object.
+
+    ``response_mode`` is set by a local call (``json_schema``, ``json_object``,
+    or ``none``). It is omitted for a hosted or hand-written record. It does
+    not change the cache path.
+    """
     directory.mkdir(parents=True, exist_ok=True)
     payload = {
         "model": model,
@@ -70,6 +78,8 @@ def write_cache(
         "temperature": temperature,
         "response": response,
     }
+    if response_mode is not None:
+        payload["response_mode"] = response_mode
     if synthetic:
         payload["synthetic"] = True
     path = cache_path(directory, content_sha256, prompt_sha256, model)
@@ -150,3 +160,135 @@ class AnthropicProvider:
         if not text:
             raise ProviderError("empty model response")
         return text
+
+
+class OpenAICompatibleProvider:
+    """Chat Completions on an OpenAI-compatible server (Ollama, vLLM, llama.cpp).
+
+    One POST to ``{base_url}/chat/completions``. The system message is the
+    versioned prompt and the user message is the CV text. ``temperature`` is
+    sent only when set, matching ``AnthropicProvider``. The extraction schema
+    is the same object ``AnthropicProvider`` sends, under
+    ``response_format.type = json_schema`` with ``strict`` true.
+
+    A server that rejects that shape answers HTTP 400. One retry asks for
+    ``json_object`` and appends the schema JSON to the system prompt. If that
+    attempt is also HTTP 400, one further retry omits ``response_format`` and
+    sends the original system prompt. Any other HTTP error stops. The mode
+    that returned is ``response_mode``: ``json_schema``, ``json_object``, or
+    ``none``. Redirects are not followed, so the CV text stays on the host
+    named by ``base_url``.
+
+    The bearer token is ``api_key`` when that was passed, otherwise the
+    environment variable named by ``api_key_env`` (default
+    ``GIYE_LLM_API_KEY``). An empty value sends no Authorization header.
+    A local server does not need a key.
+
+    ``requests`` is imported inside ``complete``. Constructing this object
+    does not open a socket, and neither does importing the module.
+    """
+
+    def __init__(
+        self,
+        model: str,
+        base_url: str,
+        temperature: float | None = None,
+        api_key: str | None = None,
+        timeout: float = 600,
+        api_key_env: str = "GIYE_LLM_API_KEY",
+    ) -> None:
+        self.model = model
+        self.base_url = base_url.rstrip("/")
+        self.temperature = temperature
+        self.api_key = api_key
+        self.timeout = timeout
+        self.api_key_env = api_key_env
+        self.response_mode: str | None = None
+
+    def complete(self, prompt: str, document: str) -> str:
+        import requests
+
+        from giye.extract.schema import Extraction
+
+        schema = Extraction.model_json_schema()
+        url = f"{self.base_url}/chat/completions"
+        # json_schema first. json_object carries the schema in the prompt because
+        # that mode has no schema field. The last try is unconstrained text.
+        schema_text = json.dumps(schema, ensure_ascii=False)
+        attempts: tuple[tuple[str, dict | None, str], ...] = (
+            (
+                "json_schema",
+                {
+                    "type": "json_schema",
+                    "json_schema": {"name": "extraction", "schema": schema, "strict": True},
+                },
+                prompt,
+            ),
+            ("json_object", {"type": "json_object"}, prompt + "\n" + schema_text),
+            ("none", None, prompt),
+        )
+        payload: dict = {"model": self.model}
+        if self.temperature is not None:
+            payload["temperature"] = self.temperature
+        headers = self._headers()
+
+        def post(body: dict) -> requests.Response:
+            try:
+                # A redirect would repeat the CV text at another URL. Stay on base_url.
+                return requests.post(
+                    url, json=body, headers=headers, timeout=self.timeout, allow_redirects=False
+                )
+            except requests.RequestException as exc:
+                raise ProviderError(f"connection error: {exc}") from exc
+
+        response: requests.Response | None = None
+        last = len(attempts) - 1
+        for index, (mode, response_format, system) in enumerate(attempts):
+            body = {
+                **payload,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": document},
+                ],
+            }
+            if response_format is not None:
+                body["response_format"] = response_format
+            response = post(body)
+            # Only a 400 is "this response_format is refused". Other errors stop.
+            if response.status_code == 400 and index != last:
+                continue
+            self.response_mode = mode
+            break
+        if response is None:
+            raise ProviderError("empty body")
+        if response.status_code >= 400:
+            detail = response.text[:300].replace("\n", " ").strip()
+            raise ProviderError(f"HTTP {response.status_code}: {detail}")
+        if not response.content:
+            raise ProviderError("empty body")
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise ProviderError(f"HTTP {response.status_code}: response was not JSON") from exc
+        choices = data.get("choices") if isinstance(data, dict) else None
+        if not choices:
+            raise ProviderError("empty content")
+        choice = choices[0]
+        if choice.get("finish_reason") == "length":
+            raise ProviderError("finish_reason is length")
+        message = choice.get("message") if isinstance(choice, dict) else None
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, str) or not content.strip():
+            raise ProviderError("empty content")
+        return content
+
+    def _headers(self) -> dict[str, str]:
+        """Bearer from the constructor, or from the named environment variable."""
+        if self.api_key is not None:
+            token = self.api_key
+        else:
+            token = os.environ.get(self.api_key_env, "")
+        token = token.strip()
+        if not token:
+            return {}
+        return {"Authorization": f"Bearer {token}"}

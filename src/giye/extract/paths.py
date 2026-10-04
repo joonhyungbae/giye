@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Map a stored ``data/...`` path onto the configured data directory.
 
 Production stores ``snapshot_path`` as ``data/raw/cv/...`` (no file suffix) and

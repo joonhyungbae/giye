@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """CV extraction: schema checks, offline replay, content hash, owner and supersession.
 
 People and URLs are fictitious. No test opens a socket: CV pages are read through
@@ -11,7 +11,11 @@ import ast
 import inspect
 import json
 import shutil
+import threading
+from contextlib import contextmanager
+from dataclasses import replace
 from datetime import date
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -22,8 +26,8 @@ from giye.cli import main
 from giye.config import load
 from giye.extract.apply import apply_extractions, same_activity
 from giye.extract.prompt import prompt_sha256
-from giye.extract.provider import write_cache
-from giye.extract.schema import parse_extraction, without_unknown_sources
+from giye.extract.provider import OpenAICompatibleProvider, ProviderError, write_cache
+from giye.extract.schema import Extraction, parse_extraction, without_unknown_sources
 from giye.extract.service import extract
 from giye.extract.text import bundle_fingerprint, extract_text, fingerprint, normalize
 from giye.ledger.ledger import Ledger
@@ -135,6 +139,7 @@ def test_provider_import_is_lazy():
     top_level = [node for node in tree.body if isinstance(node, (ast.Import, ast.ImportFrom))]
     rendered = "\n".join(ast.dump(node) for node in top_level)
     assert "anthropic" not in rendered
+    assert "requests" not in rendered
 
 
 def test_schema_rejects_invented_rows_and_drops_unknown_sources():
@@ -546,3 +551,290 @@ def _write_extract(tmp_path: Path, ledger_id: str, source_ids: list[str], hashes
         "activities": activities,
     }
     (directory / f"{ledger_id}.json").write_text(json.dumps(payload, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+
+
+@contextmanager
+def _chat_server(mode: str, content: str):
+    """POST ``/v1/chat/completions`` on 127.0.0.1. No other host is contacted."""
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            length = int(self.headers.get("Content-Length", "0"))
+            raw = self.rfile.read(length)
+            body = json.loads(raw.decode("utf-8"))
+            self.server.bodies.append(body)  # type: ignore[attr-defined]
+            self.server.authorizations.append(self.headers.get("Authorization"))  # type: ignore[attr-defined]
+            if self.path != "/v1/chat/completions":
+                self._send(404, {"error": "not found"})
+                return
+            fmt = body.get("response_format") if isinstance(body.get("response_format"), dict) else {}
+            if mode == "reject_schema" and fmt.get("type") == "json_schema":
+                self._send(400, {"error": "json_schema is not supported"})
+                return
+            if mode == "reject_format" and "response_format" in body:
+                self._send(400, {"error": "response_format is not supported"})
+                return
+            if mode == "length":
+                self._send(200, {"choices": [{"message": {"content": "{"}, "finish_reason": "length"}]})
+                return
+            if mode == "empty_body":
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            if mode == "empty_content":
+                self._send(200, {"choices": [{"message": {"content": ""}, "finish_reason": "stop"}]})
+                return
+            reply = {"choices": [{"message": {"role": "assistant", "content": content}, "finish_reason": "stop"}]}
+            self._send(200, reply)
+
+        def _send(self, status: int, payload: dict) -> None:
+            encoded = json.dumps(payload).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def log_message(self, fmt: str, *args: object) -> None:
+            return
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    httpd.bodies = []  # type: ignore[attr-defined]
+    httpd.authorizations = []  # type: ignore[attr-defined]
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    host, port = httpd.server_address
+    try:
+        yield f"http://{host}:{port}/v1", httpd
+    finally:
+        httpd.shutdown()
+        thread.join(timeout=5)
+        httpd.server_close()
+
+
+def _offline_cv(tmp_path: Path) -> tuple[Path, Path]:
+    site = tmp_path / "site"
+    site.mkdir()
+    shutil.copy(FIXTURE / "robots.txt", site / "robots.txt")
+    shutil.copy(FIXTURE / "artist.html", site / "artist.html")
+    cache = tmp_path / "cache"
+    source = """
+[[extract.sources]]
+ledger_id = "LED-haneul"
+lang = "en"
+url = "https://cv.example.org/artist.html"
+source_id = "CV-TEST-en"
+"""
+    config = _config(tmp_path, site=site, cache=cache, sources=source)
+    _ledger(tmp_path, config, [_person("LED-haneul", "김하늘", name_en="Haneul Kim")])
+    return config, cache
+
+
+def test_default_provider_is_anthropic(tmp_path: Path):
+    demo = load(DEMO / "giye.toml")
+    assert demo.extract_provider == "anthropic"
+    assert demo.extract_base_url == "http://localhost:11434/v1"
+    assert demo.extract_model == "claude-opus-5"
+    assert demo.extract_api_key_env == "GIYE_LLM_API_KEY"
+    path = tmp_path / "giye.toml"
+    path.write_text(
+        """
+[archive]
+name = "Synthetic provider test"
+[extract]
+provider = "openai_compatible"
+base_url = "http://127.0.0.1:9/v1/"
+model = "example-local"
+api_key_env = "GIYE_TEST_LLM_KEY"
+""",
+        encoding="utf-8",
+    )
+    cfg = load(path)
+    assert cfg.extract_provider == "openai_compatible"
+    assert cfg.extract_base_url == "http://127.0.0.1:9/v1"
+    assert cfg.extract_model == "example-local"
+    assert cfg.extract_api_key_env == "GIYE_TEST_LLM_KEY"
+    path.write_text('[archive]\nname = "Synthetic"\n[extract]\nprovider = "local"\n', encoding="utf-8")
+    with pytest.raises(ValueError, match="openai_compatible"):
+        load(path)
+
+
+def test_local_extraction_round_trip_is_cached_under_the_model_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _block_network(monkeypatch)
+    monkeypatch.delenv("GIYE_LLM_API_KEY", raising=False)
+    config, cache = _offline_cv(tmp_path)
+    content = json.dumps({"activities": [_entry("CV-TEST-en", "Local Signal", 2019)]})
+    with _chat_server("ok", content) as (base, server):
+        assert (
+            main(
+                [
+                    "extract",
+                    "--config",
+                    str(config),
+                    "--provider",
+                    "openai_compatible",
+                    "--base-url",
+                    base,
+                    "--model",
+                    "qwen2.5:14b",
+                ]
+            )
+            == 0
+        )
+        assert len(server.bodies) == 1
+        sent = server.bodies[0]
+        assert sent["model"] == "qwen2.5:14b"
+        assert sent["response_format"] == {
+            "type": "json_schema",
+            "json_schema": {"name": "extraction", "schema": Extraction.model_json_schema(), "strict": True},
+        }
+        assert sent["temperature"] == 0
+        assert server.authorizations == [None]
+        assert sent["messages"][0]["role"] == "system"
+        assert sent["messages"][1]["role"] == "user"
+        assert "CV-TEST-en" in sent["messages"][1]["content"]
+    # Drop the extraction file so the next run must read the cache. The base URL
+    # is closed: a cache miss would be a provider error, not a replay hit.
+    (tmp_path / "data" / "work" / "cv_extract" / "LED-haneul.json").unlink()
+    cached = replace(
+        load(config),
+        extract_provider="openai_compatible",
+        extract_base_url="http://127.0.0.1:9/v1",
+        extract_model="qwen2.5:14b",
+    )
+    second = extract(cached, replay_only=False, today=TODAY)
+    assert second.extracted == ["LED-haneul"]
+    assert second.invalid == []
+    assert second.replay_misses == []
+    rows = Ledger.open(load(config)).read("activities")
+    assert [row["title"] for row in rows] == ["Local Signal"]
+    stored = json.loads((tmp_path / "data" / "work" / "cv_extract" / "LED-haneul.json").read_text(encoding="utf-8"))
+    assert stored["extracted_by"] == "qwen2.5:14b"
+    files = list(cache.glob("*.json"))
+    assert len(files) == 1
+    assert "qwen2.5_14b" in files[0].name
+    assert "claude-opus-5" not in files[0].name
+    payload = json.loads(files[0].read_text(encoding="utf-8"))
+    assert payload["model"] == "qwen2.5:14b"
+    assert payload["response_mode"] == "json_schema"
+    assert json.loads(payload["response"])["activities"][0]["title"] == "Local Signal"
+
+
+def test_local_provider_sends_the_extraction_schema():
+    content = json.dumps({"activities": []})
+    with _chat_server("ok", content) as (base, server):
+        provider = OpenAICompatibleProvider("example-local", base, timeout=5, api_key="")
+        text = provider.complete("prompt", "document")
+    assert text == content
+    assert provider.response_mode == "json_schema"
+    assert len(server.bodies) == 1
+    assert server.bodies[0]["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {"name": "extraction", "schema": Extraction.model_json_schema(), "strict": True},
+    }
+    assert server.bodies[0]["messages"][0] == {"role": "system", "content": "prompt"}
+    assert server.authorizations == [None]
+
+
+def test_local_provider_falls_back_to_json_object_when_schema_is_rejected():
+    content = json.dumps({"activities": []})
+    schema_text = json.dumps(Extraction.model_json_schema(), ensure_ascii=False)
+    with _chat_server("reject_schema", content) as (base, server):
+        provider = OpenAICompatibleProvider("example-local", base, timeout=5, api_key="")
+        text = provider.complete("prompt", "document")
+    assert text == content
+    assert provider.response_mode == "json_object"
+    assert len(server.bodies) == 2
+    assert server.bodies[0]["response_format"]["type"] == "json_schema"
+    assert server.bodies[1]["response_format"] == {"type": "json_object"}
+    assert server.bodies[1]["messages"][0] == {"role": "system", "content": "prompt\n" + schema_text}
+    assert server.bodies[1]["messages"][1] == {"role": "user", "content": "document"}
+
+
+def test_local_provider_retries_when_response_format_is_rejected():
+    content = json.dumps({"activities": []})
+    schema_text = json.dumps(Extraction.model_json_schema(), ensure_ascii=False)
+    with _chat_server("reject_format", content) as (base, server):
+        provider = OpenAICompatibleProvider("example-local", base, timeout=5, api_key="")
+        text = provider.complete("prompt", "document")
+    assert text == content
+    assert provider.response_mode == "none"
+    assert len(server.bodies) == 3
+    assert server.bodies[0]["response_format"]["type"] == "json_schema"
+    assert server.bodies[1]["response_format"] == {"type": "json_object"}
+    assert server.bodies[1]["messages"][0]["content"] == "prompt\n" + schema_text
+    assert "response_format" not in server.bodies[2]
+    assert "temperature" not in server.bodies[0]
+    assert server.bodies[0]["messages"][0] == {"role": "system", "content": "prompt"}
+    assert server.bodies[2]["messages"][0] == {"role": "system", "content": "prompt"}
+    assert server.bodies[2]["messages"][1] == {"role": "user", "content": "document"}
+
+
+def test_local_provider_sends_a_bearer_token(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("GIYE_LLM_API_KEY", raising=False)
+    monkeypatch.setenv("GIYE_TEST_LLM_KEY", "synthetic-token")
+    content = json.dumps({"activities": []})
+    with _chat_server("ok", content) as (base, server):
+        OpenAICompatibleProvider("example-local", base, timeout=5, api_key="explicit-token").complete("prompt", "document")
+    assert server.authorizations == ["Bearer explicit-token"]
+    with _chat_server("ok", content) as (base, server):
+        OpenAICompatibleProvider("example-local", base, timeout=5, api_key_env="GIYE_TEST_LLM_KEY").complete(
+            "prompt", "document"
+        )
+    assert server.authorizations == ["Bearer synthetic-token"]
+
+
+def test_local_extract_sends_bearer_from_the_configured_variable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _block_network(monkeypatch)
+    monkeypatch.delenv("GIYE_LLM_API_KEY", raising=False)
+    monkeypatch.setenv("GIYE_TEST_LLM_KEY", "synthetic-token")
+    config, _cache = _offline_cv(tmp_path)
+    text = (tmp_path / "giye.toml").read_text(encoding="utf-8")
+    text = text.replace("temperature = 0\n", 'temperature = 0\napi_key_env = "GIYE_TEST_LLM_KEY"\n')
+    (tmp_path / "giye.toml").write_text(text, encoding="utf-8")
+    content = json.dumps({"activities": [_entry("CV-TEST-en", "Local Signal", 2019)]})
+    with _chat_server("ok", content) as (base, server):
+        assert (
+            main(
+                [
+                    "extract",
+                    "--config",
+                    str(config),
+                    "--provider",
+                    "openai_compatible",
+                    "--base-url",
+                    base,
+                    "--model",
+                    "example-local",
+                ]
+            )
+            == 0
+        )
+    assert server.authorizations == ["Bearer synthetic-token"]
+
+
+def test_local_provider_rejects_length_and_an_empty_body():
+    with _chat_server("length", "") as (base, _server), pytest.raises(ProviderError, match="length"):
+        OpenAICompatibleProvider("example-local", base, timeout=5).complete("prompt", "document")
+    with _chat_server("empty_body", "") as (base, _server), pytest.raises(ProviderError, match="empty body"):
+        OpenAICompatibleProvider("example-local", base, timeout=5).complete("prompt", "document")
+    with _chat_server("empty_content", "") as (base, _server), pytest.raises(ProviderError, match="empty content"):
+        OpenAICompatibleProvider("example-local", base, timeout=5).complete("prompt", "document")
+    with pytest.raises(ProviderError, match="connection error"):
+        OpenAICompatibleProvider("example-local", "http://127.0.0.1:9/v1", timeout=2).complete("prompt", "document")
+
+
+def test_default_config_does_not_call_a_local_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _block_network(monkeypatch)
+    config, _cache = _offline_cv(tmp_path)
+    with _chat_server("ok", json.dumps({"activities": []})) as (base, server):
+        # The file selects Anthropic. Pointing base_url at the server must not be enough to call it.
+        text = (tmp_path / "giye.toml").read_text(encoding="utf-8")
+        text = text.replace('model = "claude-opus-5"', f'model = "claude-opus-5"\nbase_url = "{base}"')
+        (tmp_path / "giye.toml").write_text(text, encoding="utf-8")
+        result = extract(load(config), replay_only=False, today=TODAY)
+    assert result.replay_misses == ["LED-haneul"]
+    assert server.bodies == []
+    assert load(config).extract_provider == "anthropic"

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """CV source registry.
 
 Production ``pull_cv_sources.register`` appends one row per location. The same

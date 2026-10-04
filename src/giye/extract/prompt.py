@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """The versioned CV extraction prompt.
 
 ``prompts/cv_extract_v1.txt`` is the production system prompt

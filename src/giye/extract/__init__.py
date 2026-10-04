@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-only
 """Stage 2: CV registry, robots-checked fetch, schema-validated extraction, replay cache."""
 
 from giye.extract.apply import apply_extractions
