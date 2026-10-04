@@ -163,8 +163,9 @@ script does the same so the front-end always has the files.
 
 ## Not in this snapshot
 
-- `rim_order.json` (home-page seriation in `build_rim_order.py`). It is input to the
-  web visualisation and is left with that front-end.
+- `rim_order.json` (home-page entry-generation order in `build_rim_order.py`:
+  five-year bins from the earliest roster year). It is input to the web
+  visualisation and is left with that front-end.
 - The embedding flight file. `build_site_dataset.py` calls it at the end; stage 6 is not ported, so publish does not.
 
 ## Static pages

@@ -125,7 +125,7 @@ A published activity and a published person each keep `source_url` and `collecte
 
 `giye render` writes one plain HTML page per person (and a tombstone or redirect page per other id) so the snapshot can be read without the web front-end. `giye demo` runs collect, extract in replay mode, resolve, normalize, publish, and render on `examples/demo/` into a separate output directory. It does not open a network connection. Ledger ids in that run are a fixed sequence so the snapshot can be compared with `tests/golden/demo_snapshot.json`. The summary prints merges per rule (`E1`, `E2`, …, `X1+E2`), `blocked: T1`, open queue items, and institution merges `V7`, `V8`, `V9`. V7a–d rewrite a venue key before a join is logged, so the V7 count also includes a qualifier or an exhibition title that shares an entity with another spelling. What the synthetic field is arranged to show is listed in `examples/demo/EXPECTED.md`.
 
-The home-page ring (`rim_order.json`) and the embedding flight file are not built. Both feed the web front-end, which is still planned.
+The home-page ring (`rim_order.json`; production orders it by entry generation) and the embedding flight file are not built. Both feed the web front-end, which is still planned.
 
 ## Data model (ledger)
 
