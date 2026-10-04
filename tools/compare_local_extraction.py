@@ -10,7 +10,7 @@ Why: a local model is the path when CV text must not leave the machine. The
 numbers say how often that model repeats the cached rows on the fictitious
 demo field, and how often it names a year or a venue the CV does not contain.
 
-How to run: from ``giye-public``, with this package importable and a server
+How to run: from the repository root, with this package importable and a server
 such as Ollama already listening. The interpreter is ``python3`` (3.10 or
 newer). No extra dependency: the call uses ``requests``, which Giye already
 requires.
