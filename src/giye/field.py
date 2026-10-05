@@ -5,7 +5,8 @@ Programme names, event phrases, team-word lists, tag vocabularies, and the
 ring's edition aliases live in the archive's field file (the path in
 ``[paths] field``). The Korean media-art field file is shipped as package data
 at ``giye/fields/korean-media-art/field.toml`` so a regular (non-editable)
-install finds it too. The package does not compile one field's
+install finds it too. ``[extract] prompt`` names the field's CV extraction
+prompt, relative to the field file; without it the packaged default is used. The package does not compile one field's
 programmes into the rules. An empty tag list inherits the shipped Korean
 media-art vocabulary so a small demo file can omit it; ``[tags] inherit = false``
 keeps the lists empty. Event patterns, frame families, and ring aliases are
@@ -79,6 +80,8 @@ class Field:
     medium_min_rows: int = 2
     edition_aliases: tuple[EditionAlias, ...] = ()
     rim_families: tuple[RimFamily, ...] = ()
+    # CV extraction prompt file. None is the packaged default (giye/extract/prompts/).
+    extract_prompt: Path | None = None
 
     def resolved(self) -> Field:
         """Copy tag lists from the shipped field when this file left them empty.
@@ -145,6 +148,11 @@ def load_field(path: str | Path) -> Field:
     rim = raw.get("rim") or {}
     if not isinstance(rim, dict):
         raise TypeError(f"{path}: [rim] must be a table")
+    extract = _table(raw.get("extract") or {}, f"{path}: [extract]")
+    prompt = _text(extract.get("prompt", ""), f"{path}: [extract] prompt")
+    prompt_file = (path.parent / prompt).resolve() if prompt else None
+    if prompt_file is not None and not prompt_file.is_file():
+        raise FileNotFoundError(f"{path}: [extract] prompt not found: {prompt_file}")
     return Field(
         source=path.resolve(),
         event_patterns=_pairs(resolve.get("events") or {}, f"{path}: [resolve.events]"),
@@ -162,6 +170,7 @@ def load_field(path: str | Path) -> Field:
         medium_min_rows=_positive_int(tags.get("medium_min_rows", 2), f"{path}: [tags] medium_min_rows"),
         edition_aliases=_aliases(rim.get("alias") or [], f"{path}: [[rim.alias]]"),
         rim_families=_families(rim.get("family") or [], f"{path}: [[rim.family]]"),
+        extract_prompt=prompt_file,
     )
 
 

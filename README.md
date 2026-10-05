@@ -86,7 +86,7 @@ An archive is a `giye.toml` next to its `frames.yml`. Paths in the file are rela
 not to the process. See `examples/demo/giye.toml`.
 
 - `[archive]` — name, `id_prefix` (default `GY`), territory (frame rule F3), languages
-- `[paths]` — `data` (ledger, processed, site), `frames`, and `field` (the field file: event patterns, team words, tag lists, rim aliases)
+- `[paths]` — `data` (ledger, processed, site), `frames`, and `field` (the field file: event patterns, team words, tag lists, rim aliases, and optionally the CV extraction prompt as `[extract] prompt`)
 - `[collect]` — contact user agent, delay, timeouts, collector modules, offline fixtures
 - `[extract]` — `provider` (`anthropic` or `openai_compatible`), `model`, `base_url`, `api_key_env`, `chunk_chars`, `reasoning_effort`, replay cache, CV locations
 - `[resolve]` — local CV directory, extra event patterns for rule E2 (they replace a field-file key of the same code)

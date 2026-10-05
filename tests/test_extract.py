@@ -1122,3 +1122,52 @@ source_id = "CV-ORCH-ko"
     result = extract(load(config), replay_only=True, today=TODAY)
     assert result.registered == 0
     assert result.skipped_team == ["LED-orch (team_name)"]
+
+
+def test_field_file_selects_the_extraction_prompt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """A field's own prompt is sent and keys the replay cache; the default prompt's record is not used."""
+    _block_network(monkeypatch)
+    site = tmp_path / "site"
+    site.mkdir()
+    shutil.copy(FIXTURE / "robots.txt", site / "robots.txt")
+    page = site / "artist.html"
+    shutil.copy(FIXTURE / "artist.html", page)
+    cache = tmp_path / "cache"
+    source = """
+[[extract.sources]]
+ledger_id = "LED-haneul"
+lang = "en"
+url = "https://cv.example.org/artist.html"
+source_id = "CV-TEST-en"
+"""
+    config = _config(tmp_path, site=site, cache=cache, sources=source)
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("Turn a dance artist's CV into dated rows.\n", encoding="utf-8")
+    field = tmp_path / "field.toml"
+    field.write_text('[extract]\nprompt = "prompt.txt"\n', encoding="utf-8")
+    text = config.read_text(encoding="utf-8").replace("[paths]\n", f'[paths]\nfield = "{field.as_posix()}"\n', 1)
+    config.write_text(text, encoding="utf-8")
+    cfg = load(config)
+    assert cfg.field_config.extract_prompt == prompt.resolve()
+    assert prompt_sha256(prompt) != prompt_sha256()
+    _ledger(tmp_path, config, [_person("LED-haneul", "김하늘", name_en="Haneul Kim")])
+    # A record made with the default prompt is not a replay for the field's prompt.
+    _cache_response(cache, page, "CV-TEST-en", [_entry("CV-TEST-en", "Default Prompt", 2019)])
+    missed = extract(load(config), replay_only=True, today=TODAY)
+    assert missed.replay_misses == ["LED-haneul"]
+    digest = bundle_fingerprint([("CV-TEST-en", normalize(extract_text(page.read_bytes(), "html")))])
+    write_cache(
+        cache,
+        content_sha256=digest,
+        prompt_sha256=prompt_sha256(prompt),
+        model=MODEL,
+        response=json.dumps({"activities": [_entry("CV-TEST-en", "Field Prompt", 2019)]}),
+        temperature=0,
+        created_at="2026-01-15T00:00:00Z",
+        synthetic=True,
+    )
+    hit = extract(load(config), replay_only=True, today=TODAY)
+    assert hit.extracted == ["LED-haneul"]
+    assert [row["title"] for row in Ledger.open(load(config)).read("activities")] == ["Field Prompt"]
+    stored = json.loads((tmp_path / "data" / "work" / "cv_extract" / "LED-haneul.json").read_text(encoding="utf-8"))
+    assert stored["prompt_sha256"] == prompt_sha256(prompt)

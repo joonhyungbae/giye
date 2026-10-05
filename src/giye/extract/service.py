@@ -146,8 +146,10 @@ def _extract_pending(ledger: Ledger, config: Config, result: ExtractResult, *, r
             continue
         by_artist.setdefault(source["ledger_id"], []).append(source)
 
-    prompt = prompt_text()
-    prompt_sha = prompt_sha256()
+    # The field file may name its own prompt; None is the packaged default.
+    prompt_file = config.field_config.extract_prompt
+    prompt = prompt_text(prompt_file)
+    prompt_sha = prompt_sha256(prompt_file)
     model = config.extract_model
     chunk_chars = config.extract_chunk_chars
     extract_dir = config.work / "cv_extract"

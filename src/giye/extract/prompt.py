@@ -2,9 +2,11 @@
 """The versioned CV extraction prompt.
 
 ``prompts/cv_extract_v1.txt`` is the production system prompt
-(``extract_cvs_llm.py``, ``SYSTEM``). The SHA-256 of the file bytes is stored
-on each cache record and on each extraction file, so a changed prompt is a
-different cache key and a reason to read the CV again.
+(``extract_cvs_llm.py``, ``SYSTEM``) and the default. A field file can name its
+own prompt file (``[extract] prompt``), because the prompt describes the field.
+The SHA-256 of the file bytes is stored on each cache record and on each
+extraction file, so a changed or different prompt is a different cache key and
+a reason to read the CV again; replay finds the record made with the same prompt.
 """
 
 from __future__ import annotations
@@ -15,19 +17,21 @@ from pathlib import Path
 PROMPT_FILE = "cv_extract_v1.txt"
 
 
-def prompt_path() -> Path:
-    """Path of the packaged prompt. It ships with the code, not with an archive."""
+def prompt_path(path: Path | None = None) -> Path:
+    """``path`` (a field file's prompt) when given, else the packaged default prompt."""
+    if path is not None:
+        return Path(path)
     return Path(__file__).resolve().parent / "prompts" / PROMPT_FILE
 
 
-def prompt_bytes() -> bytes:
-    return prompt_path().read_bytes()
+def prompt_bytes(path: Path | None = None) -> bytes:
+    return prompt_path(path).read_bytes()
 
 
-def prompt_text() -> str:
-    return prompt_bytes().decode("utf-8")
+def prompt_text(path: Path | None = None) -> str:
+    return prompt_bytes(path).decode("utf-8")
 
 
-def prompt_sha256() -> str:
+def prompt_sha256(path: Path | None = None) -> str:
     """SHA-256 of the prompt file bytes, including the trailing newline."""
-    return hashlib.sha256(prompt_bytes()).hexdigest()
+    return hashlib.sha256(prompt_bytes(path)).hexdigest()
