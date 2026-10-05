@@ -13,8 +13,13 @@
 
    Usage (from web/, after `bun run build`):
      node scripts/perf/harness.mjs --out /tmp/run-a [--det] [--count] [--gpu]
-          [--output .output] [--site ../data/site] [--port 4710]
-   --count wraps the 2D API (adds overhead: use a separate run without it for timings).
+          [--renderer 2d|gl] [--output .output] [--site ../data/site] [--port 4710]
+   --count wraps the 2D API and the WebGL draw calls (adds overhead: use a separate run without
+           it for timings).
+   --ganesh runs Canvas 2D on Skia's GPU backend over SwiftShader (closer to Chrome on Windows).
+   --until T stops the timeline T ms after the first frame (a quick partial run).
+   --renderer opens the page with ?renderer=2d or ?renderer=gl (glRenderer.ts); the renderer the
+           page actually used is printed and stored in summary.json.
    --det   virtual clock + screenshots into <out>/shots/*.png (fonts from the network are
            blocked so text renders the same in every run). */
 import { spawn } from "node:child_process";
@@ -38,6 +43,14 @@ const DET = flag("--det");
 const COUNT = flag("--count");
 const GPU = flag("--gpu");
 const PROFILE = flag("--profile");
+const RENDERER = opt("--renderer", "");
+/* --ganesh: no GPU here, but Canvas 2D can still run on Skia's GPU backend (Ganesh) over ANGLE's
+   software Vulkan/GL (SwiftShader), as it does on Windows over D3D11. Without it, headless Chrome
+   rasterizes Canvas 2D on the CPU, which rounds faint alphas differently. */
+const GANESH = flag("--ganesh");
+const GANESH_FLAGS = ["--use-angle=swiftshader", "--enable-gpu-rasterization", "--ignore-gpu-blocklist",
+  "--enable-accelerated-2d-canvas"];
+const HOME = RENDERER ? `/?renderer=${RENDERER}` : "/";
 const W = 1600;
 const H = 1000;
 const DPR = Number(opt("--dpr", "1.5"));
@@ -74,7 +87,7 @@ const TIMELINE = flag("--load-only") ? [{ t: 3000, phase: "end" }] : [
   { t: 40000, phase: "stage0", key: "0" },
   ...[1000, 3000, 5500].map((d) => ({ t: 40000 + d, shot: `back-${d}` })),
   { t: 46000, phase: "end" },
-];
+].filter((ev) => ev.t <= Number(opt("--until", "Infinity")));
 
 /* ---- server ---- */
 const server = spawn("node", [join(OUTPUT, "server/index.mjs")], {
@@ -98,7 +111,9 @@ const chromeArgs = [
   "--disable-background-timer-throttling",
   "--disable-renderer-backgrounding",
   "--disable-backgrounding-occluded-windows",
-  ...(GPU ? [] : ["--disable-gpu"]),
+  ...(GPU ? [] : GANESH ? GANESH_FLAGS : ["--disable-gpu"]),
+  // WebGL on the software rasterizer (SwiftShader) when there is no GPU
+  "--enable-unsafe-swiftshader",
   "about:blank",
 ];
 const chrome = spawn("google-chrome", chromeArgs, { stdio: ["ignore", "ignore", "pipe"] });
@@ -202,7 +217,7 @@ async function main() {
   if (flag("--warm-home")) {
     // a repeat visit: the home page has been opened once in this profile
     l = loaded();
-    await cdp.send("Page.navigate", { url: `http://127.0.0.1:${PORT}/` });
+    await cdp.send("Page.navigate", { url: `http://127.0.0.1:${PORT}${HOME}` });
     await l;
     for (let i = 0; i < 600 && !(await cdp.eval("window.__firstDrawV >= 0")); i++) await sleep(50);
     await sleep(1000);
@@ -214,7 +229,7 @@ async function main() {
   }
   const tNav = Date.now();
   l = loaded();
-  await cdp.send("Page.navigate", { url: `http://127.0.0.1:${PORT}/` });
+  await cdp.send("Page.navigate", { url: `http://127.0.0.1:${PORT}${HOME}` });
   await l;
   // wait for the first drawn frame
   for (;;) {
@@ -225,6 +240,8 @@ async function main() {
   }
   const loadMs = Date.now() - tNav;
   console.error(`first canvas frame ${loadMs} ms after navigation`);
+  const renderer = await cdp.eval("window.__homeRenderer || 'unknown'");
+  console.error(`renderer: ${renderer}`);
   if (DET) {
     await cdp.eval(`(() => { const s = document.createElement('style');
       s.textContent = '*{visibility:hidden!important;caret-color:transparent!important} canvas{visibility:visible!important}';
@@ -239,7 +256,7 @@ async function main() {
       for (let i = 0; ; i++) {
         const ok = await cdp.eval(`window.__held && performance.now() >= ${firstV + ev.t}`);
         if (ok) break;
-        if (i > 20000) throw new Error(`hold at ${ev.t} never reached`);
+        if (i > 400000) throw new Error(`hold at ${ev.t} never reached`);
         await sleep(5);
       }
     } else {
@@ -278,8 +295,8 @@ async function main() {
   }
   const frames = await cdp.eval("window.__frames");
   const longTasks = await cdp.eval("window.__longTasks");
-  writeFileSync(join(OUT, "frames.json"), JSON.stringify({ loadMs, firstV, frames, longTasks }));
-  summarise(frames, longTasks, firstV, loadMs);
+  writeFileSync(join(OUT, "frames.json"), JSON.stringify({ loadMs, firstV, renderer, frames, longTasks }));
+  summarise(frames, longTasks, firstV, loadMs, renderer);
 }
 
 function pct(a, p) {
@@ -288,7 +305,7 @@ function pct(a, p) {
   return s[Math.min(s.length - 1, Math.floor(p * s.length))];
 }
 
-function summarise(frames, longTasks, firstV, loadMs) {
+function summarise(frames, longTasks, firstV, loadMs, renderer) {
   const phases = [...new Set(frames.map((f) => f.phase))];
   const rows = [];
   for (const ph of phases) {
@@ -324,8 +341,8 @@ function summarise(frames, longTasks, firstV, loadMs) {
         : "",
     });
   }
-  writeFileSync(join(OUT, "summary.json"), JSON.stringify({ loadMs, rows }, null, 1));
-  console.log(`load→first frame ${loadMs} ms`);
+  writeFileSync(join(OUT, "summary.json"), JSON.stringify({ loadMs, renderer, rows }, null, 1));
+  console.log(`renderer ${renderer}, load→first frame ${loadMs} ms`);
   console.table(rows.map(({ top, ...r }) => r));
   if (COUNT) for (const r of rows) console.log(`${r.phase}: ${r.top}`);
 }

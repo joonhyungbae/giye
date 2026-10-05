@@ -4,8 +4,9 @@
 What: reads <run>/frames.json written by harness.mjs --count and prints, per phase, the mean
 per painted frame and per animation frame of draw calls (stroke, fill, fillText, strokeText,
 drawImage, fillRect, strokeRect, clearRect), all context calls (draws, path commands and state
-sets on the context) and Path2D building commands, plus the worst frame. With two runs it
-prints them side by side with the ratio a/b.
+sets on the context) and Path2D building commands, the WebGL draw calls and all counted WebGL
+calls (draws, uploads, clears), plus the worst frame. With two runs it prints them side by side
+with the ratio a/b.
 Why: the stutter on Chrome/Ganesh tracks the number of draw calls per frame.
 Usage: python3 scripts/perf/report.py <run-a> [<run-b>]
 """
@@ -28,10 +29,12 @@ def phases(run: str):
         for f in fs:
             c = f.get("calls") or {}
             draws = sum(v for k, v in c.items() if k in DRAWS)
-            ctx = sum(v for k, v in c.items() if not k.startswith("path:"))
+            ctx = sum(v for k, v in c.items() if not k.startswith(("path:", "gl:")))
             path = sum(v for k, v in c.items() if k.startswith("path:"))
-            rows.append((draws, ctx, path, f["total"] > 0))
-        painted = [r for r in rows if r[3]] or [(0, 0, 0, False)]
+            gld = sum(v for k, v in c.items() if k.startswith("gl:draw"))
+            glc = sum(v for k, v in c.items() if k.startswith("gl:"))
+            rows.append((draws, ctx, path, f["total"] > 0, gld, glc))
+        painted = [r for r in rows if r[3]] or [(0, 0, 0, False, 0, 0)]
         n, p = len(rows), len(painted)
         out[ph] = {
             "frames": n,
@@ -39,10 +42,13 @@ def phases(run: str):
             "draws/painted": sum(r[0] for r in painted) / p,
             "ctx/painted": sum(r[1] for r in painted) / p,
             "path/painted": sum(r[2] for r in painted) / p,
+            "gl draws/painted": sum(r[4] for r in painted) / p,
+            "gl calls/painted": sum(r[5] for r in painted) / p,
             "draws/frame": sum(r[0] for r in rows) / n,
             "ctx/frame": sum(r[1] for r in rows) / n,
             "max draws": max(r[0] for r in rows),
             "max ctx": max(r[1] for r in rows),
+            "max gl draws": max(r[4] for r in rows),
         }
     return out
 
@@ -50,7 +56,8 @@ def phases(run: str):
 def main() -> int:
     a = phases(sys.argv[1])
     b = phases(sys.argv[2]) if len(sys.argv) > 2 else None
-    keys = ["painted", "draws/painted", "ctx/painted", "path/painted", "draws/frame", "ctx/frame", "max draws", "max ctx"]
+    keys = ["painted", "draws/painted", "ctx/painted", "path/painted", "gl draws/painted",
+            "gl calls/painted", "draws/frame", "ctx/frame", "max draws", "max ctx", "max gl draws"]
     for ph, ra in a.items():
         print(f"== {ph} ({ra['frames']} frames)")
         for k in keys:

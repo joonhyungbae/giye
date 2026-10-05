@@ -2,7 +2,8 @@
 /* Injected before any page script by scripts/perf/harness.mjs (measurement only, never shipped).
 
    window.__perfCfg (set by the harness just before this file) chooses what is wrapped:
-     count: wrap the Canvas 2D API and count calls per animation frame
+     count: wrap the Canvas 2D API and the WebGL2 draw/upload calls and count them per animation
+            frame (WebGL calls are counted as "gl:<name>")
      det:   deterministic clock. performance.now and the rAF timestamp advance exactly
             1000/60 ms per animation frame, Math.random is seeded, and the clock can be held
             at a target time (window.__holdAt) so the harness can screenshot that exact frame.
@@ -81,6 +82,21 @@
             d.set.call(this, v);
           },
         });
+      }
+    }
+    // WebGL2: draw calls and uploads (the home canvas's GL layers, glRenderer.ts)
+    const GLP = window.WebGL2RenderingContext && window.WebGL2RenderingContext.prototype;
+    if (GLP) {
+      for (const m of [
+        "drawArrays", "drawArraysInstanced", "drawElements", "drawElementsInstanced",
+        "texSubImage2D", "texImage2D", "bufferData", "bufferSubData", "clear",
+      ]) {
+        const orig = GLP[m];
+        if (typeof orig !== "function") continue;
+        GLP[m] = function (...args) {
+          bump("gl:" + m);
+          return orig.apply(this, args);
+        };
       }
     }
     // Path2D building is CPU work but not a context call; counted separately.
