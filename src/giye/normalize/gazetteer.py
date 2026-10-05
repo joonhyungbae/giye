@@ -23,6 +23,9 @@ city is the fragment that is only the city (``…, Yongin``).
 
 The packaged table is a compact gazetteer. ``from_geonames`` reads the
 production layout (GeoNames cities15000 + admin1, CC BY 4.0, not shipped).
+A country extract in the same directory (``KR.txt``, or ``allCountries.txt``)
+supplies the places cities15000 drops: administrative divisions and
+neighbourhoods. See ``OMITTED_PLACE_CODES``.
 """
 
 from __future__ import annotations
@@ -90,6 +93,13 @@ COUNTRY_ALPHA2_CODE = re.compile(r"^([A-Z]{2})\.?$")
 COUNTRY_ALPHA3_CODE = re.compile(r"^([A-Z]{3})\.?$")
 REGIONAL_ABBREVIATION = re.compile(r"^[A-Z]{2,3}\.?$")
 CITY_SUFFIX = re.compile(r"-(?:si|gun|gu|do|eup)$", re.IGNORECASE)
+# cities15000 is populated places with population over 15,000 (and capitals).
+# A city, county, or district is often an administrative division (ADM2) whose
+# Hangul name is not on the populated-place row. A neighbourhood is an ADM3
+# (동·읍·면) or a PPLX, and GeoNames often records its population as 0, so the
+# 15,000 cutoff drops it (명동). Those codes are read from a country extract.
+# They fill names the city file does not already resolve; they do not outrank it.
+OMITTED_PLACE_CODES = frozenset({"ADM2", "ADM3", "PPLX"})
 # (population, country, admin1, canonical English name)
 City = tuple[int, str, str, str]
 
@@ -120,11 +130,37 @@ def _latin_name(text: str) -> bool:
     return bool(letters) and all("LATIN" in unicodedata.name(char, "") for char in letters)
 
 
-def _add_city(cities: dict[str, City], name: str, record: City) -> None:
+def _name_variants(name: str) -> set[str]:
+    """Surface forms of one gazetteer name.
+
+    A Latin administrative suffix (-si, -gun, -gu, -do, -eup) is optional.
+    A hyphen is optional too: GeoNames writes Myeong-dong and a venue writes
+    Myeongdong. Both are the same name. This is not a list of extra places.
+    """
+    forms = {name, CITY_SUFFIX.sub("", name)}
+    extra: set[str] = set()
+    for item in forms:
+        if "-" not in item:
+            continue
+        flat = item.replace("-", "")
+        extra.add(flat)
+        extra.add(CITY_SUFFIX.sub("", flat))
+    return {item for item in forms | extra if item}
+
+
+def _add_city(cities: dict[str, City], name: str, record: City, *, protect: set[str] | None = None) -> None:
+    """Index ``name`` and its surface forms. A protected key is left as it is.
+
+    ``protect`` is the set of keys a populated-place file already resolved.
+    An administrative or neighbourhood row must not replace that resolution
+    when the two share a name; the more populous populated place stays.
+    """
     pop = record[0]
-    for variant in {name, CITY_SUFFIX.sub("", name)}:
+    for variant in _name_variants(name):
         key = place_key(variant)
-        if len(key) >= 2 and (key not in cities or cities[key][0] < pop):
+        if len(key) < 2 or (protect is not None and key in protect):
+            continue
+        if key not in cities or cities[key][0] < pop:
             cities[key] = record
 
 
@@ -143,6 +179,53 @@ def load_country_tables(countries_dir: Path) -> tuple[dict[str, str], set[str], 
             for name in [names] if isinstance(names, str) else names:
                 countries.setdefault(place_key(name), code)
     return countries, country_codes, alpha3_codes
+
+
+def _country_extracts(geonames_dir: Path, country_codes: set[str]) -> tuple[Path, ...]:
+    """GeoNames country files that carry rows cities15000 leaves out.
+
+    ``allCountries.txt``, when present, is the whole extract and the per-country
+    files are not also read. Otherwise every ``XX.txt`` whose stem is an ISO
+    alpha-2 code in the country table is read (``KR.txt``).
+    """
+    all_countries = geonames_dir / "allCountries.txt"
+    if all_countries.is_file():
+        return (all_countries,)
+    found: list[Path] = []
+    for path in sorted(geonames_dir.glob("*.txt")):
+        stem = path.stem
+        if len(stem) == 2 and stem.isalpha() and stem.isupper() and stem in country_codes:
+            found.append(path)
+    return tuple(found)
+
+
+def _index_omitted_places(
+    path: Path,
+    enhanced: dict[str, City],
+    legacy: dict[str, City],
+    held_enhanced: set[str],
+    held_legacy: set[str],
+) -> None:
+    """Index ADM2, ADM3, and PPLX rows from a GeoNames country extract.
+
+    The population on these rows is often zero, because GeoNames stored it on
+    a different feature. Latin alternate names are therefore not held back by
+    the million-person gate used for cities15000. A key the city file already
+    resolved is left alone.
+    """
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            columns = line.rstrip("\n").split("\t")
+            if len(columns) < 15 or columns[7] not in OMITTED_PLACE_CODES:
+                continue
+            pop, country, admin_code = int(columns[14] or 0), columns[8], columns[10]
+            alternates = columns[3].split(",") if columns[3] else []
+            names = {columns[1], columns[2]}
+            names.update(item for item in alternates if HANGUL.search(item) or _latin_name(item))
+            record = (pop, country, admin_code, columns[1])
+            for name in names:
+                _add_city(legacy, name, record, protect=held_legacy)
+                _add_city(enhanced, name, record, protect=held_enhanced)
 
 
 def _read_tsv(path: Path) -> list[dict[str, str]]:
@@ -351,6 +434,13 @@ class Gazetteer:
 
         ``cities15000.txt`` is GeoNames (CC BY 4.0) and is not part of this
         package. A missing file raises ``FileNotFoundError``.
+
+        A country extract next to it (``KR.txt``, or ``allCountries.txt`` when
+        that file is the one present) adds administrative divisions and
+        neighbourhoods (``OMITTED_PLACE_CODES``). cities15000 does not carry
+        those rows, and its alternate-name column often has no Hangul for the
+        populated-place row that shares the city. The extract is optional: without
+        it, only cities15000 is indexed.
         """
         cities_file = reference / "geonames" / "cities15000.txt"
         admin_file = reference / "geonames" / "admin1CodesASCII.txt"
@@ -389,17 +479,27 @@ class Gazetteer:
                 base_names = {columns[1], columns[2]} | {item for item in alternates if HANGUL.search(item)}
                 record = (pop, country, admin_code, columns[1])
                 for name in base_names:
-                    key = place_key(name)
-                    if len(key) >= 2 and (key not in legacy or legacy[key][0] < pop):
-                        legacy[key] = record
+                    _add_city(legacy, name, record)
                 names = set(base_names)
+                # Latin alternates of a smaller populated place are transliterations
+                # and airport-style spellings. Only a city of a million or more
+                # keeps them. Hangul alternates are not gated: they are the name.
                 if pop >= 1_000_000:
                     names.update(item for item in alternates if _latin_name(item))
-                for name in names | {CITY_SUFFIX.sub("", item) for item in names}:
-                    key = place_key(name)
-                    if len(key) >= 2 and (key not in enhanced or enhanced[key][0] < pop):
-                        enhanced[key] = record
+                for name in names:
+                    _add_city(enhanced, name, record)
+        extracts = _country_extracts(reference / "geonames", country_codes)
+        # Snapshot after cities15000. An omitted-place row fills a missing name
+        # and does not replace one the city file already resolved.
+        held_enhanced, held_legacy = set(enhanced), set(legacy)
+        for extract in extracts:
+            _index_omitted_places(extract, enhanced, legacy, held_enhanced, held_legacy)
         return cls(
             Index(countries, country_codes, alpha3, enhanced, legacy, admin1, us_admin),
-            (cities_file, admin_file, *(countries_dir / name for name in ("codes.json", "en.json", "ko.json"))),
+            (
+                cities_file,
+                admin_file,
+                *extracts,
+                *(countries_dir / name for name in ("codes.json", "en.json", "ko.json")),
+            ),
         )

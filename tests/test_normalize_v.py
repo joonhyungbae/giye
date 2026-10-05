@@ -22,6 +22,8 @@ from giye.resolve.names import hangul_name_keys
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "normalize" / "activities.csv"
+PLACE_FIXTURE = ROOT / "tests" / "fixtures" / "normalize" / "place_names.tsv"
+PACKAGED_CITIES = ROOT / "src" / "giye" / "normalize" / "data" / "ko_en" / "cities.tsv"
 
 
 def _load(path: Path = FIXTURE) -> list[dict[str, str]]:
@@ -32,6 +34,46 @@ def _load(path: Path = FIXTURE) -> list[dict[str, str]]:
 def _ids(rows: list[dict], result) -> dict[str, str]:
     by_activity = {row["activity_id"]: row["venue"] for row in rows}
     return {by_activity[activity_id]: annotation["venue_id"] for activity_id, annotation in result.annotations.items()}
+
+
+def _language_with_fixture_places(tmp_path: Path) -> KoreanEnglish:
+    """Packaged cities plus the place names that live only in the test fixture."""
+    lines = [line for line in PACKAGED_CITIES.read_text(encoding="utf-8").splitlines() if line.strip()]
+    for line in PLACE_FIXTURE.read_text(encoding="utf-8").splitlines():
+        if not line.strip() or line.startswith(("#", "name\t")):
+            continue
+        lines.append(line)
+    dest = tmp_path / "cities.tsv"
+    dest.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return KoreanEnglish.load(cities=dest)
+
+
+def _geoname_row(
+    geoname_id: str,
+    name: str,
+    ascii_name: str,
+    alternates: str,
+    feature_class: str,
+    feature_code: str,
+    admin1: str,
+    population: int,
+) -> str:
+    """One GeoNames dump row. Empty columns stay empty; the loader reads by index."""
+    columns = [""] * 19
+    columns[0] = geoname_id
+    columns[1] = name
+    columns[2] = ascii_name
+    columns[3] = alternates
+    columns[4] = "0"
+    columns[5] = "0"
+    columns[6] = feature_class
+    columns[7] = feature_code
+    columns[8] = "KR"
+    columns[10] = admin1
+    columns[14] = str(population)
+    columns[17] = "Asia/Seoul"
+    columns[18] = "2020-01-01"
+    return "\t".join(columns)
 
 
 def _row(activity_id: str, venue: str, ledger_id: str = "p1") -> dict:
@@ -129,9 +171,9 @@ def test_demo_v7_v8_v9_and_false_merges(tmp_path: Path) -> None:
     assert all(line.split()[1] in {"V5a", "V5d", "V5f", "V7e", "V8", "V9"} for line in bullets)
 
 
-def test_v3c_place_v8_branch_and_v8b_office() -> None:
+def test_v3c_place_v8_branch_and_v8b_office(tmp_path: Path) -> None:
     """Branches, offices, and bare places stay apart from the institution they were joined to."""
-    lang = KoreanEnglish.load()
+    lang = _language_with_fixture_places(tmp_path)
     assert hangul_part_parent("국립현대미술관전시실", lang) == "국립현대미술관"
     assert hangul_part_parent("국립현대미술관창고동", lang) == "국립현대미술관"
     assert hangul_part_parent("국립현대미술관별관", lang) == "국립현대미술관"
@@ -177,7 +219,7 @@ def test_v3c_place_v8_branch_and_v8b_office() -> None:
         _row("white-lobby", "White Cube Lobby"),
         _row("seoul-hall", "Seoul City Hall"),
     ]
-    result = build(rows, write=False)
+    result = build(rows, write=False, lang=lang)
     ann = result.annotations
 
     def kind(activity_id: str) -> str:
@@ -215,6 +257,159 @@ def test_v3c_place_v8_branch_and_v8b_office() -> None:
     assert ("V8", "mmca", "mmca seoul") not in joined
     assert ("V8", "zkm", "zkm karlsruhe") in joined
     assert not any("용인" in f"{left} {right}" or "yongin" in f"{left} {right}" for _rule, left, right in joined)
+
+
+def test_v8_acronym_city_joins_only_without_a_second_site(tmp_path: Path) -> None:
+    """Join only when the bare acronym's own rows sit mostly in that city and no spelling names a second site.
+
+    A second site is another acronym+place spelling, or a Hangul branch of the same institution.
+    A place fragment beside a bare acronym is not that spelling, but it does say where the
+    acronym's own rows are: one Meyrin row beside two Geneva rows leaves CERN in Geneva.
+    A word with no rows of its own in the city (Loop before Barcelona) is not joined.
+    """
+    lang = _language_with_fixture_places(tmp_path)
+    rows = [
+        _row("zkm", "ZKM, Karlsruhe"),
+        _row("zkm-name", "ZKM Karlsruhe"),
+        _row("cern", "CERN, Geneva"),
+        _row("cern-2", "CERN, Geneva"),
+        _row("cern-geneva", "CERN Geneva"),
+        _row("cern-meyrin", "CERN, Meyrin"),
+        _row("home", "HOME, Manchester"),
+        _row("home-name", "HOME Manchester"),
+        _row("kadist", "Kadist, San Francisco"),
+        _row("kadist-2", "Kadist, San Francisco"),
+        _row("kadist-sf", "KADIST San Francisco"),
+        _row("kadist-paris", "Kadist, Paris"),
+        _row("loop", "Loop"),
+        _row("loop-sf", "Loop San Francisco"),
+        _row("mmca", "MMCA"),
+        _row("mmca-seoul", "MMCA Seoul"),
+        _row("mmca-cheongju", "MMCA Cheongju"),
+        _row("mca", "MCA"),
+        _row("mca-sydney", "MCA Sydney"),
+        _row("mca-chicago", "MCA Chicago"),
+        _row("suny", "SUNY"),
+        _row("suny-buffalo", "SUNY Buffalo"),
+        _row("suny-purchase", "SUNY Purchase"),
+        _row("other-branch", "하얀집 청주관"),
+    ]
+    result = build(rows, write=False, lang=lang)
+    ann = result.annotations
+    assert ann["zkm"]["venue_id"] == ann["zkm-name"]["venue_id"]
+    assert ann["cern"]["venue_id"] == ann["cern-geneva"]["venue_id"]
+    assert ann["home"]["venue_id"] == ann["home-name"]["venue_id"]
+    assert ann["kadist"]["venue_id"] == ann["kadist-sf"]["venue_id"]
+    assert ann["loop"]["venue_id"] != ann["loop-sf"]["venue_id"]
+    assert ann["mmca"]["venue_id"] != ann["mmca-seoul"]["venue_id"]
+    assert ann["mmca-seoul"]["venue_id"] != ann["mmca-cheongju"]["venue_id"]
+    assert ann["mca"]["venue_id"] != ann["mca-sydney"]["venue_id"]
+    assert ann["mca-sydney"]["venue_id"] != ann["mca-chicago"]["venue_id"]
+    assert ann["suny"]["venue_id"] != ann["suny-buffalo"]["venue_id"]
+    assert ann["suny-buffalo"]["venue_id"] != ann["suny-purchase"]["venue_id"]
+    # 하얀집 청주관 is a branch of another institution. It does not split ZKM.
+    assert ann["zkm"]["venue_id"] != ann["other-branch"]["venue_id"]
+    joined = {(rule, left, right) for rule, left, right in result.merges}
+    assert ("V8", "zkm", "zkm karlsruhe") in joined
+    assert ("V8", "cern", "cern geneva") in joined
+    assert ("V8", "mmca", "mmca seoul") not in joined
+    assert ("V8", "mca", "mca sydney") not in joined
+
+    # The Hangul branch is enough on its own when the parent and the acronym are one entity.
+    linked = build(
+        [
+            _row("alias-1", "국립현대미술관 (MMCA)", "p1"),
+            _row("alias-2", "국립현대미술관 (MMCA)", "p2"),
+            _row("seoul", "MMCA Seoul"),
+            _row("branch", "국립현대미술관 청주관"),
+        ],
+        write=False,
+        lang=lang,
+    )
+    assert linked.annotations["alias-1"]["venue_id"] == linked.annotations["alias-2"]["venue_id"]
+    assert linked.annotations["seoul"]["venue_id"] != linked.annotations["alias-1"]["venue_id"]
+    assert linked.annotations["branch"]["venue_id"] != linked.annotations["alias-1"]["venue_id"]
+    linked_joins = {(rule, left, right) for rule, left, right in linked.merges}
+    assert ("V8", "mmca", "mmca seoul") not in linked_joins
+
+    # Two acronym+city spellings, even without a bare row's place fragment.
+    both = build(
+        [_row("sf", "KADIST San Francisco"), _row("paris", "Kadist Paris"), _row("bare", "Kadist")],
+        write=False,
+        lang=lang,
+    )
+    assert both.annotations["sf"]["venue_id"] != both.annotations["bare"]["venue_id"]
+    assert both.annotations["paris"]["venue_id"] != both.annotations["bare"]["venue_id"]
+
+
+def test_geonames_admin_and_neighbourhood_resolve_as_places(tmp_path: Path) -> None:
+    """cities15000 drops admin divisions and neighbourhoods. A country extract puts them back.
+
+    Synthetic names: the populated-place row has no Hangul and its Latin alternate is
+    below the million-person gate. The administrative row carries both names. A
+    hyphenated neighbourhood matches the hyphenless spelling. A small populated
+    place that is not an administrative division or a neighbourhood stays out.
+    """
+    geonames = tmp_path / "geonames"
+    countries = tmp_path / "countries"
+    geonames.mkdir()
+    countries.mkdir()
+    packaged_countries = ROOT / "src" / "giye" / "normalize" / "data" / "ko_en" / "countries"
+    for name in ("codes.json", "en.json", "ko.json"):
+        (countries / name).write_text((packaged_countries / name).read_text(encoding="utf-8"), encoding="utf-8")
+    (geonames / "admin1CodesASCII.txt").write_text(
+        "KR.13\tGyeonggi-do\tGyeonggi-do\t1\nKR.11\tSeoul\tSeoul\t2\nKR.03\tJeollabuk-do\tJeollabuk-do\t3\n",
+        encoding="utf-8",
+    )
+    (geonames / "cities15000.txt").write_text(
+        _geoname_row("1", "Nargen", "Nargen", "Narvon,Obscura", "P", "PPL", "03", 40000) + "\n",
+        encoding="utf-8",
+    )
+    (geonames / "KR.txt").write_text(
+        "\n".join(
+            (
+                _geoname_row("2", "Ficton-si", "Ficton-si", "Ficton,픽톤,픽톤시", "A", "ADM2", "13", 200000),
+                _geoname_row("3", "Narvon", "Narvon", "나르본,나르본시", "A", "ADM2", "03", 50000),
+                _geoname_row("4", "Myo-dong", "Myo-dong", "묘동", "A", "ADM3", "11", 0),
+                _geoname_row("5", "Quar-ton", "Quar-ton", "쿼톤", "P", "PPLX", "11", 0),
+                _geoname_row("6", "Tinyville", "Tinyville", "타이니", "P", "PPL", "11", 10),
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    gazetteer = Gazetteer.from_geonames(tmp_path)
+
+    def resolved(text: str) -> bool:
+        found = gazetteer.resolve_fragments([text])
+        return bool(found and found[0])
+
+    assert resolved("픽톤") and resolved("Ficton")
+    assert resolved("나르본") and resolved("Narvon")
+    assert resolved("묘동") and resolved("Myodong")
+    assert resolved("쿼톤") and resolved("Quarton")
+    assert resolved("Nargen")
+    assert not resolved("Obscura")
+    assert not resolved("타이니") and not resolved("Tinyville")
+
+    lang = KoreanEnglish(KoreanEnglish.load().glossary, gazetteer)
+    result = build(
+        [
+            _row("ko", "픽톤"),
+            _row("en", "Ficton"),
+            _row("hall", "픽톤시청"),
+            _row("dong", "묘동"),
+            _row("dong-en", "Myodong"),
+        ],
+        write=False,
+        lang=lang,
+    )
+    for activity_id in ("ko", "en", "dong", "dong-en"):
+        assert result.annotations[activity_id]["venue_kind"] == "place_only", activity_id
+        assert result.annotations[activity_id]["venue_id"] == ""
+    assert result.annotations["hall"]["venue_kind"] == "institution"
+    assert result.annotations["hall"]["venue_id"] != ""
+    assert not any("픽톤" in f"{left} {right}" or "ficton" in f"{left} {right}" for _rule, left, right in result.merges)
 
 
 def test_v5e_blocks_two_hangul_names_and_v5f_allows_one_artist() -> None:

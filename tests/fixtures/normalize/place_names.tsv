@@ -1,0 +1,26 @@
+# Place names the shipped cities.tsv does not carry. V3c, V8, and V8b tests
+# load these on top of the packaged table. They are not part of the package:
+# a GeoNames country extract is what resolves them in production.
+name	population	country	admin1	canonical
+남원	80000	KR	03	Namwon
+Namwon	80000	KR	03	Namwon
+명동	20000	KR	11	Myeongdong
+Myeongdong	20000	KR	11	Myeongdong
+노원구	500000	KR	11	Nowon
+Nowon	500000	KR	11	Nowon
+청주	800000	KR	05	Cheongju
+Cheongju	800000	KR	05	Cheongju
+과천	80000	KR	13	Gwacheon
+Gwacheon	80000	KR	13	Gwacheon
+덕수궁	10000	KR	11	Deoksugung
+Deoksugung	10000	KR	11	Deoksugung
+Geneva	200000	CH	GE	Geneva
+Meyrin	25000	CH	GE	Meyrin
+Manchester	500000	GB	ENG	Manchester
+Montreal	1700000	CA	QC	Montreal
+Buffalo	250000	US	NY	Buffalo
+Purchase	20000	US	NY	Purchase
+San Francisco	800000	US	CA	San Francisco
+Sydney	5000000	AU	NSW	Sydney
+Chicago	2700000	US	IL	Chicago
+Paris	2000000	FR	11	Paris

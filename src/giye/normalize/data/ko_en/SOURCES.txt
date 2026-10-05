@@ -10,10 +10,13 @@ glossary.yaml
 
 cities.tsv, admin1.tsv
     Place names the default resolver knows without a GeoNames dump: Korean
-    first-level regions, a handful of cities the venue rules are tested on,
-    and their Latin names. This is not the GeoNames cities15000 list.
-    Population figures are coarse ranks so a duplicated name keeps one row;
-    they are not a copy of the GeoNames population column.
+    first-level regions, a handful of cities the venue rules are tested on
+    (Yongin is one: V1's example is "Nam June Paik Art Center, Yongin"),
+    and their Latin names. Neighbourhoods and the smaller cities are not
+    listed here. A GeoNames country extract supplies those. This is not the
+    GeoNames cities15000 list. Population figures are coarse ranks so a
+    duplicated name keeps one row; they are not a copy of the GeoNames
+    population column.
 
 us_postal.txt
     USPS state and district abbreviations. Rule G6 reads one only when it is

@@ -25,9 +25,13 @@ V8   A part inside one site is that entity: a room, hall, floor, wing, or a
      building named as part of the site (전시실·창고동·별관, main building, annex,
      lobby). 별관 and annex stay parts because they do not name another city.
      A branch does, and is not joined: Hangul <place>관 (서울관·청주관), or a Latin
-     name plus a city (MMCA Seoul). An acronym plus a place is still joined when
-     that acronym's own rows are all in that one city (ZKM Karlsruhe). More than
-     one city means those rows are branches and are not joined.
+     name plus a city (MMCA Seoul). An acronym plus a place is joined to the
+     acronym when the acronym is specific and no other spelling of that acronym
+     names a different city or branch (ZKM Karlsruhe, CERN Geneva). A second site
+     is another spelling that is the acronym plus a different gazetteer place
+     (MMCA Cheongju, MMCA 과천, MCA Sydney and MCA Chicago), or a Hangul <place>관
+     branch of the same institution (국립현대미술관 청주관). A row that names no
+     city is not evidence of a site.
 V8b  An administrative office is not the place it administers. <place> plus
      구청·시청·군청·도청·주민센터, or City Hall / District Office, is not joined to
      the bare place by V8 or by any other merge rule. The office stays an
@@ -347,20 +351,30 @@ def forbids_place_office_merge(left: str, right: str, lang: LanguageModule) -> b
     return False
 
 
-def is_hangul_branch(key: str, lang: LanguageModule) -> bool:
-    """V8: ``key`` is an entity plus <place>관 (서울관, 청주관), a separate site.
+def hangul_branch_site(key: str, lang: LanguageModule) -> tuple[str, str]:
+    """V8: ``(<entity>, <canonical place>)`` for a Hangul <place>관 branch.
 
     별관 is not a branch: 별 is not a place name. An annex is another building
     on the same site, so the building-part list still matches it. The place
     marker has to leave at least two characters of entity in front of it.
+    The longest place suffix wins, so 덕수궁관 is 덕수궁 and not a shorter tail.
     """
     if not key.endswith("관"):
-        return False
+        return "", ""
     head = key[:-1]
     for length in range(len(head) - 2, 1, -1):
-        if is_place_name(head[-length:], lang):
-            return True
-    return False
+        place = head[-length:]
+        if is_place_name(place, lang):
+            parent = head[:-length]
+            if len(parent) >= 2:
+                return parent, city_name(place, lang)
+    return "", ""
+
+
+def is_hangul_branch(key: str, lang: LanguageModule) -> bool:
+    """V8: ``key`` is an entity plus <place>관 (서울관, 청주관), a separate site."""
+    parent, place = hangul_branch_site(key, lang)
+    return bool(parent and place)
 
 
 def part_parent_ok(key: str, lang: LanguageModule) -> bool:
@@ -411,14 +425,41 @@ def latin_part_parent(key: str, lang: LanguageModule | None = None) -> str:
     return match.group("parent") if match else ""
 
 
-def acronym_place_parent(key: str, spellings: list[str], lang: LanguageModule) -> tuple[str, str]:
+def known_acronyms(spellings_of: dict[str, dict[str, set[str]]]) -> set[str]:
+    """Case-folded tokens that some spelling writes as an acronym (``KADIST``, ``MMCA``).
+
+    Title case (``Kadist Paris``) is the same acronym. The token is known because
+    another spelling of it is all capitals, not because the title-case word
+    itself matches the acronym pattern.
+    """
+    found: set[str] = set()
+    for spellings in spellings_of.values():
+        for spelling in spellings:
+            first = spelling.split(" ", 1)[0]
+            if ACRONYM_SPELLING_RE.fullmatch(first):
+                found.add(first.casefold())
+    return found
+
+
+def acronym_place_parent(
+    key: str,
+    spellings: list[str],
+    lang: LanguageModule,
+    acronyms: set[str] | None = None,
+) -> tuple[str, str]:
     """``ZKM Karlsruhe`` → (``zkm``, ``karlsruhe``) when the first word is an acronym and the rest is a place.
 
-    The caller joins this only when the acronym's own rows are all in that one
-    city. Two cities make ``MMCA Seoul`` a branch, not the entity's only site.
+    The caller joins this only when no other spelling of the acronym names a
+    different city or branch. ``MMCA Seoul`` stays apart when ``MMCA Cheongju``
+    (or a Hangul <place>관 of the same institution) is also present.
+    ``acronyms`` is the set from :func:`known_acronyms`, so ``Kadist Paris``
+    counts when ``KADIST`` is written somewhere.
     """
     parts = key.split(" ", 1)
-    if len(parts) != 2 or not any(ACRONYM_SPELLING_RE.fullmatch(spelling.split(" ", 1)[0]) for spelling in spellings):
+    if len(parts) != 2:
+        return "", ""
+    own = any(ACRONYM_SPELLING_RE.fullmatch(spelling.split(" ", 1)[0]) for spelling in spellings)
+    if not own and (not acronyms or parts[0] not in acronyms):
         return "", ""
     if not lang.gazetteer.cities.get(place_key(parts[1])):
         return "", ""

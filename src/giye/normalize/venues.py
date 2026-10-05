@@ -559,6 +559,10 @@ def _name_rule_merges(
                 join("V7e", members[0], key)
 
     if "V8" in rules:
+        # Sites named by the spelling itself (acronym + place), not by a place
+        # fragment sitting next to a bare acronym. A row that names no city
+        # says nothing. A Hangul <place>관 is a site of its parent institution.
+        # Cities written next to the bare acronym in the same row (ZKM, Karlsruhe).
         key_cities: dict[str, Counter] = defaultdict(Counter)
         for row in parsed:
             cities = [
@@ -569,19 +573,40 @@ def _name_rule_merges(
             for fragment in row.fragments:
                 if fragment.kind == "institution" and cities:
                     key_cities[institution_key(fragment.text, lang)][cities[0]] += 1
+        acronym_sites: dict[str, set[str]] = defaultdict(set)
+        branch_sites: dict[str, set[str]] = defaultdict(set)
+        acronyms = venue_names.known_acronyms(spell_rows)
+        for key in keys:
+            acronym, place = venue_names.acronym_place_parent(key, list(spell_rows[key]), lang, acronyms)
+            if acronym:
+                acronym_sites[acronym].add(venue_names.city_name(place, lang))
+            branch_parent, branch_place = venue_names.hangul_branch_site(key, lang)
+            if branch_parent and branch_place and branch_parent in keys:
+                branch_sites[branch_parent].add(branch_place)
         for key in sorted(keys):
             parent = venue_names.hangul_part_parent(key, lang) or venue_names.latin_part_parent(key, lang)
             if parent and parent in keys and venue_names.part_parent_ok(parent, lang):
                 join("V8", parent, key)
                 continue
-            parent, place = venue_names.acronym_place_parent(key, list(spell_rows[key]), lang)
-            if parent in keys and venue_names.specific(parent, lang):
+            acronym, place = venue_names.acronym_place_parent(key, list(spell_rows[key]), lang, acronyms)
+            if acronym in keys and venue_names.specific(acronym, lang):
                 city = venue_names.city_name(place, lang)
-                seen = key_cities.get(parent)
-                # One site, named by its city (ZKM Karlsruhe). More than one city
-                # means branches (MMCA Seoul, MMCA Cheongju): never join.
-                if seen and len(seen) == 1 and seen.most_common(1)[0][0] == city:
-                    join("V8", parent, key)
+                sites = set(acronym_sites[acronym])
+                root = union_find.find(acronym)
+                for hangul_parent, places in branch_sites.items():
+                    if union_find.find(hangul_parent) == root:
+                        sites |= places
+                # One city: the city names the only site (ZKM Karlsruhe). A
+                # different city, or a Hangul branch of the same institution,
+                # means the acronym plus a city is itself a branch.
+                # Both must hold. The bare acronym's own rows sit mostly in that city
+                # (so the acronym is that site, not a word such as City or Digital
+                # that happens to precede a place), and no spelling names a second
+                # site of it (so it has no branches).
+                seen = key_cities.get(acronym)
+                own_city = bool(seen) and seen.most_common(1)[0][0] == city.lower()
+                if own_city and sites and all(other == city for other in sites):
+                    join("V8", acronym, key)
 
     if "V9" not in rules:
         return merges
