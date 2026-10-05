@@ -79,7 +79,7 @@ A same-script exact name (Unicode NFC, spaces removed, case folded) that no rule
 
 Every merge stores `merge_evidence=` (the rule and the concrete website key, CV line, work title, or team) and `rule=` on the kept row, and retires the dropped `gy_id` through `giye.ledger.merge`.
 
-The synthetic demo fires E1–E4, X1+E2, and T1 once each, and records A1 and A2 on membership rows. See `examples/demo/EXPECTED.md`.
+The synthetic demo fires E1–E4, X1+E2, and T1 once each, records A1 on a membership row, shows A2 declining a Latin-only pair (queued as `latin name only`), and records `team:<team ledger id>` on the four expanded team-member memberships. See `examples/demo/EXPECTED.md`.
 
 Attachment A1 and derived-value A1 (`active_since`, below) are different rules that share a letter. They are not renamed here.
 

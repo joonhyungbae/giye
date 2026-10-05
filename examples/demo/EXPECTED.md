@@ -3,12 +3,15 @@
 One offline run of the synthetic field. People are fictitious. Institution names are public
 places. Nothing is fetched from the network. The run date is fixed at
 2026-01-15, including when `giye demo` is started in a later year, so an upcoming
-row in 2026 stays on the page and a row in 2027 does not. The summary says so
-in its first line.
+row in 2026 stays on the page and a row in 2027 does not. The summary's
+`run date` line says so.
 
-The summary (paths omitted; they depend on `--output`) is:
+`giye demo --output <output>` prints this (regenerated from a run; `<output>` stands for the
+directory, which is a new temporary directory when `--output` is omitted). The first line is
+the publish step; the summary follows, then the files written:
 
 ```
+site artists=21 activities=38 links=3 frames=4
 run date: 2026-01-15 (fixed; this summary does not follow the system date)
 people: 21
 roster rows: 23
@@ -19,6 +22,50 @@ queue items: 4
 institution merges: V7 2, V8 1, V9 1
 co-presence ties, CV listing: base 1, V7 1, V7+V8 1, V7+V8+V9 2
 co-presence ties, roster independent: base 0, V7 0, V7+V8 1, V7+V8+V9 2
+output files:
+  <output>/site/activities.json
+  <output>/site/artist_stubs.json
+  <output>/site/artists.json
+  <output>/site/background.json
+  <output>/site/citations.json
+  <output>/site/collaborations.json
+  <output>/site/content_pages.json
+  <output>/site/content_revisions.json
+  <output>/site/coverage.json
+  <output>/site/dataset_versions.json
+  <output>/site/frames.json
+  <output>/site/gy_redirects.json
+  <output>/site/html/GY-000001.html
+  <output>/site/html/GY-000002.html
+  <output>/site/html/GY-000003.html
+  <output>/site/html/GY-000004.html
+  <output>/site/html/GY-000005.html
+  <output>/site/html/GY-000006.html
+  <output>/site/html/GY-000007.html
+  <output>/site/html/GY-000008.html
+  <output>/site/html/GY-000009.html
+  <output>/site/html/GY-000010.html
+  <output>/site/html/GY-000011.html
+  <output>/site/html/GY-000012.html
+  <output>/site/html/GY-000013.html
+  <output>/site/html/GY-000014.html
+  <output>/site/html/GY-000015.html
+  <output>/site/html/GY-000016.html
+  <output>/site/html/GY-000017.html
+  <output>/site/html/GY-000018.html
+  <output>/site/html/GY-000019.html
+  <output>/site/html/GY-000020.html
+  <output>/site/html/GY-000021.html
+  <output>/site/html/GY-000022.html
+  <output>/site/html/GY-000023.html
+  <output>/site/html/GY-000024.html
+  <output>/site/html/GY-000025.html
+  <output>/site/html/GY-000026.html
+  <output>/site/html/index.html
+  <output>/site/links.json
+  <output>/site/research.json
+  <output>/site/rim_order.json
+  <output>/site/vocabularies.json
 ```
 
 Attachment runs at collection. A later merge of two existing records is a separate step. The counts above are the published people after both steps.
@@ -36,9 +83,9 @@ Attachment runs at collection. A later merge of two existing records is a separa
 | E4 | Both 문지호 rows are credited `팀: 노을크루`. |
 | X1+E2 | 김하늘 is on Example Residency (2019), with no English name. Haneul Kim is on Example Workshop (2021). X1's key for both is `kim/haneul`. The English CV lists Example Residency in 2019, so E2 holds and the stored rule is `X1+E2`. The kept page is `GY-000001` (김하늘, Latin name Haneul Kim). `GY-000020`, the workshop row's id, redirects there. |
 | T1 | The person 배수아 and the team row 배수아 (members 김솔, 박솔) are not merged. The team row does not repeat `sua.example.org`: A6 would attach them at collection. T1 still blocks the merge because one side is a team. The summary line is `blocked: T1 1`. |
-| Queue | Three open `possible_same_person` items. The two 최민수 rows are an exact same-script name with no evidence. The person 배수아 and the team 배수아 are the same kind of pair. 서지우 ~ Jiwoo Seo share a romanization key and have no evidence. Near-misses that E1–E4 later join (한별, 표은솔, 정다운, 문지호) are closed by the merge. |
+| Queue | Four open `possible_same_person` items (`queue items: 4`). The two 최민수 rows are an exact same-script name with no evidence. The person 배수아 and the team 배수아 are the same kind of pair. 서지우 ~ Jiwoo Seo share a romanization key and have no evidence. Kim Haneul (forum, GY-000022) and 김하늘 / Haneul Kim (GY-000001) are the Latin-only pair A2 did not join (`latin name only`). Near-misses that E1–E4 later join (한별, 표은솔, 정다운, 문지호) are closed by the merge. |
 
-`GY-000001` lists the residency, the workshop, and the forum under Roster (the forum row attached by A2) and, under Activities, those roster rows and the CV lines from both languages. The two CVs are folded in that same run: one `예시 미디어전 (2024)` is published, and the English line `Example Residency (2019)` is not, because it restates the residency roster row. Each published line links to its source. The page does not carry an open same-name review. `GY-000007` and `GY-000018` (the two 최민수 rows) each link to the other.
+`GY-000001` lists the residency (`예시 레지던시 2019`) and the workshop (`예시 워크숍 2021`) under Roster. The forum row is not there: A2 did not attach it, so it is its own record, `GY-000022`. Under Activities the page lists those two roster rows and the CV lines from both languages. The two CVs are folded in that same run: one `예시 미디어전 (2024)` is published, and the English line `Example Residency (2019)` is not, because it restates the residency roster row. The same 2022 exhibition still appears twice, once from each CV (`Signal — Seoul Museum of Art` and `신호 — 서울시립미술관 외`): folding removes exact restatements and roster restatements, not a translation. Each published line links to its source. The page ends with `Open same-name review: GY-000022`, the open Latin-only pair, and `GY-000022` links back. The two 최민수 rows (`GY-000007`, `GY-000018`), the person and the team 배수아 (`GY-000008`, `GY-000019`), and 서지우 and Jiwoo Seo (`GY-000010`, `GY-000021`) each link to the other the same way.
 
 Membership is `<FRAME>-<YYYY>`. The roster block names the programme and that edition (`예시 레지던시 2019`). The activity title is the membership code (`2019 — EXAMPLE-RESIDENCY-2019`).
 

@@ -39,8 +39,8 @@ temporary directory. Nothing is fetched from the network: fixture pages are read
 `robots.txt` is still checked. The command prints how many people, roster rows, and activities
 were published, how many merges each identity rule made, how many pairs T1 blocked, how many
 review-queue items are open, how many institution merges V7, V8 and V9 made, how many
-co-presence ties each name-rule layer gives, and the output paths. The first line is the run
-date, fixed at 2026-01-15 (the date the golden test uses). The synthetic CVs treat 2026 as
+co-presence ties each name-rule layer gives, and the output paths. After the publish step's
+one line (`site artists=…`), the summary starts with the run date, fixed at 2026-01-15 (the date the golden test uses). The synthetic CVs treat 2026 as
 the current year, so those counts do not change with the system date. `examples/demo/EXPECTED.md`
 lists the cases and the summary lines.
 
