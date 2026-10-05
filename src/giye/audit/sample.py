@@ -44,7 +44,7 @@ _RULE = re.compile(r"^rule=(.*)$", re.DOTALL)
 _AUDIT_LINE = re.compile(
     r"^- (?P<rule>V7e|V8|V9) · `(?P<left>.*)`\((?P<nleft>\d+)\) ← `(?P<right>.*)`\((?P<nright>\d+)\)\s*$"
 )
-_BACKUP = re.compile(r"^(?P<table>.+)-(?P<day>\d{8})-before-merge(?:-(?P<n>\d+))?\.csv$")
+_BACKUP = re.compile(r"^(?P<table>.+)-(?P<day>\d{8})-before-merge(?:-(?P<n>\d+))?\.csv(?:\.gz)?$")
 # A venue string may continue with a place after one of these. A hall such as
 # "… 전시실" does not, so it stays an example of its own spelling.
 _VENUE_SPLIT = {",", "/", "|", "·", ";"}

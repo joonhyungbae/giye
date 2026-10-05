@@ -3,21 +3,34 @@
 
 ``write_csv`` is keyword-only so ``path``, ``fields``, and ``rows`` cannot be
 swapped. ``Ledger.write`` copies the current file to
-``<work>/backups/<file>-<YYYYMMDD>-before-<task>.csv`` before replacing it
-(docs/RULES.md, ledger backups). A missing file has nothing to copy.
+``<work>/backups/<file>-<YYYYMMDD>-before-<task>.csv.gz`` before replacing it
+(docs/RULES.md, ledger backups). A missing file has nothing to copy. The copy
+is taken once per file and task in a run (this process), gzip-compressed, and
+older copies may be pruned by ``[ledger] keep_backups_days``.
 """
 
 from __future__ import annotations
 
 import csv
+import gzip
+import os
 import re
+import shutil
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, TextIO
 
 _LOCKS: dict[str, TextIO] = {}
 _TASK_SAFE = re.compile(r"[^A-Za-z0-9._-]+")
+# A run is one process. Key: (backup directory, file stem, task). Value: the copy
+# taken before that file's first write for that task in this run.
+_RUN_BACKUPS: dict[tuple[str, str, str], Path] = {}
+# Backup directories already pruned in this run.
+_PRUNED: set[str] = set()
+# Names this package writes: <stem>-<YYYYMMDD>-before-<task>[-<n>].csv[.gz].
+# Pruning only ever touches files that match it.
+BACKUP_NAME = re.compile(r"^(?P<stem>.+?)-(?P<day>\d{8})-before-(?P<task>.+?)(?:-(?P<n>\d+))?\.csv(?:\.gz)?$")
 
 
 def hold_ledger_lock(ledger_dir: Path) -> None:
@@ -82,10 +95,16 @@ def _lineterminator(path: Path) -> str:
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:
-    """Read a ledger CSV. A missing file is an empty table, not an error."""
+    """Read a ledger CSV. A missing file is an empty table, not an error.
+
+    A ``.gz`` path (a compressed backup) is decompressed on the way in.
+    """
     if not path.exists():
         return []
-    with path.open(encoding="utf-8", newline="") as handle:
+    compressed = path.suffix == ".gz"
+    with (
+        gzip.open(path, "rt", encoding="utf-8", newline="") if compressed else path.open(encoding="utf-8", newline="")
+    ) as handle:
         rows = []
         for row in csv.DictReader(handle):
             rows.append({key: (value if value is not None else "") for key, value in row.items()})
@@ -109,27 +128,90 @@ def write_csv(*, path: Path, fields: Sequence[str], rows: Iterable[Mapping[str, 
             writer.writerow({key: "" if row.get(key) is None else row.get(key, "") for key in columns})
 
 
-def backup_before_write(path: Path, backup_dir: Path, task: str) -> Path | None:
+def start_backup_run() -> None:
+    """Begin a new run: the next write of each file and task takes a fresh backup.
+
+    ``giye`` calls this once per command, so commands invoked in one process
+    (tests, ``giye.cli.main`` from Python) are separate runs as on the shell.
+    """
+    _RUN_BACKUPS.clear()
+    _PRUNED.clear()
+
+
+def backup_before_write(path: Path, backup_dir: Path, task: str, *, keep_days: int | None = None) -> Path | None:
     """Copy ``path`` before it is replaced. Returns the copy, or None if ``path`` is new.
 
-    The name is ``<stem>-<YYYYMMDD>-before-<task>.csv`` under ``backup_dir``
-    (the archive's ``data/work/backups``). The date is UTC. A second write on
-    the same day with the same task gets ``-2``, ``-3``, … so each write keeps
-    the bytes it is about to replace. A second write the same day must not
-    overwrite the earlier copy: each write needs the bytes it is about to
-    replace (docs/RULES.md, ledger backups).
+    The name is ``<stem>-<YYYYMMDD>-before-<task>.csv.gz`` under ``backup_dir``
+    (the archive's ``data/work/backups``). The date is UTC. The first write of
+    a file for a task in this run (process) takes the copy; later writes of the
+    same file and task in the same run return that copy and do not copy again,
+    so every write is still preceded by a dated backup of the bytes the run
+    started from. A later run the same day with the same task gets ``-2``,
+    ``-3``, … and never overwrites an earlier copy. Why one copy per run and
+    not per write: a full collect rewrites the same tables hundreds of times,
+    and per-write copies of a large register filled the disk
+    (docs/RULES.md, ledger backups). The copy is gzip-compressed for the same
+    reason.
+
+    ``keep_days`` (``[ledger] keep_backups_days``) prunes old copies once per
+    run, see ``prune_backups``. None keeps every copy.
     """
     if not path.is_file():
         return None
     safe = _TASK_SAFE.sub("-", task.strip()).strip("-")
     if not safe:
         raise ValueError("a ledger write needs a task name so the backup can be identified")
+    key = (str(backup_dir.resolve()), path.stem, safe)
+    taken = _RUN_BACKUPS.get(key)
+    if taken is not None and taken.is_file():
+        return taken
     day = datetime.now(timezone.utc).strftime("%Y%m%d")
     backup_dir.mkdir(parents=True, exist_ok=True)
-    dest = backup_dir / f"{path.stem}-{day}-before-{safe}.csv"
+    base = f"{path.stem}-{day}-before-{safe}"
+    dest = backup_dir / f"{base}.csv.gz"
     n = 2
-    while dest.exists():
-        dest = backup_dir / f"{path.stem}-{day}-before-{safe}-{n}.csv"
+    # An uncompressed copy from before compression holds the same slot.
+    while dest.exists() or dest.with_suffix("").exists():
+        dest = backup_dir / f"{base}-{n}.csv.gz"
         n += 1
-    dest.write_bytes(path.read_bytes())
+    part = dest.with_name(dest.name + ".part")
+    # mtime=0 keeps the gzip header free of the clock, so equal bytes compress equally.
+    with path.open("rb") as src, open(part, "wb") as raw, gzip.GzipFile(fileobj=raw, mode="wb", mtime=0) as out:
+        shutil.copyfileobj(src, out, 1 << 20)
+    os.replace(part, dest)
+    _RUN_BACKUPS[key] = dest
+    if keep_days is not None and key[0] not in _PRUNED:
+        _PRUNED.add(key[0])
+        prune_backups(backup_dir, keep_days)
     return dest
+
+
+def prune_backups(backup_dir: Path, keep_days: int, *, today: date | None = None) -> list[Path]:
+    """Delete package backups dated more than ``keep_days`` days before ``today``.
+
+    Only names matching ``BACKUP_NAME`` are touched, so files a person or
+    another tool put in the directory stay. The date is the one in the name
+    (UTC day of the write), not the file's mtime, so a copied or restored
+    directory prunes the same way. Every copy on the newest day of each file
+    is kept whatever its age, so a ledger file always has at least one backup.
+    Returns the deleted paths.
+    """
+    if keep_days < 1:
+        raise ValueError("keep_backups_days must be at least 1")
+    if not backup_dir.is_dir():
+        return []
+    today = today or datetime.now(timezone.utc).date()
+    cutoff = (today - timedelta(days=keep_days)).strftime("%Y%m%d")
+    by_stem: dict[str, list[tuple[str, Path]]] = {}
+    for entry in backup_dir.iterdir():
+        match = BACKUP_NAME.match(entry.name)
+        if match and entry.is_file():
+            by_stem.setdefault(match.group("stem"), []).append((match.group("day"), entry))
+    removed: list[Path] = []
+    for copies in by_stem.values():
+        newest = max(day for day, _ in copies)
+        for day, entry in copies:
+            if day < cutoff and day != newest:
+                entry.unlink()
+                removed.append(entry)
+    return sorted(removed)

@@ -149,14 +149,18 @@ class Ledger:
     def write(self, table: str, rows: Iterable[Mapping[str, Any]], *, task: str) -> Path | None:
         """Replace ``table``. Copies the current file into the backup directory first.
 
-        ``task`` is the label in ``<file>-<YYYYMMDD>-before-<task>.csv``. The
-        first write of a missing file has nothing to copy and returns None.
+        ``task`` is the label in ``<file>-<YYYYMMDD>-before-<task>.csv.gz``. The
+        first write of a missing file has nothing to copy and returns None. A
+        later write of the same table and task in the same run returns the copy
+        already taken (``giye.ledger.io.backup_before_write``).
         """
         if not str(task or "").strip():
             raise ValueError("a ledger write needs a task name so the backup can be identified")
         hold_ledger_lock(self.directory)
         path = self.path(table)
-        backup = backup_before_write(path, self.config.work / "backups", task)
+        backup = backup_before_write(
+            path, self.config.work / "backups", task, keep_days=self.config.keep_backups_days
+        )
         write_csv(path=path, fields=self.fields(table), rows=rows)
         return backup
 

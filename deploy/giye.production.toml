@@ -45,6 +45,11 @@ cache = "../data/work/cv_cache"
 [normalize]
 reference = "../data/reference"
 
+# Ledger backups: one gzip copy per file and task per run. Older than 90 days are pruned;
+# the newest backup of each file is always kept. The private repo and the VPS copy keep history.
+[ledger]
+keep_backups_days = 90
+
 [publish]
 site_url = "https://giye.org"
 dataset_version = "0.2"

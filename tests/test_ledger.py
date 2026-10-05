@@ -6,9 +6,10 @@ People in the fixtures are fictitious (김하늘 / Haneul Kim). URLs are example
 
 from __future__ import annotations
 
-import csv
+import gzip
 import json
 import os
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -25,6 +26,7 @@ from giye.ledger import (
     write_csv,
 )
 from giye.ledger.ids import reissue_frame_activity_ids, zip_activity_id_changes
+from giye.ledger.io import backup_before_write, prune_backups, start_backup_run
 from giye.ledger.ledger import Ledger, cv_row_owner, repoint_cv_activities
 from giye.ledger.schemas import CV_SOURCES_FIELDS, empty_row
 
@@ -170,27 +172,103 @@ def test_gy_id_is_never_reused_or_taken_from_the_row_position(tmp_path: Path):
 
 
 def test_backup_is_created_before_every_write(tmp_path: Path):
+    start_backup_run()
     ledger = _ledger(tmp_path)
     first = [_person("LED-a", "GY-000001", "김하늘")]
     assert ledger.write("artists", first, task="seed") is None
     backups = ledger.config.work / "backups"
-    assert list(backups.glob("artists-*-before-seed.csv")) == []
+    assert list(backups.glob("artists-*-before-seed.csv*")) == []
     second = first + [_person("LED-b", "GY-000002", "Haneul Kim")]
     copied = ledger.write("artists", second, task="edit")
     assert copied is not None
     assert copied.parent == backups
     assert copied.name.startswith("artists-")
-    assert "-before-edit.csv" in copied.name
-    previous = list(csv.DictReader(copied.open(encoding="utf-8")))
+    assert copied.name.endswith("-before-edit.csv.gz")
+    previous = read_csv(copied)
     assert [row["gy_id"] for row in previous] == ["GY-000001"]
     assert [row["gy_id"] for row in ledger.read("artists")] == ["GY-000001", "GY-000002"]
+    # Same file and task in the same run: the copy of the run's starting bytes covers it.
     third = second + [_person("LED-c", "GY-000003", "박서연")]
     again = ledger.write("artists", third, task="edit")
-    assert again is not None and again != copied
-    saved = list(csv.DictReader(again.open(encoding="utf-8")))
-    assert [row["gy_id"] for row in saved] == ["GY-000001", "GY-000002"]
+    assert again == copied
+    assert len(list(backups.glob("artists-*-before-edit*"))) == 1
+    assert [row["gy_id"] for row in read_csv(again)] == ["GY-000001"]
     assert [row["name_ko"] for row in ledger.read("artists")] == ["김하늘", "Haneul Kim", "박서연"]
+    # Another task in the same run takes its own copy.
+    other = ledger.write("artists", third, task="hide")
+    assert other is not None and other.name.endswith("-before-hide.csv.gz")
+    assert [row["gy_id"] for row in read_csv(other)] == ["GY-000001", "GY-000002", "GY-000003"]
+    # A new run with the same task the same day gets a numbered copy; the first stays.
+    start_backup_run()
+    later = ledger.write("artists", second, task="edit")
+    assert later is not None and later != copied
+    assert later.name.endswith("-before-edit-2.csv.gz")
+    assert copied.is_file()
+    assert [row["gy_id"] for row in read_csv(later)] == ["GY-000001", "GY-000002", "GY-000003"]
 
+
+def test_backup_is_gzip_and_a_plain_copy_holds_its_slot(tmp_path: Path):
+    start_backup_run()
+    ledger = _ledger(tmp_path)
+    ledger.write("artists", [_person("LED-a", "GY-000001", "김하늘")], task="seed")
+    backups = ledger.config.work / "backups"
+    backups.mkdir(parents=True)
+    copied = backup_before_write(ledger.path("artists"), backups, "edit")
+    assert copied is not None
+    assert gzip.decompress(copied.read_bytes()) == ledger.path("artists").read_bytes()
+    # An uncompressed copy from an older package version is not overwritten.
+    start_backup_run()
+    plain = copied.with_name(copied.name.replace("-before-edit.csv.gz", "-before-pull.csv"))
+    plain.write_text("old", encoding="utf-8")
+    nxt = backup_before_write(ledger.path("artists"), backups, "pull")
+    assert nxt is not None and nxt.name.endswith("-before-pull-2.csv.gz")
+    assert plain.read_text(encoding="utf-8") == "old"
+
+
+def test_prune_keeps_newest_backup_and_foreign_files(tmp_path: Path):
+    backups = tmp_path / "backups"
+    backups.mkdir()
+    names = [
+        "artists-20260101-before-collect.csv.gz",
+        "artists-20260102-before-collect-2.csv",
+        "artists-20260901-before-collect.csv.gz",
+        "frame_membership-20250101-before-merge.csv.gz",  # newest of its file: kept
+        "activity_id_map-20250101.csv",  # not a ledger backup name
+        "notes.txt",
+    ]
+    for name in names:
+        (backups / name).write_text("x", encoding="utf-8")
+    removed = prune_backups(backups, 90, today=date(2026, 10, 6))
+    assert [path.name for path in removed] == [
+        "artists-20260101-before-collect.csv.gz",
+        "artists-20260102-before-collect-2.csv",
+    ]
+    assert sorted(path.name for path in backups.iterdir()) == sorted(names[2:])
+    with pytest.raises(ValueError):
+        prune_backups(backups, 0)
+
+
+def test_keep_backups_days_prunes_once_per_run(tmp_path: Path):
+    config = Path(_config(tmp_path))
+    config.write_text(config.read_text(encoding="utf-8") + "\n[ledger]\nkeep_backups_days = 30\n", encoding="utf-8")
+    ledger = Ledger.open(load(config))
+    assert ledger.config.keep_backups_days == 30
+    backups = ledger.config.work / "backups"
+    backups.mkdir(parents=True)
+    stale = backups / "artists-20000101-before-collect.csv.gz"
+    stale.write_text("x", encoding="utf-8")
+    start_backup_run()
+    ledger.write("artists", [_person("LED-a", "GY-000001", "김하늘")], task="seed")
+    ledger.write("artists", [_person("LED-a", "GY-000001", "김하늘")], task="edit")
+    assert not stale.exists()
+    assert len(list(backups.glob("artists-*-before-edit.csv.gz"))) == 1
+
+
+def test_keep_backups_days_must_be_a_positive_whole_number(tmp_path: Path):
+    config = Path(_config(tmp_path))
+    config.write_text(config.read_text(encoding="utf-8") + "\n[ledger]\nkeep_backups_days = 0\n", encoding="utf-8")
+    with pytest.raises(TypeError):
+        load(config)
 
 def test_merge_refuses_without_evidence_and_retires_a_chain(tmp_path: Path):
     ledger = _ledger(tmp_path)
@@ -274,9 +352,9 @@ def test_merge_refuses_without_evidence_and_retires_a_chain(tmp_path: Path):
     assert ledger.read("activities")[0]["ledger_id"] == "LED-c"
     assert ledger.read("cv_sources")[0]["ledger_id"] == "LED-c"
     assert ledger.next_gy_id() == "GY-000004"
-    backups = list((ledger.config.work / "backups").glob("gy_retired-*-before-merge*.csv"))
+    backups = list((ledger.config.work / "backups").glob("gy_retired-*-before-merge*.csv.gz"))
     assert backups
-    backed = "\n".join(path.read_text(encoding="utf-8") for path in backups)
+    backed = "\n".join(gzip.decompress(path.read_bytes()).decode("utf-8") for path in backups)
     assert "LED-a" in backed
 
 

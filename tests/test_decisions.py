@@ -149,7 +149,7 @@ def test_queue_merge_hide_and_evidence(tmp_path: Path, monkeypatch: pytest.Monke
     assert len(gone) == 1 and len(kept_minsoo) == 1
     redirect_minsoo = next(row for row in retired if row["gy_id"] == gone[0]["gy_id"])
     assert redirect_minsoo["merged_into_ledger_id"] == kept_minsoo[0]["ledger_id"]
-    assert any((dest / "data" / "work" / "backups").glob("artists-*-before-merge.csv"))
+    assert any((dest / "data" / "work" / "backups").glob("artists-*-before-merge.csv.gz"))
     assert main(["resolve", "--config", config]) == 0
     capsys.readouterr()
     assert main(["resolve", "--config", config]) == 0
@@ -169,7 +169,7 @@ def test_queue_merge_hide_and_evidence(tmp_path: Path, monkeypatch: pytest.Monke
     name = hidden["name_ko"]
     assert main(["hide", gy, "--config", config, "--reason", "asked to be removed"]) == 0
     capsys.readouterr()
-    assert any((dest / "data" / "work" / "backups").glob("artists-*-before-hide.csv"))
+    assert any((dest / "data" / "work" / "backups").glob("artists-*-before-hide.csv.gz"))
     assert main(["publish", "--config", config]) == 0
     capsys.readouterr()
     stubs = json.loads((dest / "data" / "site" / "artist_stubs.json").read_text(encoding="utf-8"))

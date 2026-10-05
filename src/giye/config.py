@@ -65,6 +65,11 @@ Example (see examples/demo/giye.toml)::
     # reasoning_effort = "none"
     model = "claude-opus-5"
 
+    # Optional. Ledger backups older than this many days are pruned (the newest
+    # backup of each file is always kept). Unset keeps every backup.
+    # [ledger]
+    # keep_backups_days = 90
+
     # Site snapshot. site_url is the public origin cited on each page.
     # Publish fails when it is unset: there is no default origin.
     # dataset_version 0.2 and citation_author "기예 Giye" match the live archive.
@@ -210,6 +215,9 @@ class Config:
     # Maintenance schedule written to coverage.json, label → what runs. Empty
     # means no cadence is published: the package itself schedules nothing.
     cadence: dict[str, str] = field(default_factory=dict)
+    # Days of ledger backups to keep ([ledger] keep_backups_days). None keeps
+    # every backup. The newest backup of each file is never pruned.
+    keep_backups_days: int | None = None
     extra: dict = field(default_factory=dict)
 
     @property
@@ -297,7 +305,10 @@ def load(path: str | Path) -> Config:
     resolve = raw.get("resolve") or {}
     if not isinstance(resolve, dict):
         raise TypeError(f"{path}: [resolve] must be a table")
-    known = {"archive", "paths", "collect", "evidence", "resolve", "normalize", "extract", "publish"}
+    known = {"archive", "paths", "collect", "evidence", "resolve", "normalize", "extract", "publish", "ledger"}
+    ledger = raw.get("ledger") or {}
+    if not isinstance(ledger, dict):
+        raise TypeError(f"{path}: [ledger] must be a table")
     publish = raw.get("publish") or {}
     if not isinstance(publish, dict):
         raise TypeError(f"{path}: [publish] must be a table")
@@ -354,8 +365,18 @@ def load(path: str | Path) -> Config:
         dataset_title=_plain(publish.get("dataset_title", ""), "", "[publish] dataset_title"),
         citation_author=_plain(publish.get("citation_author", "기예 Giye"), "기예 Giye", "[publish] citation_author"),
         cadence=_cadence(publish.get("cadence")),
+        keep_backups_days=_keep_backups_days(ledger.get("keep_backups_days")),
         extra={k: v for k, v in raw.items() if k not in known},
     )
+
+
+def _keep_backups_days(value: object) -> int | None:
+    """``[ledger] keep_backups_days``: unset keeps every backup; otherwise a whole number of days, at least 1."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise TypeError("[ledger] keep_backups_days must be a whole number of days, at least 1")
+    return value
 
 
 def _cadence(value: object) -> dict[str, str]:

@@ -128,6 +128,14 @@ note = "fictitious Korean CV"
 
 The model must copy `source_id` onto each activity row. A row whose `source_id` was not in the documents just sent is dropped. See `docs/FIELD.md` (extraction prompt).
 
+## `[ledger]`
+
+| Key | Type | Default | Required | Read by | Example |
+|---|---|---|---|---|---|
+| `keep_backups_days` | integer ≥ 1 | unset (keep every backup) | no | `giye.ledger.io.prune_backups`, through `Ledger.write`. Once per run, after the run's first backup, backups in `<data>/work/backups` dated (by the UTC day in the file name) more than this many days ago are deleted. Only names the package writes (`<file>-<YYYYMMDD>-before-<task>[-<n>].csv[.gz]`) are touched, and every backup on the newest day of each ledger file is kept whatever its age. The demo leaves it unset. Production sets 90. | `90` |
+
+Backups themselves are not configurable: each run copies a ledger file once per task before its first write, gzip-compressed, to `<file>-<YYYYMMDD>-before-<task>.csv.gz` (docs/RULES.md, ledger invariants).
+
 ## `[publish]`
 
 | Key | Type | Default | Required | Read by | Example |

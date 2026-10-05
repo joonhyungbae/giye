@@ -517,6 +517,10 @@ def _add_tool_parsers(sub: argparse._SubParsersAction) -> None:
 def main(argv: list[str] | None = None) -> int:
     """Run one ``giye`` command. Returns 0 on success and 2 on a usage or stage error."""
     args = _parser().parse_args(argv)
+    # One command is one run: one ledger backup per file and task (giye.ledger.io).
+    from giye.ledger.io import start_backup_run
+
+    start_backup_run()
     try:
         return _dispatch(args)
     except GiyeError as exc:
