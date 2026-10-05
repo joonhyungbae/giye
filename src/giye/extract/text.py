@@ -102,6 +102,25 @@ def bundle_fingerprint(documents: list[tuple[str, str]]) -> str:
     return fingerprint("\n".join(ordered))
 
 
+def replay_key(documents: list[tuple[str, str]]) -> str:
+    """Replay-cache key of a whole-CV call: the source ids and the texts.
+
+    A response names the ``source_id`` of every row, so it answers one set of
+    sources, not one text. Two people can hold the same CV text under two
+    source ids (a duo's shared page). Keyed by the text alone
+    (``bundle_fingerprint``), the second response overwrote the first, and
+    replaying it gave each person rows for the other's source, which were all
+    dropped. The key is the SHA-256 of a version tag and one
+    ``<source_id> <fingerprint>`` line per document in ``source_id`` order.
+    ``bundle_fingerprint`` stays the extraction file's ``content_sha256`` and
+    the key of caches written before this one (read as a fallback).
+    """
+    lines = ["giye-replay-key/2"]
+    for source_id, text in sorted(documents, key=lambda item: item[0]):
+        lines.append(f"{source_id} {fingerprint(text)}")
+    return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
+
+
 def looks_garbled(text: str) -> bool:
     """True when extracted text is too short or too little of it is letters.
 

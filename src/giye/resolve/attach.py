@@ -91,8 +91,17 @@ def name_keys(name_ko: str, name_en: str, aliases: str) -> set[str]:
     """Keys a roster name shares with an existing row.
 
     A Hangul run of at least two syllables, a sorted pair of Latin tokens, a
-    single Latin word of at least three characters when the string has no
-    Hangul, or the compact spelling when nothing else matched.
+    single Latin word of at least three characters when the string has fewer
+    than two Hangul syllables, or the compact spelling when nothing else
+    matched.
+
+    The single-word key is the compact spelling (letters and digits, lower
+    case) of that part. A mixed-script name with one Hangul syllable (a Latin
+    word plus one syllable) has no Hangul key and no Latin pair, so it takes
+    that key too. Before, it fell to the last-resort compact key, which is
+    only written when nothing else matched: a record that also had a
+    two-token English name never carried it, and the same group came back as
+    a second record on re-collection.
     """
     keys: set[str] = set()
     compact = hangul_compact(name_ko)
@@ -105,7 +114,7 @@ def name_keys(name_ko: str, name_en: str, aliases: str) -> set[str]:
         tokens = latin_tokens(part)
         if len(tokens) >= 2:
             keys.add("lt:" + " ".join(sorted(tokens)))
-        elif not hangul_compact(part):
+        elif len(hangul_compact(part)) < 2:
             spelling = "".join(char for char in part.lower() if char.isalnum())
             if len(spelling) >= 3:
                 keys.add("lx:" + spelling)

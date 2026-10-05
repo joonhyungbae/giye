@@ -4,7 +4,7 @@
 ``Entry`` and ``Extraction`` are the objects the model must return.
 ``extra="forbid"`` matches the API schema's ``additionalProperties: false``.
 A response that does not match — an invented ``activity_type``, a non-integer
-year, an extra field — is rejected as a whole, so that artist is skipped
+year, an unknown field — is rejected as a whole, so that artist is skipped
 rather than half-written.
 
 A row whose ``source_id`` is not one of the documents sent with the prompt is
@@ -54,19 +54,45 @@ ActivityType = Literal[
 ]
 
 
-class Entry(BaseModel):
-    """One dated CV line. Every field is required; unknown fields are rejected."""
+def _model_facing_schema(schema: dict) -> None:
+    """The JSON schema sent to a model: every field required, no ``note``.
 
-    model_config = ConfigDict(extra="forbid")
+    ``note`` and a missing ``role`` are accepted when a stored reading is
+    parsed (see ``Entry``), but a live call still asks for exactly the eight
+    fields the prompt names. The schema sent to a provider is therefore the
+    same as before ``note`` was accepted.
+    """
+    properties = schema.get("properties", {})
+    properties.pop("note", None)
+    properties.get("role", {}).pop("default", None)
+    schema["required"] = list(properties)
+    # The class docstring explains the lenient parse; the model is told the strict contract.
+    schema["description"] = "One dated CV line. Every field is required; unknown fields are rejected."
+
+
+class Entry(BaseModel):
+    """One dated CV line. Unknown fields are rejected.
+
+    Two fields are lenient, because the reference archive's readings use them
+    and the replay cache stores those readings verbatim. ``note`` is an
+    optional comment on the row (the original wording, why a year was read
+    that way); apply appends it to ``reviewer_note``. ``role`` defaults to ""
+    when a reading omitted it, which is what the prompt asks for when no role
+    is stated. Any other extra field (``reviewer_note``, for one) still rejects
+    the whole response.
+    """
+
+    model_config = ConfigDict(extra="forbid", json_schema_extra=_model_facing_schema)
 
     title: str
     venue: str
     year: int
     activity_type: ActivityType
-    role: str
+    role: str = ""
     cv_section: Section
     upcoming: bool
     source_id: str
+    note: str = ""
 
 
 class Extraction(BaseModel):

@@ -62,22 +62,45 @@ def enqueue(queue: list[dict[str, str]], ledger_id: str, reason: str, detail: st
     )
 
 
-def pull_active(ledger: Ledger, fetcher: Fetcher, *, today: date | None = None) -> dict[str, int]:
-    """Fetch every active source. Returns a count per ``last_status``."""
+def pull_active(
+    ledger: Ledger, fetcher: Fetcher, *, today: date | None = None, offline_only: bool = False
+) -> dict[str, int]:
+    """Fetch every active source. Returns a count per ``last_status``.
+
+    ``offline_only`` (``giye extract --replay-only``) pulls only sources whose
+    download URL is under one of the fetcher's ``offline_roots``, which are
+    local directories (the demo's fixture CVs). A replay-only run reaches no
+    network: every other source keeps the snapshot it has, its fetch columns
+    are not touched, and no ``cv_pull_failed`` item is queued for it. When no
+    source was pulled, neither table is written.
+    """
     config = ledger.config
     rows = ledger.read("cv_sources")
     queue = ledger.read("review_queue")
     counts: dict[str, int] = {}
     stamp = _as_of(today)
+    pulled = False
     for row in rows:
         if not _active(row):
             continue
+        if offline_only and not _served_offline(fetcher, row):
+            continue
         status = pull_one(config, row, queue, fetcher, today=stamp)
         counts[status] = counts.get(status, 0) + 1
-    if any(_active(row) for row in rows):
+        pulled = True
+    if pulled:
         ledger.write("cv_sources", rows, task="pull-cv")
         ledger.write("review_queue", queue, task="pull-cv")
     return counts
+
+
+def _served_offline(fetcher: Fetcher, row: dict[str, str]) -> bool:
+    """True when this source's download URL is read from a configured local directory."""
+    try:
+        target = fetch_target(row.get("kind") or "web", row.get("fetch_url") or row["url"])
+    except ValueError:
+        return False
+    return any(target == prefix or target.startswith(prefix + "/") for prefix, _root in fetcher.offline_roots)
 
 
 def pull_one(

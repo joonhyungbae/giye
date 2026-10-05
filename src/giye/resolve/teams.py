@@ -4,7 +4,9 @@
 T1. A row that looks like a team or collective is never merged with a person.
 ``team_like`` says why a row is a team (a ``members=`` or ``rep=`` note, two or
 more person-shaped aliases, or a team word in the name). Exactly one side being
-a team blocks the merge. Two team rows may still merge with each other when E1
+a team blocks the merge. A row recorded as a member of the other row (its
+``team=`` or ``팀 구성원:`` note names it, or the other row's ``members=``
+lists it) also blocks the merge, whatever the team's name looks like. Two team rows may still merge with each other when E1
 holds. X1 is stricter: either side being a team drops the pair, because that
 loop is about personal names.
 
@@ -29,7 +31,7 @@ from typing import TYPE_CHECKING
 from giye.field import frame_family
 from giye.ledger.ids import activity_id_for, activity_id_key, allocate_gy_id
 from giye.ledger.ledger import Ledger
-from giye.ledger.schemas import ACTIVITIES_FIELDS, ARTISTS_FIELDS, MEMBERSHIP_FIELDS, empty_row
+from giye.ledger.schemas import ACTIVITIES_FIELDS, ARTISTS_FIELDS, MEMBERSHIP_FIELDS, REVIEW_FIELDS, empty_row
 
 if TYPE_CHECKING:  # pragma: no cover
     from giye.normalize.language import LanguageModule
@@ -101,10 +103,57 @@ def team_person_mismatch(
     """True when one row is a team and the other is a person (T1).
 
     Two team rows are not a mismatch: E1 may still merge them with each other.
+    A row that records the other as its team, or a team row that lists the
+    other as a member, is also a mismatch (``member_of_team``). That holds
+    even when the team's own name has the shape of a personal name, which
+    ``team_like`` cannot see.
     """
+    if member_of_team(row_a, row_b) or member_of_team(row_b, row_a):
+        return True
     return bool(team_like(row_a, words=words, language=language)) != bool(
         team_like(row_b, words=words, language=language)
     )
+
+
+def _name_key(value: str) -> str:
+    """Case-folded name with spaces and punctuation removed, for comparing a recorded team name."""
+    return "".join(ch for ch in (value or "").casefold() if ch.isalnum())
+
+
+def member_of_team(member: Mapping[str, str], team: Mapping[str, str]) -> bool:
+    """True when ``member`` is recorded as belonging to ``team`` (T1).
+
+    A team record and one of its members are two records, whatever the team's
+    name looks like. A Latin team name can have the shape of a personal name,
+    so ``team_like`` reads it as a person and E1 (a shared website and an
+    overlapping alias) would join the team to its member. The ledger already
+    says who belongs to which team, in three places:
+
+    - ``team=<name>`` on the member: the team the collector recorded.
+    - ``팀 구성원: <name> (<ledger id>)`` on the member: written by
+      ``expand_teams`` (``member_rows``).
+    - ``members=`` on the team: the team's own member list.
+
+    A name is compared on the other record's primary names (``name_ko``,
+    ``name_en``), not its aliases: an alias may be another spelling of a
+    member. The comparison ignores case, spaces, and punctuation.
+    """
+    team_names = {_name_key(team.get("name_ko") or ""), _name_key(team.get("name_en") or "")} - {""}
+    member_names = {_name_key(member.get("name_ko") or ""), _name_key(member.get("name_en") or "")} - {""}
+    note = member.get("reviewer_note") or ""
+    for match in re.finditer(r"(?:^|;)\s*team=([^;]*)", note):
+        value = match.group(1).strip()
+        recorded = {_name_key(value), *(_name_key(part) for part in re.split(r"\s*[|,]\s*", value))} - {""}
+        if recorded & team_names:
+            return True
+    for match in re.finditer(r"팀 구성원:\s*(.*?)\s*\(([^()]*)\)", note):
+        if match.group(2).strip() == (team.get("ledger_id") or "") or _name_key(match.group(1)) in team_names:
+            return True
+    if re.search(r"(?:^|;\s*)members=", team.get("reviewer_note") or ""):
+        for listed in team_members(team):
+            if {_name_key(listed["name_ko"]), _name_key(listed["name_en"])} & member_names:
+                return True
+    return False
 
 
 def team_members(person: Mapping[str, object]) -> list[dict[str, str]]:
@@ -235,8 +284,8 @@ def member_rows(
     return rows
 
 
-# A bare personal name that A1–A4 do not take. Expand does not guess a new row.
-_AMBIGUOUS = object()
+# Review-queue note on a member who got a new record next to a same-key record.
+MEMBER_NAME_ONLY = "team member, name only"
 
 
 def _index_families(membership: list[dict], field: object) -> dict[str, set[str]]:
@@ -371,6 +420,7 @@ def _place_member(
     collected: str,
     stamp: str,
     id_prefix: str,
+    review: list[dict],
     *,
     dry_run: bool,
 ) -> bool:
@@ -379,10 +429,15 @@ def _place_member(
     A dry run that would create a person appends the name to ``created`` and
     stops, so the roster is not written. An existing person still receives the
     credit note and the membership row in memory; the caller skips the write.
+
+    A member whose name keys hit records that A1–A4 do not take (a Latin-only
+    personal name, or a common Korean name on another programme) gets a new
+    record, as a roster row does, and the pair is queued as
+    ``possible_same_person`` (``MEMBER_NAME_ONLY``). The member is never
+    dropped and never joined on the name alone. A re-run attaches the member
+    to that new record under A1, because it is now on this programme.
     """
-    existing = _attach_member(artists, by_id, families, frame, row, team_lid, field, language)
-    if existing is _AMBIGUOUS:
-        return False
+    existing, near = _attach_member(artists, by_id, families, frame, row, team_lid, field, language)
     changed = False
     if existing is None:
         if dry_run:
@@ -391,6 +446,20 @@ def _place_member(
         existing = _create_member(artists, by_id, taken, issued, row, source, collected, stamp, id_prefix)
         created.append(existing["ledger_id"])
         changed = True
+        if near:
+            name = row.get("name_ko") or row.get("name_en") or ""
+            detail = f"{name} ({frame}) shares a name with {', '.join(near)} ({MEMBER_NAME_ONLY})"
+            review.append(
+                empty_row(
+                    REVIEW_FIELDS,
+                    queue_id=str(uuid.uuid4()),
+                    ledger_id=existing["ledger_id"],
+                    reason="possible_same_person",
+                    detail=detail,
+                    status="open",
+                    created_at=stamp,
+                )
+            )
     if _append_member_note(existing, row.get("reviewer_note") or ""):
         changed = True
     if _ensure_frame_membership(membership, existing["ledger_id"], frame, source, collected):
@@ -410,12 +479,15 @@ def expand_teams(ledger: Ledger, *, dry_run: bool = False) -> list[str]:
     The team row stays. Members are not merged with the team (T1). A member
     joins an existing person under the roster attachment rules (A1–A4,
     ``match_artist``), the same rules roster ingest uses. The team row itself
-    is never that member. A bare personal name those rules do not take is
-    skipped, not guessed. A second run adds nothing.
+    is never that member. A bare personal name those rules do not take gets
+    a new record and a ``possible_same_person`` item, not a guessed join. A
+    second run adds nothing.
     """
     artists = ledger.read("artists")
     activities = ledger.read("activities")
     membership = ledger.read("frame_membership")
+    review = ledger.read("review_queue") if ledger.path("review_queue").exists() else []
+    queued_before = len(review)
     created: list[str] = []
     changed = False
     issued = [row.get("gy_id", "") for row in artists]
@@ -466,6 +538,7 @@ def expand_teams(ledger: Ledger, *, dry_run: bool = False) -> list[str]:
                     collected,
                     stamp,
                     id_prefix,
+                    review,
                     dry_run=dry_run,
                 ):
                     changed = True
@@ -473,6 +546,8 @@ def expand_teams(ledger: Ledger, *, dry_run: bool = False) -> list[str]:
         ledger.write("artists", artists, task="expand-teams")
         ledger.write("activities", activities, task="expand-teams")
         ledger.write("frame_membership", membership, task="expand-teams")
+        if len(review) > queued_before:
+            ledger.write("review_queue", review, task="expand-teams")
     return created
 
 
@@ -489,12 +564,13 @@ def _attach_member(
     team_lid: str,
     field: object,
     language: LanguageModule | None,
-) -> dict | object | None:
-    """The person A1–A4 attach this member to.
+) -> tuple[dict | None, tuple[str, ...]]:
+    """The person A1–A4 attach this member to, and the same-key records no rule took.
 
-    ``None`` means no candidate: the caller creates a row. ``_AMBIGUOUS`` means
-    the name keys hit someone the rules do not take (a bare personal name on
-    another programme). That is not a new person and not a guessed join.
+    ``(None, ())`` means no candidate: the caller creates a row. ``(None,
+    ids)`` means the name keys hit records the rules do not take (a bare
+    personal name on another programme): the caller creates a row and queues
+    the pair. The team row is never one of ``ids``.
     Imported here: ``attach`` imports this module.
     """
     from giye.field import Field
@@ -513,10 +589,8 @@ def _attach_member(
     if decision.ledger_id == team_lid:
         decision = decide([row for row in artists if row["ledger_id"] != team_lid])
     if decision.ledger_id:
-        return by_id.get(decision.ledger_id)
-    if decision.ambiguous:
-        return _AMBIGUOUS
-    return None
+        return by_id.get(decision.ledger_id), ()
+    return None, tuple(lid for lid in decision.ambiguous if lid != team_lid)
 
 
 def _has_activity(activities: list[dict], ledger_id: str, frame: str, activity: Mapping[str, str]) -> bool:

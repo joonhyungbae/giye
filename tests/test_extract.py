@@ -30,7 +30,7 @@ from giye.extract.prompt import prompt_sha256
 from giye.extract.provider import CacheMiss, OpenAICompatibleProvider, ProviderError, write_cache
 from giye.extract.schema import Extraction, parse_extraction, without_unknown_sources
 from giye.extract.service import ExtractResult, _extract_pending, _extraction_current, _render_document, extract
-from giye.extract.text import bundle_fingerprint, extract_text, fingerprint, normalize
+from giye.extract.text import bundle_fingerprint, extract_text, fingerprint, normalize, replay_key
 from giye.ledger.ledger import Ledger
 from giye.ledger.schemas import ACTIVITIES_FIELDS, ARTISTS_FIELDS, CV_SOURCES_FIELDS, REVIEW_FIELDS, empty_row
 
@@ -924,7 +924,8 @@ def test_short_cv_is_one_call_and_the_document_is_unchanged(tmp_path: Path, monk
     assert len(calls) == 1
     assert calls[0]["document"] == _render_document("김하늘", [("CV-TEST-en", text)])
     assert "Part " not in calls[0]["document"]
-    assert calls[0]["content_sha256"] == bundle_fingerprint([("CV-TEST-en", text)])
+    assert calls[0]["content_sha256"] == replay_key([("CV-TEST-en", text)])
+    assert calls[0]["legacy_sha256"] == bundle_fingerprint([("CV-TEST-en", text)])
     stored = json.loads((cfg.work / "cv_extract" / "LED-haneul.json").read_text(encoding="utf-8"))
     assert stored["chunk_chars"] == 8000
     assert stored["chunks"] == 1
@@ -1034,7 +1035,7 @@ def test_chunk_chars_zero_keeps_a_long_cv_in_one_call(tmp_path: Path, monkeypatc
     _extract_pending(ledger, cfg, result, replay_only=False)
     assert len(calls) == 1
     assert calls[0]["document"] == _render_document("김하늘", [("CV-TEST-en", text)])
-    assert calls[0]["content_sha256"] == bundle_fingerprint([("CV-TEST-en", text)])
+    assert calls[0]["content_sha256"] == replay_key([("CV-TEST-en", text)])
 
 
 def test_changing_chunk_chars_makes_extraction_current_false(tmp_path: Path):
@@ -1171,3 +1172,153 @@ source_id = "CV-TEST-en"
     assert [row["title"] for row in Ledger.open(load(config)).read("activities")] == ["Field Prompt"]
     stored = json.loads((tmp_path / "data" / "work" / "cv_extract" / "LED-haneul.json").read_text(encoding="utf-8"))
     assert stored["prompt_sha256"] == prompt_sha256(prompt)
+
+
+def _shared_text_ledger(tmp_path: Path) -> tuple[Ledger, object, str]:
+    """Two people who hold the same CV text under two source ids (a duo's shared page)."""
+    site = tmp_path / "site"
+    site.mkdir()
+    config = _config(tmp_path, site=site, cache=tmp_path / "cache", sources="")
+    cfg = load(config)
+    ledger = Ledger.open(cfg)
+    ledger.write(
+        "artists",
+        [_person("LED-sol", "김솔", gy="GY-000010"), _person("LED-bada", "박바다", gy="GY-000011")],
+        task="test",
+    )
+    text = "EXHIBITIONS\n\n2019 Shared Signal, Example Hall\n"
+    rows = []
+    for lid, sid in (("LED-sol", "CV-SOL-en"), ("LED-bada", "CV-BADA-en")):
+        folder = cfg.data / "raw" / "cv" / lid / sid
+        folder.mkdir(parents=True)
+        (folder / "snap.txt").write_text(text, encoding="utf-8")
+        rows.append(
+            empty_row(
+                CV_SOURCES_FIELDS,
+                source_id=sid,
+                ledger_id=lid,
+                lang="en",
+                kind="web",
+                url=f"https://duo.example.org/{lid}",
+                active="true",
+                content_sha256=fingerprint(text),
+                snapshot_path=f"data/raw/cv/{lid}/{sid}/snap",
+            )
+        )
+    ledger.write("cv_sources", rows, task="test")
+    return ledger, cfg, text
+
+
+def _write_response(cfg, key: str, rows: list[dict]) -> None:
+    write_cache(
+        cfg.extract_cache,
+        content_sha256=key,
+        prompt_sha256=prompt_sha256(),
+        model=MODEL,
+        response=json.dumps({"activities": rows}),
+        temperature=0,
+        created_at="2026-01-15T00:00:00Z",
+        synthetic=True,
+    )
+
+
+def test_replay_key_names_the_source_so_a_shared_text_keeps_both_readings(tmp_path: Path, monkeypatch):
+    _block_network(monkeypatch)
+    ledger, cfg, text = _shared_text_ledger(tmp_path)
+    assert replay_key([("CV-SOL-en", text)]) != replay_key([("CV-BADA-en", text)])
+    assert bundle_fingerprint([("CV-SOL-en", text)]) == bundle_fingerprint([("CV-BADA-en", text)])
+    _write_response(cfg, replay_key([("CV-SOL-en", text)]), [_entry("CV-SOL-en", "Shared Signal", 2019)])
+    _write_response(cfg, replay_key([("CV-BADA-en", text)]), [_entry("CV-BADA-en", "Shared Signal", 2019)])
+    result = extract(cfg, replay_only=True, today=TODAY)
+    assert sorted(result.extracted) == ["LED-bada", "LED-sol"]
+    owners = sorted((row["ledger_id"], row["origin"]) for row in ledger.read("activities"))
+    assert owners == [("LED-bada", "cv:CV-BADA-en"), ("LED-sol", "cv:CV-SOL-en")]
+
+
+def test_an_older_text_only_key_written_for_another_source_is_a_miss(tmp_path: Path, monkeypatch):
+    """The text-only key is shared by both people; it answers the one it was written for only."""
+    _block_network(monkeypatch)
+    ledger, cfg, text = _shared_text_ledger(tmp_path)
+    _write_response(cfg, bundle_fingerprint([("CV-SOL-en", text)]), [_entry("CV-SOL-en", "Shared Signal", 2019)])
+    standing = empty_row(
+        ACTIVITIES_FIELDS,
+        activity_id="act-bada-1",
+        ledger_id="LED-bada",
+        title="Earlier Reading",
+        year="2019",
+        activity_type="group_exhibition",
+        source_type="SELF_SUBMITTED",
+        publishable="yes",
+        origin="cv:CV-BADA-en",
+    )
+    ledger.write("activities", [standing], task="test")
+    result = extract(cfg, replay_only=True, today=TODAY)
+    assert result.extracted == ["LED-sol"]
+    assert result.replay_misses == ["LED-bada"]
+    assert not (cfg.work / "cv_extract" / "LED-bada.json").exists()
+    rows = {(row["ledger_id"], row["title"]) for row in ledger.read("activities")}
+    assert ("LED-bada", "Earlier Reading") in rows
+    assert ("LED-sol", "Shared Signal") in rows
+
+
+def test_a_reading_that_would_remove_every_cv_row_is_a_miss(tmp_path: Path, monkeypatch):
+    text = "EXHIBITIONS\n\n1990 Example Show, Example Hall\n"
+    ledger, cfg = _staged_cv(tmp_path, text, chunk_chars=0)
+    standing = empty_row(
+        ACTIVITIES_FIELDS,
+        activity_id="act-haneul-1",
+        ledger_id="LED-haneul",
+        title="Example Show",
+        year="1990",
+        activity_type="group_exhibition",
+        origin="cv:CV-TEST-en",
+    )
+    ledger.write("activities", [standing], task="test")
+    for rows in ([], [_entry("CV-OTHER-en", "Example Show", 1990)]):
+        monkeypatch.setattr("giye.extract.service._complete", lambda _cache, rows=rows, **_kw: json.dumps({"activities": rows}))
+        result = ExtractResult()
+        _extract_pending(ledger, cfg, result, replay_only=True)
+        assert result.replay_misses == ["LED-haneul"]
+        assert result.extracted == []
+        assert not (cfg.work / "cv_extract" / "LED-haneul.json").exists()
+
+
+def test_schema_accepts_note_and_a_missing_role_and_still_rejects_other_fields():
+    row = _entry("CV-REAL", "First Signal", 2019, note="original wording kept")
+    del row["role"]
+    parsed = parse_extraction(json.dumps({"activities": [row]}))
+    assert parsed.activities[0].role == ""
+    assert parsed.activities[0].note == "original wording kept"
+    with pytest.raises(ValidationError):
+        parse_extraction(json.dumps({"activities": [_entry("CV-REAL", "First Signal", 2019, reviewer_note="x")]}))
+    # The schema sent to a model is unchanged: eight required fields, no note.
+    entry = Extraction.model_json_schema()["$defs"]["Entry"]
+    assert "note" not in entry["properties"]
+    assert entry["required"] == list(entry["properties"])
+    assert "default" not in entry["properties"]["role"]
+
+
+def test_replay_only_does_not_pull_a_source_outside_the_offline_roots(tmp_path: Path, monkeypatch):
+    _block_network(monkeypatch)
+    site = tmp_path / "site"
+    site.mkdir()
+    config = _config(tmp_path, site=site, cache=tmp_path / "cache", sources="")
+    cfg = load(config)
+    ledger = Ledger.open(cfg)
+    ledger.write("artists", [_person("LED-haneul", "김하늘")], task="test")
+    source = empty_row(
+        CV_SOURCES_FIELDS,
+        source_id="CV-FAR-en",
+        ledger_id="LED-haneul",
+        lang="en",
+        kind="web",
+        url="https://far.example.org/cv",
+        active="true",
+    )
+    ledger.write("cv_sources", [source], task="test")
+    before = ledger.read("cv_sources")
+    result = extract(cfg, replay_only=True, today=TODAY)
+    assert result.pull == {}
+    assert ledger.read("cv_sources") == before
+    queue = ledger.read("review_queue") if ledger.path("review_queue").exists() else []
+    assert not any(item["reason"] == "cv_pull_failed" for item in queue)

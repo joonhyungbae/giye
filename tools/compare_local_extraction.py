@@ -59,7 +59,7 @@ from giye.extract.prompt import prompt_sha256, prompt_text
 from giye.extract.provider import OpenAICompatibleProvider, ProviderError, cache_path
 from giye.extract.schema import Entry, parse_extraction
 from giye.extract.service import _render_document
-from giye.extract.text import bundle_fingerprint, extension_for, extract_text, normalize
+from giye.extract.text import bundle_fingerprint, extension_for, extract_text, normalize, replay_key
 
 DEMO_CONFIG = ROOT / "examples" / "demo" / "giye.toml"
 DEFAULT_REPORT = ROOT / "docs" / "local-extraction.md"
@@ -149,8 +149,10 @@ def load_cases(config_path: Path) -> list[CvCase]:
         # pull stores the normalised text plus a trailing newline; extract reads that back.
         text = normalize(extract_text(page.content, ext)) + "\n"
         document = _render_document(spec.name_ko or spec.name_en, [(spec.source_id, text)])
-        digest = bundle_fingerprint([(spec.source_id, text)])
-        path = cache_path(config.extract_cache, digest, prompt_sha, config.extract_model)
+        # The cache key names the source id (replay_key); older caches keyed by text only still read.
+        path = cache_path(config.extract_cache, replay_key([(spec.source_id, text)]), prompt_sha, config.extract_model)
+        if not path.is_file():
+            path = cache_path(config.extract_cache, bundle_fingerprint([(spec.source_id, text)]), prompt_sha, config.extract_model)
         if not path.is_file():
             raise SystemExit(f"no hosted cache for {spec.source_id} ({path.name})")
         payload = json.loads(path.read_text(encoding="utf-8"))

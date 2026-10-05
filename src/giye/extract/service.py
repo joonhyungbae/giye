@@ -10,7 +10,11 @@ is sent as a Bearer token; a local server does not require one. A
 content-hash change (or a new prompt digest, or a new model, or a new
 ``chunk_chars``) misses the previous cache entry and reads the CV again.
 The model string is stored as given, so a local id does not reuse a hosted
-response. A CV longer than ``chunk_chars`` is split first
+response. A whole-CV call is keyed by its source ids as well as its text
+(``replay_key``): two people can share one CV text under two source ids, and
+each response names the source ids of its rows. A cache written before that
+key (text only) is still read. A reading that would remove every CV row a
+person has is a replay miss, not an empty extraction (``_drops_everything``). A CV longer than ``chunk_chars`` is split first
 (``giye.extract.chunk``). Each piece is its own call. The rows are
 concatenated. One piece that fails drops the artist; a partial file is not
 written.
@@ -43,7 +47,7 @@ from giye.extract.provider import (
 from giye.extract.pull import pull_active
 from giye.extract.registry import register
 from giye.extract.schema import parse_extraction, without_unknown_sources
-from giye.extract.text import bundle_fingerprint
+from giye.extract.text import bundle_fingerprint, replay_key
 from giye.ledger.ledger import Ledger
 from giye.normalize.language import language_for
 from giye.resolve.teams import team_like
@@ -81,7 +85,9 @@ def extract(config: Config, *, replay_only: bool = False, today: date | None = N
     result = ExtractResult()
     _register_configured(ledger, config, result)
     fetcher = fetcher_from_config(config)
-    result.pull = pull_active(ledger, fetcher, today=today)
+    # --replay-only reaches no network: CVs already on disk are replayed as they
+    # are, and only sources served from a configured offline root are pulled.
+    result.pull = pull_active(ledger, fetcher, today=today, offline_only=replay_only)
     _extract_pending(ledger, config, result, replay_only=replay_only)
     result.apply = apply_extractions(ledger, today=today)
     return result
@@ -138,6 +144,8 @@ def _match_artist(artists: list[dict[str, str]], spec: object) -> dict[str, str]
 
 def _extract_pending(ledger: Ledger, config: Config, result: ExtractResult, *, replay_only: bool) -> None:
     names = {row["ledger_id"]: row.get("name_ko") or row.get("name_en") or "" for row in ledger.read("artists")}
+    # Origins that already have rows, for the guard against a reading that would remove them all.
+    standing = {row.get("origin") or "" for row in ledger.read("activities")}
     by_artist: dict[str, list[dict[str, str]]] = {}
     for source in ledger.read("cv_sources"):
         if source.get("active", "true").lower() in ("false", "0", "no"):
@@ -179,6 +187,7 @@ def _extract_pending(ledger: Ledger, config: Config, result: ExtractResult, *, r
         pieces, chunk_count = _pieces(names.get(ledger_id, ""), documents, chunk_chars)
         source_ids = {source["source_id"] for source in sources}
         activities = []
+        seen = 0
         failed = False
         # Several whole CVs used to be one cache key, the hash of the texts
         # joined together. Each CV is stored under its own text hash: that is
@@ -198,15 +207,17 @@ def _extract_pending(ledger: Ledger, config: Config, result: ExtractResult, *, r
                 model=model,
             )
         if separate is not None:
-            activities = separate
+            activities, seen = separate
         else:
-            for rendered, digest in pieces:
+            for rendered, digest, legacy in pieces:
                 try:
                     raw = _complete(
                         cache_dir,
                         prompt=prompt,
                         document=rendered,
                         content_sha256=digest,
+                        legacy_sha256=legacy,
+                        source_ids=source_ids,
                         prompt_sha256=prompt_sha,
                         model=model,
                         temperature=config.extract_temperature,
@@ -232,8 +243,12 @@ def _extract_pending(ledger: Ledger, config: Config, result: ExtractResult, *, r
                     break
                 kept, _dropped = without_unknown_sources(parsed, source_ids)
                 activities.extend(kept.activities)
+                seen += len(parsed.activities)
             if failed:
                 continue
+        if _drops_everything(seen, activities, source_ids, standing):
+            result.replay_misses.append(ledger_id)
+            continue
         extract_dir.mkdir(parents=True, exist_ok=True)
         payload = {
             "ledger_id": ledger_id,
@@ -257,26 +272,31 @@ def _replay_each_document(
     prompt: str,
     prompt_sha: str,
     model: str,
-) -> list | None:
-    """Cached activities for each CV, or None when any document is not cached.
+) -> tuple[list, int] | None:
+    """Cached activities for each CV and the row count read, or None when any document is not cached.
 
-    The replay key of one CV is ``bundle_fingerprint`` of that text alone.
-    Joining every text the survivor now holds is a different key, so a merge
-    would orphan the cache. Reading each document back on its own key keeps
-    the stored response. This does not call a model: a miss returns None and
-    the caller tries the joined key, then a live call.
+    The replay key of one CV is ``replay_key`` of that document alone (or,
+    for an older cache, ``bundle_fingerprint`` of its text). Joining every
+    text the survivor now holds is a different key, so a merge would orphan
+    the cache. Reading each document back on its own key keeps the stored
+    response. This does not call a model: a miss returns None and the caller
+    tries the joined key, then a live call. A response none of whose rows
+    names this source (another person's reading of the same text) is a miss.
     """
     activities = []
+    seen = 0
     for source_id, text in sorted(documents, key=lambda item: item[0]):
         single = [(source_id, text)]
-        replay = ReplayProvider(
-            cache_dir,
-            content_sha256=bundle_fingerprint(single),
-            prompt_sha256=prompt_sha,
-            model=model,
-        )
         try:
-            raw = replay.complete(prompt, _render_document(name, single))
+            raw = _replay(
+                cache_dir,
+                prompt=prompt,
+                document=_render_document(name, single),
+                keys=(replay_key(single), bundle_fingerprint(single)),
+                prompt_sha=prompt_sha,
+                model=model,
+                source_ids={source_id},
+            )
         except CacheMiss:
             return None
         try:
@@ -284,20 +304,87 @@ def _replay_each_document(
         except ValidationError:
             return None
         kept, _dropped = without_unknown_sources(parsed, {source_id})
+        if parsed.activities and not kept.activities:
+            return None
         activities.extend(kept.activities)
-    return activities
+        seen += len(parsed.activities)
+    return activities, seen
 
 
-def _pieces(name: str, documents: list[tuple[str, str]], chunk_chars: int) -> tuple[list[tuple[str, str]], int]:
-    """Rendered calls ``(document, content sha)`` and the piece count.
+def _replay(
+    cache_dir,
+    *,
+    prompt: str,
+    document: str,
+    keys: tuple[str, ...],
+    prompt_sha: str,
+    model: str,
+    source_ids: set[str] | None = None,
+) -> str:
+    """The stored response under the first key that has one. Raises the first key's ``CacheMiss``.
+
+    ``keys`` is the current key, then the older text-only key. The older key
+    is shared by everyone who holds the same text, so a response found there
+    whose rows all name other sources is another person's reading and is
+    skipped (``source_ids`` are the sources of this call).
+    """
+    first: CacheMiss | None = None
+    for index, key in enumerate(dict.fromkeys(key for key in keys if key)):
+        try:
+            raw = ReplayProvider(cache_dir, content_sha256=key, prompt_sha256=prompt_sha, model=model).complete(
+                prompt, document
+            )
+        except CacheMiss as miss:
+            first = first or miss
+            continue
+        if index and source_ids is not None and _names_only_other_sources(raw, source_ids):
+            first = first or CacheMiss(key, prompt_sha, model)
+            continue
+        return raw
+    assert first is not None
+    raise first
+
+
+def _names_only_other_sources(raw: str, source_ids: set[str]) -> bool:
+    """True when a stored response has rows and none of them names one of ``source_ids``."""
+    try:
+        parsed = parse_extraction(raw)
+    except ValidationError:
+        return False
+    return bool(parsed.activities) and not any(row.source_id in source_ids for row in parsed.activities)
+
+
+def _drops_everything(seen: int, kept: list, source_ids: set[str], standing: set[str]) -> bool:
+    """True when this reading would remove every CV row the person has from these sources.
+
+    Two signs of a reading that is not this person's: the response had rows
+    but none named a source sent with it (a cache entry written for another
+    person who holds the same text), or it has no rows while the ledger holds
+    rows from these sources. Writing it would make apply delete those rows and
+    mark the CV as read. It is counted as a replay miss instead, so the ledger
+    keeps its rows and a later run reads the CV again.
+    """
+    if kept:
+        return False
+    if seen:
+        return True
+    return any(f"cv:{source_id}" in standing for source_id in source_ids)
+
+
+def _pieces(
+    name: str, documents: list[tuple[str, str]], chunk_chars: int
+) -> tuple[list[tuple[str, str, str | None]], int]:
+    """Rendered calls ``(document, cache key, older cache key)`` and the piece count.
 
     Documents are taken in ``source_id`` order, the order
     ``_render_document`` and ``bundle_fingerprint`` already use. When every
-    document is one piece they are sent together, and the sha is
-    ``bundle_fingerprint`` of the whole CV, so an existing replay still hits.
-    When any document is split, each piece is its own call. That call's sha
-    is the SHA-256 of the rendered piece, so one piece can replay without
-    the others. ``chunks`` in the extraction file is this piece count (one
+    document is one piece they are sent together. The key is ``replay_key``
+    of the whole CV (source ids and texts); the older key,
+    ``bundle_fingerprint`` of the texts alone, is read when the new one is
+    not cached. When any document is split, each piece is its own call. That
+    call's key is the SHA-256 of the rendered piece, which already names the
+    source id, so one piece can replay without the others and there is no
+    older key. ``chunks`` in the extraction file is this piece count (one
     per document when nothing was split).
     """
     ordered = sorted(documents, key=lambda item: item[0])
@@ -306,12 +393,13 @@ def _pieces(name: str, documents: list[tuple[str, str]], chunk_chars: int) -> tu
         grouped.extend((source_id, piece) for piece in split_cv(text, chunk_chars))
     count = len(grouped)
     if count == len(ordered):
-        return [(_render_document(name, documents), bundle_fingerprint(documents))], count
-    pieces: list[tuple[str, str]] = []
+        rendered = _render_document(name, documents)
+        return [(rendered, replay_key(documents), bundle_fingerprint(documents))], count
+    pieces: list[tuple[str, str, str | None]] = []
     for index, (source_id, piece) in enumerate(grouped, start=1):
         rendered = _render_document(name, [(source_id, piece)], part=(index, count))
         digest = hashlib.sha256(rendered.encode("utf-8")).hexdigest()
-        pieces.append((rendered, digest))
+        pieces.append((rendered, digest, None))
     return pieces, count
 
 
@@ -412,15 +500,30 @@ def _complete(
     model: str,
     temperature: float | None,
     replay_only: bool,
+    legacy_sha256: str | None = None,
+    source_ids: set[str] | None = None,
     provider: str,
     base_url: str,
     api_key_env: str,
     reasoning_effort: str | None = None,
 ) -> str | CacheMiss:
-    """Replay the cache, or call the configured model on a miss. A miss with no key returns ``CacheMiss``."""
-    replay = ReplayProvider(cache_dir, content_sha256=content_sha256, prompt_sha256=prompt_sha256, model=model)
+    """Replay the cache, or call the configured model on a miss. A miss with no key returns ``CacheMiss``.
+
+    ``legacy_sha256`` is the key a cache written before ``replay_key`` used;
+    it is read after ``content_sha256`` misses, unless its rows all name
+    sources other than ``source_ids``. A live response is written under
+    ``content_sha256`` only.
+    """
     try:
-        return replay.complete(prompt, document)
+        return _replay(
+            cache_dir,
+            prompt=prompt,
+            document=document,
+            keys=(content_sha256, legacy_sha256 or ""),
+            prompt_sha=prompt_sha256,
+            model=model,
+            source_ids=source_ids,
+        )
     except CacheMiss as miss:
         # A missing Anthropic key stays on the replay path. A local server does not.
         if replay_only or (provider == "anthropic" and not api_key_configured()):

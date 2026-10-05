@@ -367,7 +367,10 @@ def _merge_or_queue_x1(state: _State, result: ResolveResult, *, dry_run: bool) -
         if ko_id not in state.by_id or en_id not in state.by_id:
             continue
         pair = (state.by_id[ko_id], state.by_id[en_id])
-        if any(team_like(row, words=state.team_words, language=state.language) for row in pair):
+        # T1: either side a team, or one side recorded as a member of the other.
+        if any(team_like(row, words=state.team_words, language=state.language) for row in pair) or (
+            team_person_mismatch(*pair, words=state.team_words, language=state.language)
+        ):
             result.blocked_team.append(tuple(sorted((ko_id, en_id))))
             continue
         if pinned_apart(state.identities.get(ko_id, []), state.identities.get(en_id, [])):
@@ -399,7 +402,9 @@ def _merge_or_queue_x1(state: _State, result: ResolveResult, *, dry_run: bool) -
             continue
         left, right = (ko_id, en_id) if ko_id in state.by_id and en_id in state.by_id else covered
         rows = (state.by_id[left], state.by_id[right])
-        if any(team_like(row, words=state.team_words, language=state.language) for row in rows):
+        if any(team_like(row, words=state.team_words, language=state.language) for row in rows) or (
+            team_person_mismatch(*rows, words=state.team_words, language=state.language)
+        ):
             continue
         if pinned_apart(state.identities.get(left, []), state.identities.get(right, [])):
             continue

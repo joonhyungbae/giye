@@ -591,7 +591,8 @@ def test_expand_teams_reuses_a_person_by_attachment_not_exact_name(tmp_path: Pat
     )
 
 
-def test_expand_teams_does_not_guess_a_personal_name_on_another_programme(tmp_path: Path):
+def test_expand_teams_gives_a_name_only_member_a_new_record_and_queues_the_pair(tmp_path: Path):
+    """A common name on another programme is not joined and not dropped: new record, queued pair."""
     ledger = _ledger(tmp_path)
     _seed(
         ledger,
@@ -605,12 +606,38 @@ def test_expand_teams_does_not_guess_a_personal_name_on_another_programme(tmp_pa
         ],
         [_mem("LED-team", "EXAMPLE-RESIDENCY"), _mem("LED-other", "EXAMPLE-WORKSHOP")],
     )
+    created = expand_teams(ledger)
+    assert len(created) == 1
+    assert len(ledger.read("artists")) == 3
+    membership = ledger.read("frame_membership")
+    assert not any(row["ledger_id"] == "LED-other" and row["frame_code"] == "EXAMPLE-RESIDENCY" for row in membership)
+    assert any(row["ledger_id"] == created[0] and row["frame_code"] == "EXAMPLE-RESIDENCY" for row in membership)
+    queue = [row for row in ledger.read("review_queue") if row["reason"] == "possible_same_person"]
+    assert [row["ledger_id"] for row in queue] == created
+    assert "LED-other" in queue[0]["detail"] and "team member, name only" in queue[0]["detail"]
+    # A re-run attaches the member to the record it already has (A1) and queues nothing new.
     assert expand_teams(ledger) == []
-    assert len(ledger.read("artists")) == 2
-    assert not any(
-        row["ledger_id"] == "LED-other" and row["frame_code"] == "EXAMPLE-RESIDENCY"
-        for row in ledger.read("frame_membership")
+    assert len(ledger.read("artists")) == 3
+    assert len(ledger.read("review_queue")) == len(queue)
+
+
+def test_expand_teams_keeps_a_latin_only_member(tmp_path: Path):
+    ledger = _ledger(tmp_path)
+    _seed(
+        ledger,
+        [
+            _artist("LED-team", "GY-000001", "Noeul Studio", "Noeul Studio", note="members=Mira Example|Juno Sample"),
+            _artist("LED-other", "GY-000002", "Mira Example", "Mira Example"),
+        ],
+        [_act("LED-team", "EXAMPLE-RESIDENCY", 2019), _act("LED-other", "EXAMPLE-WORKSHOP", 2020)],
+        [_mem("LED-team", "EXAMPLE-RESIDENCY"), _mem("LED-other", "EXAMPLE-WORKSHOP")],
     )
+    created = expand_teams(ledger)
+    assert len(created) == 2
+    names = sorted(row["name_en"] or row["name_ko"] for row in ledger.read("artists") if row["ledger_id"] in created)
+    assert names == ["Juno Sample", "Mira Example"]
+    queue = [row for row in ledger.read("review_queue") if row["reason"] == "possible_same_person"]
+    assert len(queue) == 1 and "LED-other" in queue[0]["detail"]
 
 
 def test_expand_teams_adds_members_once_and_does_not_merge_them(tmp_path: Path):
@@ -792,3 +819,59 @@ language_module = "tests.toy_language:Toy"
         encoding="utf-8",
     )
     assert language_for(load(path)).personal_name("qamo")
+
+
+def test_a_mixed_script_name_with_one_hangul_syllable_has_a_shared_key(tmp_path: Path):
+    """A Latin word plus one Hangul syllable keys on its compact spelling, with or without an English name."""
+    from giye.resolve.attach import attach_row, name_keys
+
+    assert name_keys("Wave몸", "", "") & name_keys("Wave몸", "Wave Mom", "")
+    cfg = load(_config(tmp_path))
+    existing = _artist("LED-group", "GY-000001", "Wave몸", "Wave Mom", aliases="김바다|박바다")
+    decision = attach_row(
+        artists=[existing],
+        families_by_lid={"LED-group": {"EXAMPLE-WORKSHOP"}},
+        links=[],
+        frame_code="EXAMPLE-RESIDENCY",
+        name_ko="Wave몸",
+        name_en="",
+        aliases="김바다|박바다",
+        identity="",
+        websites=[],
+        field=cfg.field_config,
+    )
+    assert decision.ledger_id == "LED-group"
+
+
+def test_t1_blocks_a_team_with_a_personal_shaped_name_and_its_member(tmp_path: Path):
+    """E1 must not join a team to a member whose note names it, even when the team name looks personal."""
+    ledger = _ledger(tmp_path)
+    team = _artist("LED-team", "GY-000001", "Mira Sample", "Mira Sample", aliases="김바다|Mira Duo")
+    member = _artist("LED-member", "GY-000002", "김바다", "Bada Kim", note="example_2021; team=Mira Sample")
+    _seed(
+        ledger,
+        [team, member],
+        [_act("LED-team", "EXAMPLE-RESIDENCY", 2019), _act("LED-member", "EXAMPLE-WORKSHOP", 2021)],
+        [_mem("LED-team", "EXAMPLE-RESIDENCY"), _mem("LED-member", "EXAMPLE-WORKSHOP")],
+        [_link("LED-team", "https://mira.example.org"), _link("LED-member", "https://mira.example.org")],
+    )
+    assert team_like(team) == "" and team_like(member) == ""
+    assert team_person_mismatch(team, member)
+    result = resolve_ledger(ledger)
+    assert not result.merges
+    assert ("LED-member", "LED-team") in result.blocked_team
+    assert {row["ledger_id"] for row in ledger.read("artists")} == {"LED-team", "LED-member"}
+
+
+def test_t1_member_notes_and_members_lists_name_the_team():
+    from giye.resolve.teams import member_of_team
+
+    team = {"ledger_id": "LED-team", "name_ko": "Mira Sample", "name_en": "", "reviewer_note": ""}
+    by_note = {"name_ko": "김바다", "reviewer_note": "팀 구성원: Mira Sample (LED-team)"}
+    by_id = {"name_ko": "김바다", "reviewer_note": "팀 구성원: Renamed (LED-team)"}
+    listed = {"name_ko": "박바다", "name_en": "", "reviewer_note": ""}
+    team_with_list = {**team, "reviewer_note": "members=김바다|박바다"}
+    stranger = {"name_ko": "최바다", "reviewer_note": "team=Other Group"}
+    assert member_of_team(by_note, team) and member_of_team(by_id, team)
+    assert member_of_team(listed, team_with_list)
+    assert not member_of_team(stranger, team) and not member_of_team(team, by_note)
