@@ -824,11 +824,16 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
     // Not desynchronized: with a 2x device pixel ratio a desynchronized canvas left headless Chrome
     // unable to produce a frame (screenshots timed out), a risk for high-DPI screens that is not worth
     // the main-thread time it saves.
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    const ctx0 = canvas.getContext("2d");
+    if (!ctx0) return;
+    // the context drawing goes to; pointed at an offscreen copy while one is painted
+    let ctx: CanvasRenderingContext2D = ctx0;
     // offscreen copy of the chord/strand/dot layers (see "Layer cache" in draw)
     const layer = document.createElement("canvas");
     const lctx = layer.getContext("2d")!;
+    // offscreen copy of the piers-to-rim block (see "Piers, year plates" in draw)
+    const blockLayer = document.createElement("canvas");
+    const blockCtx = blockLayer.getContext("2d")!;
     // inputs of the last painted frame (see "unchanged frame" in draw)
     const memo = { exact: [] as Array<number | string>, fine: [] as number[], px: [] as number[] };
     // bumped whenever the canvas needs a fresh frame although no drawing input changed
@@ -924,6 +929,24 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
     const spy = new Float32Array(nS);
     const spz = new Float32Array(nS);
     const spa = new Float32Array(nS);
+    // the piers-to-rim block's inputs on the previous frame, and its offscreen copy's state
+    const blk = {
+      prev: [] as Array<number | string>,
+      spx: new Float32Array(nS),
+      spy: new Float32Array(nS),
+      spz: new Float32Array(nS),
+      spa: new Float32Array(nS),
+      painted: false,
+      state: null as null | {
+        font: string;
+        textAlign: CanvasTextAlign;
+        textBaseline: CanvasTextBaseline;
+        fillStyle: string | CanvasGradient | CanvasPattern;
+        strokeStyle: string | CanvasGradient | CanvasPattern;
+        lineWidth: number;
+      },
+      ringLabel: [] as Array<{ k: number; x: number; y: number; w: number; h: number }>,
+    };
     // depth and perspective scale of each visible record / source this frame (P1, P2, P3)
     const rd = new Float32Array(records.length);
     const rf = new Float32Array(records.length);
@@ -1809,6 +1832,37 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         strokeBatch(ctx, base);
         strokeBatch(ctx, top);
       }
+      /* Piers, year plates, year labels, programme dots and the rim arcs are drawn one after
+         another and change only with the view, the emphasis and the piers' own flight. When
+         all of those equal the previous frame (most of the opening, a settled stage), the
+         block is painted once into an offscreen copy and that copy is stamped 1:1 (identity
+         device transform). The first frame of a still view still paints it directly, so a
+         moving view never pays for the extra copy. */
+      const blockKey = [
+        canvasEpoch, w, h, dpr, ink, paper, accent, st.theme.dark ? 1 : 0, cx, cy, s, cosT, rc,
+        rs, st.rot, diagram, subSplit, spread, ringStep, e, dLo, dHi, emphasisSource,
+        emphasisArtist, emphasised ? 1 : 0, lensRing, st.zoom, assembling ? clamp((T - 0.2) / 0.8, 0, 1) : 1,
+        ctx.lineCap, ctx.lineJoin,
+      ];
+      let blockSame =
+        blk.prev.length === blockKey.length && blockKey.every((v, i) => v === blk.prev[i]);
+      for (let i = 0; i < nS && blockSame; i++)
+        if (
+          spx[i] !== blk.spx[i] ||
+          spy[i] !== blk.spy[i] ||
+          spz[i] !== blk.spz[i] ||
+          spa[i] !== blk.spa[i]
+        )
+          blockSame = false;
+      const blockFresh = !blockSame;
+      if (blockFresh) {
+        blk.prev = blockKey;
+        blk.spx.set(spx);
+        blk.spy.set(spy);
+        blk.spz.set(spz);
+        blk.spa.set(spa);
+      }
+      const paintStatic = () => {
       for (let i = 0; i < nS; i++) {
         const sn = sources[i]!;
         const a = spa[i]!;
@@ -2003,6 +2057,50 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
           ctx.restore();
         }
       });
+      };
+      if (blockFresh) {
+        blk.painted = false;
+        paintStatic();
+      } else {
+        if (!blk.painted) {
+          if (blockLayer.width !== canvas.width || blockLayer.height !== canvas.height) {
+            blockLayer.width = canvas.width;
+            blockLayer.height = canvas.height;
+          }
+          const main = ctx;
+          ctx = blockCtx;
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.clearRect(0, 0, blockLayer.width, blockLayer.height);
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          ctx.lineCap = main.lineCap;
+          ctx.lineJoin = main.lineJoin;
+          ctx.globalAlpha = 1;
+          paintStatic();
+          ctx = main;
+          // the state the block leaves on the context, so later drawing starts from the same
+          blk.state = {
+            font: blockCtx.font,
+            textAlign: blockCtx.textAlign,
+            textBaseline: blockCtx.textBaseline,
+            fillStyle: blockCtx.fillStyle,
+            strokeStyle: blockCtx.strokeStyle,
+            lineWidth: blockCtx.lineWidth,
+          };
+          blk.ringLabel = st.ringLabel;
+          blk.painted = true;
+        }
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.drawImage(blockLayer, 0, 0);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const bs = blk.state!;
+        ctx.font = bs.font;
+        ctx.textAlign = bs.textAlign;
+        ctx.textBaseline = bs.textBaseline;
+        ctx.fillStyle = bs.fillStyle;
+        ctx.strokeStyle = bs.strokeStyle;
+        ctx.lineWidth = bs.lineWidth;
+        st.ringLabel = blk.ringLabel.slice();
+      }
 
       /* chords — chordA is part of the layer-cache key, which decides whether screen
          positions of every record are needed this frame */
