@@ -43,3 +43,23 @@ def test_demo_config_resolves_paths_relative_to_file():
     assert "https://example.org/contact" in cfg.user_agent
     roots = dict(cfg.offline_roots)
     assert (roots["https://example.org"] / "robots.txt").is_file()
+
+
+def test_shipped_field_is_package_data():
+    """The default field file resolves inside the installed package, not the repository root.
+
+    A non-editable install has no ``fields/`` next to site-packages, so the file
+    must be found through importlib.resources.
+    """
+    from importlib import resources
+
+    import giye
+    from giye.field import shipped_field, shipped_field_path
+
+    path = shipped_field_path()
+    assert path.is_file()
+    assert path.resolve().is_relative_to(Path(giye.__file__).resolve().parent)
+    assert path == Path(str(resources.files("giye") / "fields" / "korean-media-art" / "field.toml"))
+    field = shipped_field()
+    assert field.team_words
+    assert field.edition_aliases

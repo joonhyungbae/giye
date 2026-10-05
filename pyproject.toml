@@ -40,6 +40,7 @@ giye = [
   "normalize/data/ko_en/*.txt",
   "normalize/data/ko_en/countries/*.json",
   "extract/prompts/*.txt",
+  "fields/*/field.toml",
 ]
 
 [tool.pytest.ini_options]

@@ -2,8 +2,10 @@
 """Field vocabulary loaded from a field file.
 
 Programme names, event phrases, team-word lists, tag vocabularies, and the
-ring's edition aliases live in the archive's field file (``fields/<name>/field.toml``
-or the path in ``[paths] field``). The package does not compile one field's
+ring's edition aliases live in the archive's field file (the path in
+``[paths] field``). The Korean media-art field file is shipped as package data
+at ``giye/fields/korean-media-art/field.toml`` so a regular (non-editable)
+install finds it too. The package does not compile one field's
 programmes into the rules. An empty tag list inherits the shipped Korean
 media-art vocabulary so a small demo file can omit it; ``[tags] inherit = false``
 keeps the lists empty. Event patterns, frame families, and ring aliases are
@@ -14,6 +16,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, replace
+from importlib import resources
 from pathlib import Path
 
 try:  # Python 3.11+
@@ -112,12 +115,18 @@ _SHIPPED: Field | None = None
 
 
 def shipped_field_path() -> Path:
-    """``fields/korean-media-art/field.toml`` next to the package sources."""
-    return Path(__file__).resolve().parents[2] / "fields" / "korean-media-art" / "field.toml"
+    """The packaged ``giye/fields/korean-media-art/field.toml``.
+
+    Resolved through ``importlib.resources`` rather than a path relative to the
+    source tree: after ``pip install .`` the package sits in site-packages and
+    the repository root is not next to it.
+    """
+    ref = resources.files("giye") / "fields" / "korean-media-art" / "field.toml"
+    return Path(str(ref))
 
 
 def shipped_field() -> Field:
-    """The Korean media-art vocabulary shipped with this repository. Cached."""
+    """The Korean media-art vocabulary shipped with the package. Cached."""
     global _SHIPPED
     if _SHIPPED is None:
         _SHIPPED = load_field(shipped_field_path())

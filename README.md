@@ -26,7 +26,8 @@ The optional `llm` extra is the Anthropic client. A local OpenAI-compatible serv
 
 ## One-command demo
 
-From the repository root:
+From the root of a repository checkout (the demo reads `examples/demo/`, which is not part of the
+installed package; `pip install .` and `pip install -e .` both work):
 
 ```bash
 giye demo

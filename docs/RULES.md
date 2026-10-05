@@ -140,7 +140,7 @@ These are the production site builder's decisions. They do not have E/F/P/V ids 
 
 `giye publish` does not rewrite `frames.yml`. Production saved the new counts back into that file. The counts are in `frames.json` and `coverage.json`.
 
-Region tags, the medium guess from `field` / `category`, and edition aliases are declared in the field file (`fields/` for a shipped field, or the path in `[paths] field`). An alias maps a membership code to a frame and an edition when that frame is registered. Another field supplies its own lists. They are not compiled into the package.
+Region tags, the medium guess from `field` / `category`, and edition aliases are declared in the field file (`src/giye/fields/<name>/field.toml` for a field shipped as package data, or the path in `[paths] field`). An alias maps a membership code to a frame and an edition when that frame is registered. Another field supplies its own lists. They are data files, not rules compiled into the code.
 
 ## Exploration (stage 6)
 

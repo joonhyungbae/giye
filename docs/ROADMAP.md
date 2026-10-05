@@ -7,7 +7,7 @@ translated to English, made path-independent (configuration instead of fixed pat
 |---|---|---|---|---|
 | 1 | Repository skeleton, licence, CI, docs | – | – | done |
 | 2 | Cross-script name keys (X1) | `scripts/name_utils.py` | `giye.resolve.names` | done |
-| 3 | Configuration (`giye.toml`): paths, field file, territory, frames file, glossaries, language-module entry point | `ledger_lib.py` constants | `giye.config`, `fields/` | done |
+| 3 | Configuration (`giye.toml`): paths, field file, territory, frames file, glossaries, language-module entry point | `ledger_lib.py` constants | `giye.config`, `giye/fields/` | done |
 | 4 | Ledger schemas, CSV I/O, lock, backups, permanent IDs, retirement | `ledger_lib.py`, `merge_artists.py`, `build_site_dataset.py` (ID part) | `giye.ledger` | done |
 | 5 | Fetcher with robots.txt on every request; snapshot store; collector base; frame registry | `collectors/base.py`, `collectors/snapshot.py`, `archive_evidence.py`, `frames.yml` | `giye.collect` | done |
 | 5b | RFC 9309 robots parity (status, longest match, refuse before send, every redirect hop, manifest verdict, full-hash lookup); WARC/WACZ and RO-Crate export | `collectors/robots.py`, `collectors/snapshot.py` | `giye.collect`, `giye.export` | done |
