@@ -169,8 +169,39 @@ def _export(args: argparse.Namespace) -> int:
     return 2
 
 
+def _explore_ties(args: argparse.Namespace) -> int:
+    """``giye explore ties``: write the co-presence ties, and with ``--layers`` the rule layers."""
+    import json
+    from pathlib import Path
+
+    from giye.config import load
+    from giye.explore.ties import format_layers, layers_for_config, ties_for_config
+
+    config = load(args.config)
+    kind = getattr(args, "kind", None) or "roster-independent"
+    out = getattr(args, "out", None)
+    layers = getattr(args, "layers", None)
+    if out or not layers:
+        pairs = sorted(ties_for_config(config, kind))
+        people = len({person for pair in pairs for person in pair})
+        if out:
+            Path(out).write_text(json.dumps([list(pair) for pair in pairs]) + "\n", encoding="utf-8")
+        print(f"ties\t{kind}\tties={len(pairs)}\tpeople_in_ties={people}" + (f"\t{out}" if out else ""))
+    if layers:
+        report = layers_for_config(config)
+        print(format_layers(report))
+        if layers != "-":
+            Path(layers).write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            print(f"layers\t{layers}")
+    return 0
+
+
 def _explore(args: argparse.Namespace) -> int:
-    """Write the rim order. With ``--assignment`` and ``--ties``, also score a division."""
+    """Write the rim order. With ``--assignment``, also score a division.
+
+    The ties are ``--ties`` when given, else the roster-independent co-presence
+    ties computed from the ledger (``giye.explore.ties``).
+    """
     import json
     from pathlib import Path
 
@@ -178,6 +209,8 @@ def _explore(args: argparse.Namespace) -> int:
     from giye.explore.evaluate import evaluate
     from giye.explore.rim import build_rim_order, write_rim_order
 
+    if getattr(args, "action", None) == "ties":
+        return _explore_ties(args)
     config = load(args.config)
     document = build_rim_order(config)
     path = write_rim_order(document, config.site)
@@ -187,11 +220,16 @@ def _explore(args: argparse.Namespace) -> int:
     ties_path = getattr(args, "ties", None)
     if not assignment_path and not ties_path:
         return 0
-    if not assignment_path or not ties_path:
-        print("giye explore: evaluation needs both --assignment and --ties", file=sys.stderr)
+    if not assignment_path:
+        print("giye explore: --ties needs --assignment", file=sys.stderr)
         return 2
     assignment = json.loads(Path(assignment_path).read_text(encoding="utf-8"))
-    raw_ties = json.loads(Path(ties_path).read_text(encoding="utf-8"))
+    if ties_path:
+        raw_ties = json.loads(Path(ties_path).read_text(encoding="utf-8"))
+    else:
+        from giye.explore.ties import ties_for_config
+
+        raw_ties = sorted(ties_for_config(config, "roster-independent"))
     if not isinstance(assignment, dict) or not isinstance(raw_ties, list):
         print("giye explore: assignment is an object, ties is a list of pairs", file=sys.stderr)
         return 2
@@ -258,14 +296,41 @@ def main(argv: list[str] | None = None) -> int:
             )
         if stage == "explore":
             sp.add_argument(
+                "action",
+                nargs="?",
+                choices=("ties",),
+                default=None,
+                help="'ties': write co-presence ties (giye.explore.ties) instead of the rim order.",
+            )
+            sp.add_argument(
                 "--assignment",
                 default=None,
-                help="JSON object of person id → group. With --ties, score the division.",
+                help="JSON object of person id → group. Scores the division against --ties.",
             )
             sp.add_argument(
                 "--ties",
                 default=None,
-                help="JSON list of [id, id] pairs the division was not built from.",
+                help=(
+                    "JSON list of [id, id] pairs the division was not built from. "
+                    "Default: roster-independent co-presence computed from the ledger."
+                ),
+            )
+            sp.add_argument("--out", default=None, help="ties: write the pairs as a JSON list to this path.")
+            sp.add_argument(
+                "--kind",
+                choices=("roster-independent", "cv-listing"),
+                default="roster-independent",
+                help="ties: which definition (default roster-independent, the evaluation outcome).",
+            )
+            sp.add_argument(
+                "--layers",
+                nargs="?",
+                const="-",
+                default=None,
+                help=(
+                    "ties: print entities and ties under base, V7, V7+V8, V7+V8+V9 and the "
+                    "per-rule attribution; with a path, also write them there as JSON."
+                ),
             )
         if stage == "extract":
             sp.add_argument(

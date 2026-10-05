@@ -3,8 +3,12 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
+from giye.cli import main
 from giye.explore import ties as T
 
 PATTERNS = {"EXAMPLE-RESIDENCY": "example residency|예시 레지던시"}
@@ -144,3 +148,30 @@ def test_layer_report_raises_when_a_layer_is_missing():
     with pytest.raises(ValueError):
         T.layer_report(activities, builds)
 
+
+def _write_archive(root: Path) -> Path:
+    ledger = root / "data" / "ledger"
+    ledger.mkdir(parents=True)
+    fields = ["activity_id", "ledger_id", "year", "venue", "title", "origin", "publishable"]
+    lines = [",".join(fields)]
+    for item in _museum_rows():
+        lines.append(",".join(item[name] for name in fields))
+    (ledger / "activities.csv").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (ledger / "frame_membership.csv").write_text("ledger_id,frame_code\n", encoding="utf-8")
+    (root / "frames.yml").write_text("frames: []\n", encoding="utf-8")
+    config = root / "giye.toml"
+    config.write_text('[archive]\nname = "Synthetic"\n', encoding="utf-8")
+    return config
+
+
+def test_cli_writes_ties_and_layers(tmp_path: Path, capsys):
+    config = _write_archive(tmp_path)
+    out = tmp_path / "ties.json"
+    layers = tmp_path / "layers.json"
+    assert main(["explore", "ties", "--config", str(config), "--out", str(out), "--layers", str(layers)]) == 0
+    printed = capsys.readouterr().out
+    assert "ties\troster-independent\tties=4" in printed
+    assert "V7+V8+V9\t1\t1\t4\t4" in printed
+    assert "added\tV9\t1\tmerges=1\tmerges_that_added_ties=1" in printed
+    assert json.loads(out.read_text(encoding="utf-8")) == [["p1", "p2"], ["p1", "p3"], ["p1", "p4"], ["p1", "p5"]]
+    assert json.loads(layers.read_text(encoding="utf-8"))["ties"]["base"] == {"cv_listing": 1, "roster_independent": 1}
