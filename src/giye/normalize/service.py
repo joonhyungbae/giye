@@ -24,7 +24,7 @@ from pathlib import Path
 
 from giye.config import Config
 from giye.ledger.io import read_csv, write_csv
-from giye.normalize.language import load_language, packaged_dir
+from giye.normalize.language import language_for, packaged_dir
 from giye.normalize.rules import (
     HEAD_CHARS,
     active_since,
@@ -137,12 +137,7 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
     """
     raw_rules = venue_name_rules if venue_name_rules is not None else config.venue_name_rules
     name_rules = parse_name_rules(raw_rules if raw_rules else None)
-    language = load_language(
-        config.language_module,
-        glossary=config.normalize_glossary,
-        cities=config.normalize_gazetteer,
-        reference=config.normalize_reference,
-    )
+    language = language_for(config)
     out = config.processed
     out.mkdir(parents=True, exist_ok=True)
 
@@ -219,7 +214,8 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
         ledger_id = artist["ledger_id"]
         rows = by_artist.get(ledger_id, [])
         # A team CV lists members' births, so it is not that row's birth year.
-        texts = [] if team_like(artist, words=tags.compiled_team_words()) else _cv_texts(config, sources.get(ledger_id, []))
+        team = team_like(artist, words=tags.compiled_team_words(), language=language)
+        texts = [] if team else _cv_texts(config, sources.get(ledger_id, []))
         # B1 has no ledger column. It is still only a derived row, never a ledger edit.
         born = birth_year([text for text, _url in texts])
         if born:

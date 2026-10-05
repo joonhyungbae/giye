@@ -209,6 +209,9 @@ def test_language_module_loads_files_and_a_toy_pair(tmp_path: Path) -> None:
         def gazetteer(self):
             return self._gazetteer
 
+        def personal_name(self, name: str) -> bool:
+            return False
+
         def name_keys(self, name: str) -> set[str]:
             return {name.casefold()} if name else set()
 

@@ -18,6 +18,7 @@ from __future__ import annotations
 from giye.extract.text import detect_kind
 from giye.ledger.ledger import Ledger
 from giye.ledger.schemas import CV_SOURCES_FIELDS, empty_row
+from giye.normalize.language import language_for
 from giye.resolve.teams import team_like
 
 
@@ -49,7 +50,9 @@ def register(
     artist = artists.get(ledger_id)
     if artist is None:
         raise KeyError(ledger_id)
-    reason = team_like(artist, words=ledger.config.field_config.compiled_team_words())
+    reason = team_like(
+        artist, words=ledger.config.field_config.compiled_team_words(), language=language_for(ledger.config)
+    )
     if reason and not allow_team:
         raise ValueError(
             f"skip team row ({reason}): {ledger_id} {artist.get('name_ko') or artist.get('name_en')} ← {url}. "

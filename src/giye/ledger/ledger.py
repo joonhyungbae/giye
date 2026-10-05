@@ -227,12 +227,14 @@ class Ledger:
         """
         # Imported here: giye.resolve.teams imports Ledger, and attach imports teams.
         from giye.field import frame_family
+        from giye.normalize.language import language_for
         from giye.resolve.attach import attach_row
 
         if not frame or "/" in frame or "\\" in frame:
             raise ValueError("frame code must not contain a path separator")
         roster = list(rows)
         field = self.config.field_config
+        language = language_for(self.config)
         artists = self.read("artists")
         activities = self.read("activities")
         membership = self.read("frame_membership")
@@ -276,6 +278,7 @@ class Ledger:
                 identity=identity,
                 websites=websites,
                 field=field,
+                language=language,
                 team_lid=str(row.get("team_lid") or ""),
             )
             stored_ko, stored_en = _stored_name(raw_ko, raw_en)

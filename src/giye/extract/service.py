@@ -45,6 +45,7 @@ from giye.extract.registry import register
 from giye.extract.schema import parse_extraction, without_unknown_sources
 from giye.extract.text import bundle_fingerprint
 from giye.ledger.ledger import Ledger
+from giye.normalize.language import language_for
 from giye.resolve.teams import team_like
 
 
@@ -94,7 +95,9 @@ def _register_configured(ledger: Ledger, config: Config, result: ExtractResult) 
         if artist is None:
             result.skipped_unmatched.append(label)
             continue
-        reason = team_like(artist, words=config.field_config.compiled_team_words())
+        reason = team_like(
+            artist, words=config.field_config.compiled_team_words(), language=language_for(config)
+        )
         if reason and not config.extract_allow_team:
             result.skipped_team.append(f"{artist['ledger_id']} ({reason})")
             continue

@@ -18,9 +18,10 @@ A2. The name keys match and the English names agree.
     or a Latin alias. One Latin token is too common. Checked before A3, so a
     group whose English names agree is A2.
 
-A3. The name is not a bare Korean personal name.
-    ``person_like`` is two to four Hangul syllables starting with a listed
-    surname. A group, a studio, or any other spelling is not that pattern, so
+A3. The name is not a bare personal name.
+    ``person_like`` asks the language module (``personal_name``); the
+    Korean–English module takes two to four Hangul syllables starting with a
+    listed surname. A group, a studio, or any other spelling is not that pattern, so
     the first same-key row is reused. A Latin-only name that failed the
     two-token test takes this branch for the same reason.
 
@@ -43,11 +44,15 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from giye.field import Field, frame_family
 from giye.ledger.schemas import split_pipe
 from giye.resolve.evidence import url_key
 from giye.resolve.teams import person_like
+
+if TYPE_CHECKING:  # pragma: no cover
+    from giye.normalize.language import LanguageModule
 
 _HANGUL = re.compile(r"[가-힣]+")
 _LATIN = re.compile(r"[A-Za-z]+")
@@ -102,11 +107,11 @@ def name_keys(name_ko: str, name_en: str, aliases: str) -> set[str]:
     return keys
 
 
-def _member_list(artist: dict) -> bool:
+def _member_list(artist: dict, language: LanguageModule | None = None) -> bool:
     """A group row whose aliases name two or more people."""
-    if person_like(artist.get("name_ko") or ""):
+    if person_like(artist.get("name_ko") or "", language):
         return False
-    return sum(1 for alias in split_pipe(artist.get("aliases") or "") if person_like(alias)) >= 2
+    return sum(1 for alias in split_pipe(artist.get("aliases") or "") if person_like(alias, language)) >= 2
 
 
 def match_artist(
@@ -117,6 +122,7 @@ def match_artist(
     name_en: str,
     aliases: str,
     field: Field,
+    language: LanguageModule | None = None,
 ) -> Attachment:
     """A1–A4. ``rule`` is None when nothing attaches; ``ambiguous`` is the near-miss."""
     primary = name_keys(name_ko, name_en, "")
@@ -131,7 +137,7 @@ def match_artist(
             for artist in artists
             if primary
             & {key for alias in split_pipe(artist.get("aliases") or "") for key in name_keys(alias, alias, "")}
-            and not _member_list(artist)
+            and not _member_list(artist, language)
         ]
         if len(set(alias_hits)) == 1:
             candidates = [artist for artist in artists if artist["ledger_id"] == alias_hits[0]]
@@ -146,7 +152,7 @@ def match_artist(
         spellings = [artist.get("name_en") or ""] + split_pipe(artist.get("aliases") or "")
         if len(incoming) >= 2 and any(incoming == set(latin_tokens(text)) for text in spellings):
             return Attachment(artist["ledger_id"], "A2", ())
-    if not person_like(name_ko or ""):
+    if not person_like(name_ko or "", language):
         return Attachment(candidates[0]["ledger_id"], "A3", ())
     for artist in candidates:
         if not families_by_lid.get(artist["ledger_id"]):
@@ -167,6 +173,7 @@ def attach_row(
     websites: list[str],
     field: Field,
     team_lid: str = "",
+    language: LanguageModule | None = None,
 ) -> Attachment:
     """A5, then A1–A4, then A6. The same order as production ``upsert_people``."""
     if identity:
@@ -176,10 +183,10 @@ def attach_row(
             artist["ledger_id"] for artist in artists if artist.get("name_ko") and artist.get("name_ko") == name_ko
         )
         return Attachment(found, "A5" if found else None, ambiguous)
-    decision = match_artist(artists, families_by_lid, frame_code, name_ko, name_en, aliases, field)
+    decision = match_artist(artists, families_by_lid, frame_code, name_ko, name_en, aliases, field, language)
     if decision.ledger_id and decision.ledger_id == team_lid:
         others = [artist for artist in artists if artist["ledger_id"] != decision.ledger_id]
-        decision = match_artist(others, families_by_lid, frame_code, name_ko, name_en, aliases, field)
+        decision = match_artist(others, families_by_lid, frame_code, name_ko, name_en, aliases, field, language)
     if decision.ledger_id or not websites:
         return decision
     wanted = {url_key(url) for url in websites}
@@ -191,12 +198,12 @@ def attach_row(
     }
     if decision.ambiguous:
         owners &= set(decision.ambiguous)
-    if person_like(name_ko):
+    if person_like(name_ko, language):
         owners = {
             owner
             for owner in owners
             if not (
-                person_like(by_id.get(owner, {}).get("name_ko") or "")
+                person_like(by_id.get(owner, {}).get("name_ko") or "", language)
                 and hangul_compact(by_id[owner]["name_ko"]) != hangul_compact(name_ko)
             )
         }

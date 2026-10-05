@@ -8,6 +8,11 @@ a team blocks the merge. Two team rows may still merge with each other when E1
 holds. X1 is stricter: either side being a team drops the pair, because that
 loop is about personal names.
 
+Whether a name is a bare personal name is the language module's
+``personal_name`` (the Korean–English module: two to four Hangul syllables
+starting with a listed surname). Callers with a config pass that module;
+without one the default Korean–English module is used.
+
 A team line also names its members. Each member is on that roster edition in
 their own right. Expanding them adds those rows and does not merge anyone into
 the team. Re-running does not add the same member twice.
@@ -19,16 +24,15 @@ import re
 import uuid
 from collections.abc import Mapping
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from giye.ledger.ids import activity_id_for, activity_id_key, allocate_gy_id
 from giye.ledger.ledger import Ledger
 from giye.ledger.schemas import ACTIVITIES_FIELDS, ARTISTS_FIELDS, MEMBERSHIP_FIELDS, empty_row
 
-# A bare 2–4 syllable Korean personal name starts with one of these surnames.
-# The test only decides whether a name is the kind that collides across people.
-KOREAN_SURNAMES = set(
-    "김이박최정강조윤장임한오서신권황안송류유홍전고문양손배백허남심노하곽성차주우구민진나지엄채원천방공현함변염여추도소석선설마길연위표명기반왕금옥육인맹제모탁국어은편용예경봉사부가복태목형피두감음빈동온호범좌팽승간상갈"
-)
+if TYPE_CHECKING:  # pragma: no cover
+    from giye.normalize.language import LanguageModule
+
 
 def _default_team_words() -> re.Pattern[str]:
     """T1 words from the shipped field file. A configured archive passes its own."""
@@ -39,42 +43,60 @@ def _default_team_words() -> re.Pattern[str]:
 _HANGUL = re.compile(r"[가-힣]")
 
 
-def person_like(name_ko: str) -> bool:
-    """A bare 2–4 syllable Korean personal name — the kind that collides across people."""
-    return bool(re.fullmatch(r"[가-힣]{2,4}", name_ko or "")) and (name_ko or "")[:1] in KOREAN_SURNAMES
+def person_like(name_ko: str, language: LanguageModule | None = None) -> bool:
+    """A bare personal name — the kind that collides across people — by the language module."""
+    if language is None:
+        # Imported here: the language module imports giye.resolve.names, whose package imports this file.
+        from giye.normalize.language import default_language
+
+        language = default_language()
+    return language.personal_name(name_ko or "")
 
 
-def team_like(artist: Mapping[str, str], *, words: re.Pattern[str] | None = None) -> str:
+def team_like(
+    artist: Mapping[str, str],
+    *,
+    words: re.Pattern[str] | None = None,
+    language: LanguageModule | None = None,
+) -> str:
     """Why this row is a team or group, or "" when it is a person (T1).
 
     ``team=`` is also written on a person (the team they belong to), so it does
     not mark a team row. A team row carries ``members=`` or ``rep=``, or a
     non-person name with two or more person-shaped aliases, or a team word.
-    ``words`` is the archive's field-file pattern; every pipeline caller passes
-    it. Without it the shipped Korean media-art list is used.
+    ``words`` is the archive's field-file pattern and ``language`` its language
+    module; every pipeline caller passes both. Without them the shipped Korean
+    media-art list and the Korean–English module are used.
     """
     note = artist.get("reviewer_note") or ""
     for mark in ("members=", "rep="):
         if mark in note:
             return mark.rstrip("=")
     name = artist.get("name_ko") or ""
-    members = [alias for alias in _split_pipe(artist.get("aliases") or "") if person_like(alias)]
-    if not person_like(name) and len(members) >= 2:
+    members = [alias for alias in _split_pipe(artist.get("aliases") or "") if person_like(alias, language)]
+    personal = person_like(name, language)
+    if not personal and len(members) >= 2:
         return "aliases"
     pattern = words if words is not None else _default_team_words()
-    if not person_like(name) and pattern.search(f"{name} {artist.get('name_en') or ''}"):
+    if not personal and pattern.search(f"{name} {artist.get('name_en') or ''}"):
         return "team_name"
     return ""
 
 
 def team_person_mismatch(
-    row_a: Mapping[str, str], row_b: Mapping[str, str], *, words: re.Pattern[str] | None = None
+    row_a: Mapping[str, str],
+    row_b: Mapping[str, str],
+    *,
+    words: re.Pattern[str] | None = None,
+    language: LanguageModule | None = None,
 ) -> bool:
     """True when one row is a team and the other is a person (T1).
 
     Two team rows are not a mismatch: E1 may still merge them with each other.
     """
-    return bool(team_like(row_a, words=words)) != bool(team_like(row_b, words=words))
+    return bool(team_like(row_a, words=words, language=language)) != bool(
+        team_like(row_b, words=words, language=language)
+    )
 
 
 def team_members(person: Mapping[str, object]) -> list[dict[str, str]]:
@@ -100,7 +122,7 @@ def team_members(person: Mapping[str, object]) -> list[dict[str, str]]:
     return found
 
 
-def parse_entry(raw: str) -> dict[str, object]:
+def parse_entry(raw: str, language: LanguageModule | None = None) -> dict[str, object]:
     """One roster credit → name fields.
 
     A single personal name in parentheses is that person. Several names, or a
@@ -112,9 +134,9 @@ def parse_entry(raw: str) -> dict[str, object]:
     if match:
         outer, inner = match.group(1).strip(), match.group(2).strip()
         members = [part.strip() for part in re.split(r"[,、]", inner) if part.strip()]
-        if len(members) == 1 and person_like(members[0]):
+        if len(members) == 1 and person_like(members[0], language):
             name, aliases = members[0], [outer]
-        elif len(members) == 1 and person_like(outer):
+        elif len(members) == 1 and person_like(outer, language):
             name, aliases = outer, members
         elif len(members) == 1 and re.fullmatch(r"[가-힣]{2,4}", members[0]):
             name, aliases = members[0], [outer]
@@ -147,7 +169,7 @@ def group_members(entry: Mapping[str, object]) -> list[str]:
     return parts if len(parts) >= 2 else []
 
 
-def members_of(artist: Mapping[str, object]) -> list[dict[str, str]]:
+def members_of(artist: Mapping[str, object], language: LanguageModule | None = None) -> list[dict[str, str]]:
     """Members to give their own rows. A person who was already split out of a duo is not a team."""
     found = team_members(artist)
     if found:
@@ -155,7 +177,7 @@ def members_of(artist: Mapping[str, object]) -> list[dict[str, str]]:
     note = str(artist.get("reviewer_note") or "")
     match = re.search(r"(?:^|;\s*)raw=([^;]*)", note)
     if "; group;" in note and match:
-        names = group_members(parse_entry(match.group(1).strip()))
+        names = group_members(parse_entry(match.group(1).strip(), language))
         # A duo already split into people: the person row is not the team.
         if {artist.get("name_ko"), artist.get("name_en")} & set(names):
             return []
@@ -219,8 +241,11 @@ def expand_teams(ledger: Ledger, *, dry_run: bool = False) -> list[str]:
     issued += [row.get("gy_id", "") for row in ledger.read("gy_retired")]
     taken = {row["ledger_id"] for row in artists}
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    from giye.normalize.language import language_for
+
+    language = language_for(ledger.config)
     for artist in list(artists):
-        members = members_of(artist)
+        members = members_of(artist, language)
         if not members:
             continue
         team_lid = artist["ledger_id"]

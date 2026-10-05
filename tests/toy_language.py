@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import re
+
 from giye.normalize.gazetteer import Gazetteer
 
 
@@ -32,6 +34,10 @@ class Toy:
     @property
     def gazetteer(self):
         return self._gazetteer
+
+    def personal_name(self, name: str) -> bool:
+        # Toy rule: one word of 2–6 letters starting with "q" is a personal name.
+        return bool(re.fullmatch(r"q[a-z]{1,5}", name or ""))
 
     def name_keys(self, name: str) -> set[str]:
         return {name.casefold()} if name else set()

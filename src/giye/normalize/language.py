@@ -1,27 +1,41 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-"""Language module: name keys, glossary, gazetteer, romanisation.
+"""Language module: personal names, name keys, glossary, gazetteer, romanisation.
 
-The venue rules (V7–V9) read generic words, place names, and romanisation
-through this interface, so a later archive can supply another script pair
-without editing the merge code. The Korean–English module is the default.
-``name_keys`` wraps ``giye.resolve.names`` (personal names, rule X1). Institution
-merging uses ``romanise`` (one syllable at a time, Revised Romanization, no
-cross-syllable sound change), not those personal-name keys.
+The rules that depend on a language read it through this interface, so a later
+archive can supply another script pair without editing the rule code. The
+Korean–English module is the default. ``personal_name`` is the bare personal-name
+test of A3, A4, A6 and T1. ``name_keys`` wraps ``giye.resolve.names`` (personal
+names, rule X1). The venue rules (V7–V9) read generic words, place names, and
+romanisation here. Institution merging uses ``romanise`` (one syllable at a
+time, Revised Romanization, no cross-syllable sound change), not those
+personal-name keys.
 """
 
 from __future__ import annotations
 
 import importlib
 import re
+from functools import cache
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import yaml
 
 from giye.normalize.gazetteer import Gazetteer
 from giye.resolve.names import hangul_name_keys, latin_name_keys, syllable_rr
 
+if TYPE_CHECKING:  # pragma: no cover
+    from giye.config import Config
+
 _HANGUL = re.compile(r"[가-힣]")
+DEFAULT_LANGUAGE = "giye.normalize.lang.ko_en:KoEn"
+
+# A bare 2–4 syllable Korean personal name starts with one of these surnames.
+# The test only decides whether a name is the kind that collides across people.
+KOREAN_SURNAMES = frozenset(
+    "김이박최정강조윤장임한오서신권황안송류유홍전고문양손배백허남심노하곽성차주우구민진나지엄채원천방공현함변염여추도소석선설마길연위표명기반왕금옥육인맹제모탁국어은편용예경봉사부가복태목형피두감음빈동온호범좌팽승간상갈"
+)
+_KOREAN_PERSONAL_NAME = re.compile(r"[가-힣]{2,4}")
 
 
 def packaged_dir() -> Path:
@@ -54,11 +68,14 @@ def load_glossary(path: Path) -> dict[str, tuple[tuple[str, ...], ...]]:
 
 @runtime_checkable
 class LanguageModule(Protocol):
-    """What V9 and the name-key helper ask of one script pair."""
+    """What the language-dependent rules ask of one script pair."""
 
     @property
     def name(self) -> str:
         """Short id, for example ``ko-en``."""
+
+    def personal_name(self, name: str) -> bool:
+        """True for a bare personal name of the kind that collides across people (A3, A4, A6, T1)."""
 
     def name_keys(self, name: str) -> set[str]:
         """Romanized matching keys of a personal name. Empty when the name does not yield any."""
@@ -91,6 +108,11 @@ class KoreanEnglish:
     @property
     def gazetteer(self) -> Gazetteer:
         return self._gazetteer
+
+    def personal_name(self, name: str) -> bool:
+        """Two to four Hangul syllables starting with a listed Korean surname."""
+        text = name or ""
+        return bool(_KOREAN_PERSONAL_NAME.fullmatch(text)) and text[:1] in KOREAN_SURNAMES
 
     def name_keys(self, name: str) -> set[str]:
         """Personal-name keys (rule X1). Hangul uses ``hangul_name_keys``; otherwise Latin keys.
@@ -136,6 +158,26 @@ class KoreanEnglish:
                 postal_path=data / "us_postal.txt",
             )
         return cls(load_glossary(glossary_path), gazetteer)
+
+
+@cache
+def _cached(spec: str, glossary: Path | None, cities: Path | None, reference: Path | None) -> LanguageModule:
+    return load_language(spec, glossary=glossary, cities=cities, reference=reference)
+
+
+def default_language() -> LanguageModule:
+    """The Korean–English module with its packaged tables. Loaded once per process."""
+    return _cached(DEFAULT_LANGUAGE, None, None, None)
+
+
+def language_for(config: Config) -> LanguageModule:
+    """The archive's configured module (``[normalize] language_module`` and its tables). Cached."""
+    return _cached(
+        config.language_module,
+        config.normalize_glossary,
+        config.normalize_gazetteer,
+        config.normalize_reference,
+    )
 
 
 def load_language(

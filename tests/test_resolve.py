@@ -606,3 +606,31 @@ def test_demo_resolve_fires_each_rule(tmp_path: Path, monkeypatch: pytest.Monkey
     again = resolve(config)
     assert again.merges == []
     assert again.expanded == []
+
+
+def test_personal_name_test_comes_from_the_language_module(tmp_path: Path):
+    """A3/A4/T1 read ``personal_name`` from the configured module, not a Korean list in the rules."""
+    from giye.config import load
+    from giye.normalize.language import language_for
+    from tests.toy_language import Toy
+
+    toy = Toy()
+    assert person_like("김하늘") and not person_like("김하늘", toy)
+    assert person_like("qamo", toy) and not person_like("qamo")
+    duo = {"name_ko": "물결", "name_en": "", "reviewer_note": "", "aliases": "qamo|qibe"}
+    assert team_like(duo) == ""
+    assert team_like(duo, language=toy) == "aliases"
+    path = tmp_path / "giye.toml"
+    path.write_text(
+        f"""
+[archive]
+name = "Toy"
+id_prefix = "GY"
+[paths]
+data = "{(tmp_path / "data").as_posix()}"
+[normalize]
+language_module = "tests.toy_language:Toy"
+""",
+        encoding="utf-8",
+    )
+    assert language_for(load(path)).personal_name("qamo")

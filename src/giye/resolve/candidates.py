@@ -23,9 +23,13 @@ import unicodedata
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from giye.resolve.names import hangul_name_keys, latin_name_keys
 from giye.resolve.teams import person_like, team_person_mismatch
+
+if TYPE_CHECKING:  # pragma: no cover
+    from giye.normalize.language import LanguageModule
 
 _HANGUL = re.compile(r"[가-힣]")
 _LATIN = re.compile(r"[A-Za-z]")
@@ -113,7 +117,7 @@ def same_script_pairs(artists: list[dict]) -> list[tuple[str, str, str]]:
     return pairs
 
 
-def x1_candidates(artists: list[dict]) -> list[tuple[str, str]]:
+def x1_candidates(artists: list[dict], language: LanguageModule | None = None) -> list[tuple[str, str]]:
     """``(korean_ledger_id, english_only_ledger_id)`` pairs whose romanization keys meet (X1).
 
     English-only: ``name_ko`` has no Hangul and ``latin_name_keys(name_en)`` is non-empty.
@@ -128,7 +132,7 @@ def x1_candidates(artists: list[dict]) -> list[tuple[str, str]]:
         ko = row.get("name_ko") or ""
         en = row.get("name_en") or ""
         lid = row["ledger_id"]
-        if person_like(ko):
+        if person_like(ko, language):
             ko_rows.append(row)
         elif not _HANGUL.search(ko):
             keys = latin_name_keys(en)
@@ -263,6 +267,7 @@ def undecided_same_script(
     evidence_of,
     *,
     words: re.Pattern[str] | None = None,
+    language: LanguageModule | None = None,
 ) -> list[dict]:
     """Open a review item for an exact-name pair no rule has decided.
 
@@ -278,7 +283,7 @@ def undecided_same_script(
         if pair in known:
             continue
         row_a, row_b = by_id[pair[0]], by_id[pair[1]]
-        if team_person_mismatch(row_a, row_b, words=words):
+        if team_person_mismatch(row_a, row_b, words=words, language=language):
             continue
         if pinned_apart(identities.get(pair[0], []), identities.get(pair[1], [])):
             continue
