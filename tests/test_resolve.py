@@ -200,6 +200,17 @@ def test_t1_team_word_members_note_and_person_alias_list():
     assert not team_person_mismatch(team, {"name_ko": "루멘 랩", "name_en": "", "reviewer_note": "", "aliases": ""})
 
 
+def test_t1_team_word_in_a_surname_shaped_name_is_a_team():
+    # Four syllables starting with a listed surname, but 그룹 says it is a group.
+    assert person_like("태별그룹")
+    group = {"name_ko": "태별그룹", "name_en": "", "reviewer_note": "", "aliases": ""}
+    assert team_like(group) == "team_name"
+    person = {"name_ko": "김하늘", "name_en": "", "reviewer_note": "", "aliases": ""}
+    assert team_person_mismatch(group, person)
+    # A person whose English name mentions a studio stays a person.
+    assert team_like({"name_ko": "김하늘", "name_en": "Haneul Kim Studio", "reviewer_note": "", "aliases": ""}) == ""
+
+
 def test_surnames_from_the_census_rule_are_personal_names():
     # 라, 계 and 시 each have more than 2,000 bearers in the 2015 census.
     for name in ("라도윤", "계하늘", "시은솔"):

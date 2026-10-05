@@ -73,11 +73,18 @@ def team_like(
         if mark in note:
             return mark.rstrip("=")
     name = artist.get("name_ko") or ""
+    pattern = words if words is not None else _default_team_words()
+    # A team word inside the primary name itself wins over the personal-name
+    # shape: "태별그룹" is four Hangul syllables starting with a listed surname,
+    # yet the word 그룹 says it is a group. The English name is only read when
+    # the primary name is not personal, because a person's English name may
+    # mention a studio or lab they run.
+    if pattern.search(name):
+        return "team_name"
     members = [alias for alias in _split_pipe(artist.get("aliases") or "") if person_like(alias, language)]
     personal = person_like(name, language)
     if not personal and len(members) >= 2:
         return "aliases"
-    pattern = words if words is not None else _default_team_words()
     if not personal and pattern.search(f"{name} {artist.get('name_en') or ''}"):
         return "team_name"
     return ""
