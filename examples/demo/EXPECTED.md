@@ -9,11 +9,13 @@ The summary (paths omitted; they depend on `--output`) is:
 ```
 people: 20
 roster rows: 23
-activities: 37
+activities: 40
 merges: E1 1, E2 1, E3 1, E4 1, X1+E2 1
 blocked: T1 1
 queue items: 3
 institution merges: V7 2, V8 1, V9 1
+co-presence ties, CV listing: base 1, V7 1, V7+V8 1, V7+V8+V9 2
+co-presence ties, roster independent: base 0, V7 0, V7+V8 1, V7+V8+V9 2
 ```
 
 Attachment runs at collection. A later merge of two existing records is a separate step. The counts above are the published people after both steps.
@@ -50,3 +52,15 @@ The Korean CV and the English CV name one museum in several ways. Normalisation 
 The bare spelling `서울시립미술관` is on the Korean CV so the entity's display name is the museum. Production ranks an untrimmed full name ahead of a trimmed spelling and ahead of a hall. The audit's V7e section is empty.
 
 `GY-000001` shows the Korean lines and `Signal — Seoul Museum of Art` from the English CV.
+
+## Co-presence ties
+
+Two more fictitious CVs (`cvs/seoyeon-ko.html` for 박서연, `cvs/seoyeon-kim-en.html` for Kim Seoyeon, three rows in all) give `giye.explore.ties` something to count. They are why the activity count is 40, not 37. The golden file stores the whole layer report under `ties`.
+
+| Pair | Row | CV listing | Roster independent |
+|---|---|---|---|
+| 김하늘 – 박서연 | Both at 예시미술관 in 2019. 박서연's line is `예시 레지던시 결과전`: her own Example Residency 2019 edition. | from `base` | dropped (it restates her roster edition) |
+| 김하늘 – 박서연 | 박서연 writes the bare `서울시립미술관` in 2023; 김하늘 writes `서울시립미술관 전시실`. | already a tie | from `V7+V8` (V8 joins the hall to the museum) |
+| 김하늘 – Kim Seoyeon | Kim Seoyeon writes `Seoul Museum of Art` in 2020; 김하늘 writes `서울시립미술관`. | from `V7+V8+V9` | from `V7+V8+V9` |
+
+So the CV-listing count is 1, 1, 1, 2 and the roster-independent count is 0, 0, 1, 2. The attribution gives V9 one added tie (its one merge) and V8 none: the V8 merge joins a pair that the 2019 row has already tied. The three CV people are the population (`n_people` 3).

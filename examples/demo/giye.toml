@@ -52,6 +52,25 @@ url = "https://cv.example.org/minsoo-mixed"
 source_id = "CV-DEMO-MINSOO-mixed"
 note = "fictitious mixed-language CV"
 
+# Two more CVs, for co-presence ties (giye explore ties). 박서연 lists her own residency
+# edition at 예시미술관 in 2019, the year 김하늘 shows there: a CV-listing tie that the
+# roster-independent outcome drops. Her 2023 line is the bare museum name, which meets
+# 김하늘's gallery hall only after V8. Kim Seoyeon writes the museum in English in 2020,
+# the year 김하늘 writes it in Korean: a tie only after V9.
+[[extract.sources]]
+name_ko = "박서연 (Seoyeon Park)"
+lang = "ko"
+url = "https://cv.example.org/seoyeon-ko"
+source_id = "CV-DEMO-SEOYEON-ko"
+note = "fictitious Korean CV; names her own residency edition"
+
+[[extract.sources]]
+name_en = "Kim Seoyeon"
+lang = "en"
+url = "https://cv.example.org/seoyeon-kim-en"
+source_id = "CV-DEMO-KIMSEOYEON-en"
+note = "fictitious English CV; writes Seoul Museum of Art"
+
 [resolve]
 # Local HTML CVs. Matched to a ledger row by data-name-ko and data-name-en.
 cv_dir = "fixtures/cv"

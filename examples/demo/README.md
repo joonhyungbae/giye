@@ -44,10 +44,16 @@ CV extraction replays a hand-written cache (no network, no API key):
 giye extract --config examples/demo/giye.toml --replay-only
 ```
 
-Run `giye collect` first so the roster rows exist. `cvs/` holds three fictitious CVs (Korean,
-English, and mixed). The Korean CV writes 서울시립미술관 with a qualifier, an exhibition
+Run `giye collect` first so the roster rows exist. `cvs/` holds five fictitious CVs (Korean,
+English, and mixed for the identity cases, and two short ones for co-presence ties). The Korean CV writes 서울시립미술관 with a qualifier, an exhibition
 title, and a gallery hall. The English CV lists Example Residency and Seoul Museum of Art,
 and repeats one Korean event. The Korean page has an education section. `cache/` holds
 synthetic raw responses that stand in for model output. See `cache/README.md`.
+
+Co-presence ties (two people at one institution in one year) come from the CV rows:
+
+```bash
+giye explore ties --config examples/demo/giye.toml --layers
+```
 
 `EXPECTED.md` is the list of what one `giye demo` run shows, including the summary lines.

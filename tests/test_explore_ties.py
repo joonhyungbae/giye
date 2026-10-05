@@ -175,3 +175,32 @@ def test_cli_writes_ties_and_layers(tmp_path: Path, capsys):
     assert "added\tV9\t1\tmerges=1\tmerges_that_added_ties=1" in printed
     assert json.loads(out.read_text(encoding="utf-8")) == [["p1", "p2"], ["p1", "p3"], ["p1", "p4"], ["p1", "p5"]]
     assert json.loads(layers.read_text(encoding="utf-8"))["ties"]["base"] == {"cv_listing": 1, "roster_independent": 1}
+
+
+def test_explore_scores_against_computed_ties_when_ties_is_omitted(tmp_path: Path, capsys):
+    from giye.demo import run_demo
+
+    demo = Path(__file__).resolve().parents[1] / "examples" / "demo"
+    out = tmp_path / "out"
+    run_demo(demo / "giye.toml", out)
+    config = tmp_path / "giye.toml"
+    config.write_text(
+        '[archive]\nname = "Demo"\n[paths]\n'
+        f'data = "{out.as_posix()}"\nframes = "{(demo / "frames.yml").as_posix()}"\n'
+        f'field = "{(demo / "field.toml").as_posix()}"\n',
+        encoding="utf-8",
+    )
+    ties = tmp_path / "ties.json"
+    assert main(["explore", "ties", "--config", str(config), "--out", str(ties)]) == 0
+    pairs = json.loads(ties.read_text(encoding="utf-8"))
+    assert len(pairs) == 2
+    people = sorted({person for pair in pairs for person in pair})
+    assignment = tmp_path / "assignment.json"
+    assignment.write_text(json.dumps({people[0]: "a", people[1]: "a", people[2]: "b"}), encoding="utf-8")
+    capsys.readouterr()
+    assert main(["explore", "--config", str(config), "--assignment", str(assignment)]) == 0
+    computed = capsys.readouterr().out.splitlines()[-1]
+    assert main(["explore", "--config", str(config), "--assignment", str(assignment), "--ties", str(ties)]) == 0
+    given = capsys.readouterr().out.splitlines()[-1]
+    assert computed == given
+    assert "lift=" in computed

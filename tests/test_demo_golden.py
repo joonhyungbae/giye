@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """The offline demo matches the committed golden file.
 
-The file holds the site JSON (including ``rim_order.json``) and the processed
-venue table, artist attributes, and venue audit.
+The file holds the site JSON (including ``rim_order.json``), the processed
+venue table, artist attributes, and venue audit, and the co-presence layer
+report (``giye.explore.ties.layer_report``).
 
 Timestamps and calendar dates are normalised before the comparison. The clock
 is frozen at 2026-01-15 because the synthetic CVs treat 2026 as the current
@@ -59,6 +60,7 @@ def test_demo_snapshot_matches_golden(tmp_path: Path, monkeypatch):
             name: normalise((processed / name).read_text(encoding="utf-8"))
             for name in ("venues.csv", "artist_attributes.csv", "venue_audit.md")
         },
+        "ties": result.copresence,
     }
     expected = json.loads(GOLDEN.read_text(encoding="utf-8"))
     assert got == expected
@@ -67,11 +69,13 @@ def test_demo_snapshot_matches_golden(tmp_path: Path, monkeypatch):
     assert result.activities == len(got["site"]["activities.json"])
     assert result.roster_rows == 23
     assert result.people == 20
-    assert result.activities == 37
+    assert result.activities == 40
     assert "merges: E1 1, E2 1, E3 1, E4 1, X1+E2 1" in result.summary
     assert "blocked: T1 1" in result.summary
     assert "queue items: 3" in result.summary
     assert "institution merges: V7 2, V8 1, V9 1" in result.summary
+    assert "co-presence ties, CV listing: base 1, V7 1, V7+V8 1, V7+V8+V9 2" in result.summary
+    assert "co-presence ties, roster independent: base 0, V7 0, V7+V8 1, V7+V8+V9 2" in result.summary
     page = next(path for path in (site / "html").glob("GY-*.html") if "김하늘" in path.read_text(encoding="utf-8"))
     text = page.read_text(encoding="utf-8")
     assert 'href="https://' in text

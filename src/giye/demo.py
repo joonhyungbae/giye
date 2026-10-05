@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-"""One-command demo: collect → extract (replay) → ledger → resolve → normalize → publish → rim.
+"""One-command demo: collect → extract (replay) → ledger → resolve → normalize → publish → rim → ties.
 
 The demo config is ``examples/demo/giye.toml``. Output goes to a directory the
 caller chooses (or a fresh temporary directory), never into the fixture tree.
@@ -10,8 +10,9 @@ The synthetic CVs treat 2026 as the current year (an upcoming row in 2026 stays
 visible; 2027 stays hidden). The golden test freezes the clock at
 2026-01-15T00:00:00Z for that reason. ``giye demo`` without a frozen clock uses
 the real UTC time. The summary counts merges per rule, T1 blocks, open queue
-items, and institution merges V7, V8 and V9. What those numbers refer to is
-listed in ``examples/demo/EXPECTED.md``.
+items, institution merges V7, V8 and V9, and the co-presence ties under each
+name-rule layer (``giye.explore.ties``). What those numbers refer to is listed
+in ``examples/demo/EXPECTED.md``.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from pathlib import Path
 from giye.collect.base import run_configured
 from giye.config import Config, load
 from giye.explore.rim import build_rim_order, write_rim_order
+from giye.explore.ties import LAYERS, layers_for_config
 from giye.extract.service import extract
 from giye.ledger.io import read_csv
 from giye.ledger.ledger import Ledger
@@ -62,6 +64,8 @@ class DemoResult:
     blocked: dict[str, int]
     queue_items: int
     institution_merges: dict[str, int]
+    # giye.explore.ties.layer_report: entities and co-presence ties per name-rule layer.
+    copresence: dict
     files: list[Path]
     summary: str
 
@@ -105,6 +109,7 @@ def run_demo(
         published = publish(cfg, now=now)
         rim_path = write_rim_order(build_rim_order(cfg, now=now), cfg.site)
         pages = render(cfg)
+        copresence = layers_for_config(cfg)
     roster_rows = sum(len(rows) for _frame, rows, _path in roster)
     queue_items = sum(1 for row in Ledger.open(cfg).read("review_queue") if row.get("status") == "open")
     merges = dict(sorted(Counter(item.rule for item in resolve_result.merges).items()))
@@ -119,6 +124,7 @@ def run_demo(
         blocked={"T1": len(resolve_result.blocked_team)},
         queue_items=queue_items,
         institution_merges=_institution_counts(norm.venue_merges, norm.processed, language_for(cfg)),
+        copresence=copresence,
         files=files,
         summary="",
     )
@@ -130,6 +136,11 @@ def _summary(result: DemoResult) -> str:
     merges = ", ".join(f"{rule} {count}" for rule, count in result.merges.items()) or "none"
     blocked = ", ".join(f"{rule} {count}" for rule, count in result.blocked.items()) or "none"
     institutions = ", ".join(f"{rule} {count}" for rule, count in result.institution_merges.items()) or "none"
+    ties = result.copresence["ties"]
+
+    def per_layer(kind: str) -> str:
+        return ", ".join(f"{name} {ties[name][kind]}" for name, _rules in LAYERS)
+
     lines = [
         f"people: {result.people}",
         f"roster rows: {result.roster_rows}",
@@ -138,6 +149,8 @@ def _summary(result: DemoResult) -> str:
         f"blocked: {blocked}",
         f"queue items: {result.queue_items}",
         f"institution merges: {institutions}",
+        f"co-presence ties, CV listing: {per_layer('cv_listing')}",
+        f"co-presence ties, roster independent: {per_layer('roster_independent')}",
         "output files:",
         *[f"  {path}" for path in result.files],
     ]
