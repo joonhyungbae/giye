@@ -63,6 +63,7 @@ const TIMELINE = flag("--load-only") ? [{ t: 3000, phase: "end" }] : [
   ...[16500, 17500, 19000].map((t) => ({ t, shot: `select-${t}` })),
   { t: 19500, mouse: { type: "mouseMoved", x: 40, y: H - 40 } },
   { t: 19600, key: "Escape" },
+  { t: 19900, shot: "select-19900" },
   ...[1, 2, 3, 4].flatMap((k, i) => {
     const t0 = 20000 + i * 5000;
     return [
@@ -198,6 +199,14 @@ async function main() {
     source: `window.__perfCfg=${JSON.stringify(cfg)};\n${readFileSync(join(here, "instrument.js"), "utf8")}`,
   });
 
+  if (flag("--warm-home")) {
+    // a repeat visit: the home page has been opened once in this profile
+    l = loaded();
+    await cdp.send("Page.navigate", { url: `http://127.0.0.1:${PORT}/` });
+    await l;
+    for (let i = 0; i < 600 && !(await cdp.eval("window.__firstDrawV >= 0")); i++) await sleep(50);
+    await sleep(1000);
+  }
   if (PROFILE) {
     await cdp.send("Profiler.enable");
     await cdp.send("Profiler.setSamplingInterval", { interval: 500 });
