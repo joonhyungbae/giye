@@ -60,7 +60,7 @@ def _collect(args: argparse.Namespace) -> int:
 def _extract(args: argparse.Namespace) -> int:
     from dataclasses import replace
 
-    from giye.config import load
+    from giye.config import default_chunk_chars, load
     from giye.extract.service import extract
 
     config = load(args.config)
@@ -70,6 +70,9 @@ def _extract(args: argparse.Namespace) -> int:
     model = getattr(args, "model", None)
     if provider is not None:
         overrides["extract_provider"] = provider
+        # An omitted chunk_chars follows the provider actually used.
+        if not config.extract_chunk_chars_explicit:
+            overrides["extract_chunk_chars"] = default_chunk_chars(provider)
     if base_url is not None:
         overrides["extract_base_url"] = base_url.rstrip("/")
     if model is not None:

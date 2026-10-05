@@ -54,11 +54,14 @@ Example (see examples/demo/giye.toml)::
     # id. temperature is omitted unless set. cache defaults to <data>/work/cv_cache.
     # api_key_env names the variable whose value is sent as a Bearer token
     # when it is set. A local server does not need one. The default name is
-    # GIYE_LLM_API_KEY.
+    # GIYE_LLM_API_KEY. chunk_chars splits a long CV before the call. 0 is
+    # off. The default is 0 for anthropic and 8000 for openai_compatible;
+    # a value in the file wins. A local 32k context drops rows as the CV grows.
     [extract]
     # provider = "anthropic"
     # base_url = "http://localhost:11434/v1"
     # api_key_env = "GIYE_LLM_API_KEY"
+    # chunk_chars = 8000
     model = "claude-opus-5"
 
     # Site snapshot. site_url is the public origin cited on each page.
@@ -152,6 +155,12 @@ class Config:
     extract_base_url: str = "http://localhost:11434/v1"
     extract_model: str = "claude-opus-5"
     extract_temperature: float | None = None
+    # 0 sends each CV whole. ``load`` uses 8000 when the provider is
+    # openai_compatible and the file omits the key. An explicit value wins.
+    extract_chunk_chars: int = 0
+    # False when the file omitted chunk_chars, so a CLI --provider override
+    # recomputes the provider default instead of keeping the file's.
+    extract_chunk_chars_explicit: bool = False
     extract_api_key_env: str = "GIYE_LLM_API_KEY"
     extract_cache: Path | None = None
     extract_allow_team: bool = False
@@ -236,6 +245,7 @@ def load(path: str | Path) -> Config:
     extract = raw.get("extract") or {}
     if not isinstance(extract, dict):
         raise TypeError(f"{path}: [extract] must be a table")
+    extract_provider = _extract_provider(extract.get("provider", "anthropic"))
     normalize = raw.get("normalize") or {}
     if not isinstance(normalize, dict):
         raise TypeError(f"{path}: [normalize] must be a table")
@@ -269,10 +279,12 @@ def load(path: str | Path) -> Config:
         normalize_glossary=_optional_path(root, normalize.get("glossary")),
         normalize_gazetteer=_optional_path(root, normalize.get("gazetteer")),
         venue_name_rules=_venue_name_rules(normalize.get("venue_name_rules", "")),
-        extract_provider=_extract_provider(extract.get("provider", "anthropic")),
+        extract_provider=extract_provider,
         extract_base_url=_extract_base_url(extract.get("base_url", "http://localhost:11434/v1")),
         extract_model=_extract_model(extract.get("model", "claude-opus-5")),
         extract_temperature=_extract_temperature(extract),
+        extract_chunk_chars=_extract_chunk_chars(extract, extract_provider),
+        extract_chunk_chars_explicit="chunk_chars" in extract,
         extract_api_key_env=_extract_api_key_env(extract.get("api_key_env", "GIYE_LLM_API_KEY")),
         extract_cache=_optional_path(root, extract.get("cache")),
         extract_allow_team=bool(extract.get("allow_team", False)),
@@ -349,6 +361,30 @@ def _extract_model(value: object) -> str:
         return "claude-opus-5"
     if not isinstance(value, str):
         raise TypeError("[extract] model must be a string")
+    return value
+
+
+def default_chunk_chars(provider: str) -> int:
+    """8000 for a local OpenAI-compatible server, 0 (whole CV) otherwise."""
+    return 8000 if provider == "openai_compatible" else 0
+
+
+def _extract_chunk_chars(extract: dict, provider: str) -> int:
+    """How long one CV piece may be. ``0`` leaves the CV whole.
+
+    A local model defaults to 8000 characters. Input plus a long JSON reply
+    does not fit a 32k context, and the share of rows kept falls as the CV
+    grows. An explicit value wins over that default. The split itself is a
+    data rule (``giye.extract.chunk``).
+    """
+    if "chunk_chars" not in extract:
+        return default_chunk_chars(provider)
+    value = extract["chunk_chars"]
+    # bool is an int subclass. A TOML true is not a character budget.
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError("[extract] chunk_chars must be an integer")
+    if value < 0:
+        raise ValueError("[extract] chunk_chars must be >= 0")
     return value
 
 

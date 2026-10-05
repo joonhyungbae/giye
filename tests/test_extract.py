@@ -8,6 +8,7 @@ the offline fetcher, which still consults robots.txt.
 from __future__ import annotations
 
 import ast
+import hashlib
 import inspect
 import json
 import shutil
@@ -26,9 +27,9 @@ from giye.cli import main
 from giye.config import load
 from giye.extract.apply import apply_extractions, same_activity
 from giye.extract.prompt import prompt_sha256
-from giye.extract.provider import OpenAICompatibleProvider, ProviderError, write_cache
+from giye.extract.provider import CacheMiss, OpenAICompatibleProvider, ProviderError, write_cache
 from giye.extract.schema import Extraction, parse_extraction, without_unknown_sources
-from giye.extract.service import extract
+from giye.extract.service import ExtractResult, _extract_pending, _extraction_current, _render_document, extract
 from giye.extract.text import bundle_fingerprint, extract_text, fingerprint, normalize
 from giye.ledger.ledger import Ledger
 from giye.ledger.schemas import ACTIVITIES_FIELDS, ARTISTS_FIELDS, CV_SOURCES_FIELDS, REVIEW_FIELDS, empty_row
@@ -838,3 +839,244 @@ def test_default_config_does_not_call_a_local_server(tmp_path: Path, monkeypatch
     assert result.replay_misses == ["LED-haneul"]
     assert server.bodies == []
     assert load(config).extract_provider == "anthropic"
+
+
+def test_chunk_chars_defaults_follow_the_provider_and_reject_bad_values(tmp_path: Path):
+    demo = load(DEMO / "giye.toml")
+    assert demo.extract_provider == "anthropic"
+    assert demo.extract_chunk_chars == 0
+
+    def write(body: str) -> Path:
+        path = tmp_path / "giye.toml"
+        path.write_text(body, encoding="utf-8")
+        return path
+
+    hosted = write('[archive]\nname = "Synthetic"\n')
+    assert load(hosted).extract_chunk_chars == 0
+    local = write('[archive]\nname = "Synthetic"\n[extract]\nprovider = "openai_compatible"\n')
+    assert load(local).extract_chunk_chars == 8000
+    explicit = write(
+        '[archive]\nname = "Synthetic"\n[extract]\nprovider = "openai_compatible"\nchunk_chars = 0\n'
+    )
+    assert load(explicit).extract_chunk_chars == 0
+    override = write('[archive]\nname = "Synthetic"\n[extract]\nprovider = "anthropic"\nchunk_chars = 4000\n')
+    assert load(override).extract_chunk_chars == 4000
+    write('[archive]\nname = "Synthetic"\n[extract]\nchunk_chars = -1\n')
+    with pytest.raises(ValueError, match=r"chunk_chars must be >= 0"):
+        load(tmp_path / "giye.toml")
+    for bad in ('chunk_chars = "8000"', "chunk_chars = 1.5", "chunk_chars = true"):
+        write(f'[archive]\nname = "Synthetic"\n[extract]\n{bad}\n')
+        with pytest.raises(TypeError, match="chunk_chars must be an integer"):
+            load(tmp_path / "giye.toml")
+
+
+def _staged_cv(tmp_path: Path, text: str, *, chunk_chars: int):
+    site = tmp_path / "site"
+    site.mkdir()
+    cache = tmp_path / "cache"
+    config = _config(tmp_path, site=site, cache=cache, sources="")
+    cfg = replace(load(config), extract_chunk_chars=chunk_chars)
+    ledger = Ledger.open(cfg)
+    ledger.write("artists", [_person("LED-haneul", "김하늘", name_en="Haneul Kim")], task="test")
+    snap = cfg.data / "raw" / "cv"
+    snap.mkdir(parents=True)
+    (snap / "body.txt").write_text(text, encoding="utf-8")
+    ledger.write(
+        "cv_sources",
+        [
+            empty_row(
+                CV_SOURCES_FIELDS,
+                source_id="CV-TEST-en",
+                ledger_id="LED-haneul",
+                lang="en",
+                kind="web",
+                url="https://cv.example.org/artist.html",
+                active="true",
+                content_sha256="staged",
+                snapshot_path="data/raw/cv/body",
+            )
+        ],
+        task="test",
+    )
+    return ledger, cfg
+
+
+def _long_cv() -> tuple[str, int]:
+    first = "EXHIBITIONS\n\n1990 Alpha Signal, Example Hall"
+    second = "1991 Beta Signal, Example Hall"
+    return first + "\n\n" + second, len(first)
+
+
+def test_short_cv_is_one_call_and_the_document_is_unchanged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    text = "EXHIBITIONS\n\n1990 Example Show, Example Hall\n"
+    ledger, cfg = _staged_cv(tmp_path, text, chunk_chars=8000)
+    calls: list[dict] = []
+
+    def fake(_cache_dir, **kwargs):
+        calls.append(kwargs)
+        return json.dumps({"activities": [_entry("CV-TEST-en", "Example Show", 1990)]})
+
+    monkeypatch.setattr("giye.extract.service._complete", fake)
+    result = ExtractResult()
+    _extract_pending(ledger, cfg, result, replay_only=False)
+    assert result.extracted == ["LED-haneul"]
+    assert result.invalid == []
+    assert len(calls) == 1
+    assert calls[0]["document"] == _render_document("김하늘", [("CV-TEST-en", text)])
+    assert "Part " not in calls[0]["document"]
+    assert calls[0]["content_sha256"] == bundle_fingerprint([("CV-TEST-en", text)])
+    stored = json.loads((cfg.work / "cv_extract" / "LED-haneul.json").read_text(encoding="utf-8"))
+    assert stored["chunk_chars"] == 8000
+    assert stored["chunks"] == 1
+    assert stored["content_sha256"] == bundle_fingerprint([("CV-TEST-en", text)])
+    assert [row["title"] for row in stored["activities"]] == ["Example Show"]
+
+
+def test_long_cv_is_one_call_per_chunk_and_rows_stay_in_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    text, limit = _long_cv()
+    ledger, cfg = _staged_cv(tmp_path, text, chunk_chars=limit)
+    calls: list[dict] = []
+
+    def fake(_cache_dir, **kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            rows = [_entry("CV-TEST-en", "Alpha Signal", 1990)]
+        else:
+            # Same title and venue as the first piece: the file keeps both.
+            rows = [_entry("CV-TEST-en", "Alpha Signal", 1990), _entry("CV-TEST-en", "Beta Signal", 1991)]
+        return json.dumps({"activities": rows})
+
+    monkeypatch.setattr("giye.extract.service._complete", fake)
+    result = ExtractResult()
+    _extract_pending(ledger, cfg, result, replay_only=False)
+    assert result.invalid == []
+    assert len(calls) == 2
+    assert calls[0]["document"].index("Part 1 of 2 of this CV.") < calls[0]["document"].index(
+        "Artist: 김하늘. Extract the activity rows."
+    )
+    assert "Part 2 of 2 of this CV." in calls[1]["document"]
+    assert "[continued; last heading: EXHIBITIONS]" in calls[1]["document"]
+    assert "1991 Beta Signal, Example Hall" in calls[1]["document"]
+    whole = bundle_fingerprint([("CV-TEST-en", text)])
+    for call in calls:
+        rendered = call["document"]
+        assert call["content_sha256"] == hashlib.sha256(rendered.encode("utf-8")).hexdigest()
+        assert call["content_sha256"] != whole
+    stored = json.loads((cfg.work / "cv_extract" / "LED-haneul.json").read_text(encoding="utf-8"))
+    assert stored["chunk_chars"] == limit
+    assert stored["chunks"] == 2
+    assert stored["content_sha256"] == whole
+    assert [row["title"] for row in stored["activities"]] == ["Alpha Signal", "Alpha Signal", "Beta Signal"]
+
+
+def test_a_failing_chunk_invalidates_the_artist_and_writes_no_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    text, limit = _long_cv()
+    ledger, cfg = _staged_cv(tmp_path, text, chunk_chars=limit)
+    path = cfg.work / "cv_extract" / "LED-haneul.json"
+    calls = {"n": 0}
+
+    def fail(_cache_dir, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return json.dumps({"activities": [_entry("CV-TEST-en", "Alpha Signal", 1990)]})
+        raise ProviderError("stopped")
+
+    monkeypatch.setattr("giye.extract.service._complete", fail)
+    result = ExtractResult()
+    _extract_pending(ledger, cfg, result, replay_only=False)
+    assert result.invalid == ["LED-haneul"]
+    assert result.extracted == []
+    assert result.replay_misses == []
+    assert not path.is_file()
+
+    calls["n"] = 0
+
+    def bad_json(_cache_dir, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return json.dumps({"activities": [_entry("CV-TEST-en", "Alpha Signal", 1990)]})
+        return "not-json"
+
+    monkeypatch.setattr("giye.extract.service._complete", bad_json)
+    result = ExtractResult()
+    _extract_pending(ledger, cfg, result, replay_only=False)
+    assert result.invalid == ["LED-haneul"]
+    assert not path.is_file()
+
+    calls["n"] = 0
+
+    def miss(_cache_dir, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return json.dumps({"activities": [_entry("CV-TEST-en", "Alpha Signal", 1990)]})
+        return CacheMiss("abc", "def", "example-local")
+
+    monkeypatch.setattr("giye.extract.service._complete", miss)
+    result = ExtractResult()
+    _extract_pending(ledger, cfg, result, replay_only=False)
+    assert result.replay_misses == ["LED-haneul"]
+    assert result.invalid == []
+    assert result.extracted == []
+    assert not path.is_file()
+
+
+def test_chunk_chars_zero_keeps_a_long_cv_in_one_call(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    text, _limit = _long_cv()
+    ledger, cfg = _staged_cv(tmp_path, text, chunk_chars=0)
+    calls: list[dict] = []
+
+    def fake(_cache_dir, **kwargs):
+        calls.append(kwargs)
+        return json.dumps({"activities": []})
+
+    monkeypatch.setattr("giye.extract.service._complete", fake)
+    result = ExtractResult()
+    _extract_pending(ledger, cfg, result, replay_only=False)
+    assert len(calls) == 1
+    assert calls[0]["document"] == _render_document("김하늘", [("CV-TEST-en", text)])
+    assert calls[0]["content_sha256"] == bundle_fingerprint([("CV-TEST-en", text)])
+
+
+def test_changing_chunk_chars_makes_extraction_current_false(tmp_path: Path):
+    path = tmp_path / "LED-haneul.json"
+    sources = [{"source_id": "CV-TEST-en", "content_sha256": "staged"}]
+    path.write_text(
+        json.dumps(
+            {
+                "prompt_sha256": "p",
+                "extracted_by": "example-local",
+                "sources": sources,
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert _extraction_current(path, sources, prompt_sha="p", model="example-local", chunk_chars=0)
+    assert not _extraction_current(path, sources, prompt_sha="p", model="example-local", chunk_chars=8000)
+    path.write_text(
+        json.dumps(
+            {
+                "prompt_sha256": "p",
+                "extracted_by": "example-local",
+                "chunk_chars": 8000,
+                "sources": sources,
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert _extraction_current(path, sources, prompt_sha="p", model="example-local", chunk_chars=8000)
+    assert not _extraction_current(path, sources, prompt_sha="p", model="example-local", chunk_chars=4000)
+
+
+def test_cli_provider_override_recomputes_an_omitted_chunk_chars(tmp_path: Path, monkeypatch):
+    from giye.extract import service
+    from giye.extract.service import ExtractResult
+
+    seen = []
+    monkeypatch.setattr(service, "extract", lambda config, **_: seen.append(config) or ExtractResult())
+    omitted = tmp_path / "omitted.toml"
+    omitted.write_text('[archive]\nname = "Synthetic"\n', encoding="utf-8")
+    explicit = tmp_path / "explicit.toml"
+    explicit.write_text('[archive]\nname = "Synthetic"\n[extract]\nchunk_chars = 0\n', encoding="utf-8")
+    for path in (omitted, explicit):
+        assert main(["extract", "--config", str(path), "--provider", "openai_compatible"]) == 0
+    assert [c.extract_chunk_chars for c in seen] == [8000, 0]
