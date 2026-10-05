@@ -829,6 +829,10 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
     // offscreen copy of the chord/strand/dot layers (see "Layer cache" in draw)
     const layer = document.createElement("canvas");
     const lctx = layer.getContext("2d")!;
+    // inputs of the last painted frame (see "unchanged frame" in draw)
+    const memo = { exact: [] as Array<number | string>, fine: [] as number[], px: [] as number[] };
+    // bumped whenever the canvas needs a fresh frame although no drawing input changed
+    let canvasEpoch = 0;
     // reference state the cached layer was painted in (see "Layer cache" in draw)
     const lc = { sig: "", rot: 0, cx: 0, cy: 0, at: 0, s: 1, cosT: 1, rc: 1, rs: 0 };
     // opening: records that have landed are stamped into the same layer once each (see draw)
@@ -849,6 +853,7 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
       st.w = Math.max(1, Math.floor(r.width));
       st.h = Math.max(1, Math.floor(r.height));
       st.dpr = Math.min(2, window.devicePixelRatio || 1);
+      canvasEpoch++;
       canvas.width = Math.floor(st.w * st.dpr);
       canvas.height = Math.floor(st.h * st.dpr);
       canvas.style.width = `${st.w}px`;
@@ -863,6 +868,11 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
       st.theme = readTheme();
     };
     mq.addEventListener?.("change", onTheme);
+    // a web font that finishes loading changes how the same text is drawn
+    const onFonts = () => {
+      canvasEpoch++;
+    };
+    document.fonts?.addEventListener?.("loadingdone", onFonts);
     const mo = new MutationObserver(onTheme);
     mo.observe(document.documentElement, {
       attributes: true,
@@ -1262,6 +1272,105 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         }
       };
 
+      /* -- the needle reads whoever sits at twelve o'clock -- */
+      let reading = -1;
+      if (st.needleOn && st.asmDone) {
+        let best = unit * 0.55;
+        for (let i = 0; i < artists.length; i++) {
+          const d = Math.abs(shortAngle(artists[i]!.angle + st.rot + Math.PI / 2));
+          if (d < best) {
+            best = d;
+            reading = i;
+          }
+        }
+      }
+      st.reading = reading;
+      if (reading !== st.lastReading) {
+        if (reading >= 0 && st.tickOn && st.lastReading >= 0) {
+          const a = artists[reading]!;
+          const yr = a.strand.length ? Math.min(...a.strand.map((ri) => records[ri]!.year)) : 2020;
+          playTick(520 + (clamp(yr, 2011, 2026) - 2011) * 42, 0.03);
+        }
+        st.lastReading = reading;
+      }
+
+      /* -- unchanged frame -- */
+      // A frame whose every drawing input equals the last painted frame would paint the same
+      // pixels again; the canvas already holds them, so painting is skipped (state updates
+      // above and the hit test below still run). Inputs are compared exactly, except that the
+      // eased camera values, which approach their targets without ever settling exactly, may
+      // differ by less than 1e-7 (angles, scales, eases: under 0.001 px at this canvas size)
+      // or 1e-4 px (screen positions). While the flat link layer is in use the frame is only
+      // skipped if that layer was painted at exactly this view, so the crisp repaint that
+      // follows a settled turn still happens when it did. Never skipped during the opening,
+      // while a record sounds, or while a fresh frame is due for another reason (canvas
+      // cleared by a resize, a web font finished loading).
+      const flatCached =
+        st.asmDone &&
+        spread < 1e-4 &&
+        st.stageT < 1e-3 &&
+        diagram <= 0.001 &&
+        partsOut < 1e-3 &&
+        cosT > 0.25;
+      const hovNow = st.hover;
+      const memoExact = [
+        canvasEpoch,
+        w,
+        h,
+        dpr,
+        ink,
+        paper,
+        accent,
+        st.theme.dark ? 1 : 0,
+        hovNow ? hovNow.kind : "",
+        hovNow ? hovNow.idx : -1,
+        st.focus,
+        reading,
+        partsArtist,
+        String(st.legendFocus),
+        st.yr0,
+        st.yr1,
+        st.versions ? 1 : 0,
+        st.needleOn ? 1 : 0,
+        st.gesture,
+        st.stage,
+        st.vel === 0 ? 0 : Math.abs(st.vel) > 0.02 ? 2 : 1,
+        st.targetTilt != null ? 1 : 0,
+        st.targetZoom != null ? 1 : 0,
+        st.targetRot != null ? 1 : 0,
+        tray.size,
+        trayCell,
+        sheetRef.current ? sheetRef.current.artist : -1,
+        sheetRef.current ? (sheetRef.current.ord ?? -1) : -2,
+      ];
+      const memoFine = [st.rot, st.zoom, tilt, e, spread, st.stageT, s, cosT];
+      const memoPx = [cx, cy, st.sideW];
+      let skipPaint =
+        !assembling &&
+        st.notes.length === 0 &&
+        memo.exact.length === memoExact.length &&
+        memoExact.every((v, i) => v === memo.exact[i]);
+      if (skipPaint) {
+        const tolFine = flatCached ? 0 : 1e-7;
+        const tolPx = flatCached ? 0 : 1e-4;
+        for (let i = 0; i < memoFine.length && skipPaint; i++)
+          if (!(Math.abs(memoFine[i]! - memo.fine[i]!) <= tolFine)) skipPaint = false;
+        for (let i = 0; i < memoPx.length && skipPaint; i++)
+          if (!(Math.abs(memoPx[i]! - memo.px[i]!) <= tolPx)) skipPaint = false;
+        if (
+          skipPaint &&
+          flatCached &&
+          !(lc.sig !== "" && lc.rot === st.rot && lc.cx === cx && lc.cy === cy && lc.s === s && lc.cosT === cosT)
+        )
+          skipPaint = false;
+      }
+      if (!skipPaint) {
+        memo.exact = memoExact;
+        memo.fine = memoFine;
+        memo.px = memoPx;
+      }
+      paint: {
+      if (skipPaint) break paint;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.fillStyle = paper;
       ctx.fillRect(0, 0, w, h);
@@ -1403,28 +1512,6 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
       }
       st.revealCount = revealCount;
       posHold = posHoldKey;
-      }
-
-      /* -- the needle reads whoever sits at twelve o'clock -- */
-      let reading = -1;
-      if (st.needleOn && st.asmDone) {
-        let best = unit * 0.55;
-        for (let i = 0; i < artists.length; i++) {
-          const d = Math.abs(shortAngle(artists[i]!.angle + st.rot + Math.PI / 2));
-          if (d < best) {
-            best = d;
-            reading = i;
-          }
-        }
-      }
-      st.reading = reading;
-      if (reading !== st.lastReading) {
-        if (reading >= 0 && st.tickOn && st.lastReading >= 0) {
-          const a = artists[reading]!;
-          const yr = a.strand.length ? Math.min(...a.strand.map((ri) => records[ri]!.year)) : 2020;
-          playTick(520 + (clamp(yr, 2011, 2026) - 2011) * 42, 0.03);
-        }
-        st.lastReading = reading;
       }
 
       /* -- emphasis -- */
@@ -2967,6 +3054,8 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         });
       }
 
+      }
+
       /* -- hit test -- */
       if (st.pointer.inside && st.gesture === "none") {
         const pxp = st.pointer.x;
@@ -3100,6 +3189,7 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
       st.music = null;
       ro.disconnect();
       mq.removeEventListener?.("change", onTheme);
+      document.fonts?.removeEventListener?.("loadingdone", onFonts);
       mo.disconnect();
     };
   }, [layout, strata, data, lang, nameOf, reduced, st, t, total, lastRing, newSince, toggleMusic]);
