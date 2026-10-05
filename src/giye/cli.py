@@ -104,7 +104,7 @@ def _extract(args: argparse.Namespace) -> int:
     print(
         f"registered={result.registered} pull={result.pull or '-'} "
         f"extracted={len(result.extracted)} replay_miss={len(result.replay_misses)} "
-        f"invalid={len(result.invalid)}"
+        f"invalid={len(result.invalid)} provider_errors={len(result.provider_errors)}"
     )
     for ledger_id in result.skipped_unmatched:
         print(f"no artist for source {ledger_id}")
@@ -114,6 +114,8 @@ def _extract(args: argparse.Namespace) -> int:
         print(f"replay miss {ledger_id}")
     for ledger_id in result.invalid:
         print(f"invalid extraction {ledger_id}")
+    for ledger_id, message in result.provider_errors:
+        print(f"provider error {ledger_id}: {message}", file=sys.stderr)
     applied = result.apply
     if applied is not None:
         print(
@@ -121,6 +123,16 @@ def _extract(args: argparse.Namespace) -> int:
             f"superseded_files={applied.superseded_files} "
             f"self_reported_superseded={applied.superseded_rows}"
         )
+    # Every model call failed (an unreachable server, a bad key): the stage did not
+    # run, so the command fails. Some failures beside real extractions are reported
+    # above and the run goes on; the next run retries those CVs.
+    if result.provider_errors and not result.extracted:
+        print(
+            f"giye extract: every model call failed ({config.extract_provider} at "
+            f"{config.extract_base_url or 'the default endpoint'})",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

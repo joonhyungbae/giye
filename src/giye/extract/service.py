@@ -64,6 +64,10 @@ class ExtractResult:
     extracted: list[str] = field(default_factory=list)
     replay_misses: list[str] = field(default_factory=list)
     invalid: list[str] = field(default_factory=list)
+    # (ledger id, message) for a model call that failed: connection, HTTP error,
+    # refusal, truncation. Kept apart from ``invalid`` (a response that did not
+    # parse), so an unreachable server is not reported as a bad extraction.
+    provider_errors: list[tuple[str, str]] = field(default_factory=list)
     apply: ApplyStats | None = None
 
 
@@ -227,8 +231,8 @@ def _extract_pending(ledger: Ledger, config: Config, result: ExtractResult, *, r
                         api_key_env=config.extract_api_key_env,
                         reasoning_effort=config.extract_reasoning_effort,
                     )
-                except ProviderError:
-                    result.invalid.append(ledger_id)
+                except ProviderError as exc:
+                    result.provider_errors.append((ledger_id, str(exc)))
                     failed = True
                     break
                 if isinstance(raw, CacheMiss):

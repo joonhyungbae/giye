@@ -985,7 +985,8 @@ def test_a_failing_chunk_invalidates_the_artist_and_writes_no_file(tmp_path: Pat
     monkeypatch.setattr("giye.extract.service._complete", fail)
     result = ExtractResult()
     _extract_pending(ledger, cfg, result, replay_only=False)
-    assert result.invalid == ["LED-haneul"]
+    assert result.invalid == []
+    assert result.provider_errors == [("LED-haneul", "stopped")]
     assert result.extracted == []
     assert result.replay_misses == []
     assert not path.is_file()
@@ -1322,3 +1323,19 @@ def test_replay_only_does_not_pull_a_source_outside_the_offline_roots(tmp_path: 
     assert ledger.read("cv_sources") == before
     queue = ledger.read("review_queue") if ledger.path("review_queue").exists() else []
     assert not any(item["reason"] == "cv_pull_failed" for item in queue)
+
+
+def test_unreachable_model_server_is_a_provider_error_and_exits_non_zero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    _block_network(monkeypatch)
+    monkeypatch.delenv("GIYE_LLM_API_KEY", raising=False)
+    config, _cache = _offline_cv(tmp_path)
+    args = ["extract", "--config", str(config), "--provider", "openai_compatible"]
+    # Port 9 (discard) is closed: the connection is refused at once.
+    assert main([*args, "--base-url", "http://127.0.0.1:9/v1", "--model", "example-local"]) == 1
+    captured = capsys.readouterr()
+    assert "invalid=0 provider_errors=1" in captured.out
+    assert "invalid extraction" not in captured.out
+    assert "provider error LED-haneul: connection error" in captured.err
+    assert "every model call failed" in captured.err
