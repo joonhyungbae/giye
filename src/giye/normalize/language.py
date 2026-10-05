@@ -33,8 +33,14 @@ DEFAULT_LANGUAGE = "giye.normalize.lang.ko_en:KoEn"
 
 # A bare 2–4 syllable Korean personal name starts with one of these surnames.
 # The test only decides whether a name is the kind that collides across people.
+# Rule: every surname with at least 2,000 bearers in the 2015 Population and
+# Housing Census (Statistics Korea, surname table; as tabulated in Wikipedia's
+# "List of Korean surnames"), the first syllable standing for a compound surname
+# (남궁, 황보, 제갈, 사공, 선우, 서문). The rarest listed surname is 갈 (2,086).
+# 라 (25,974), 계 (6,641) and 시 (4,354) were missing and are added.
 KOREAN_SURNAMES = frozenset(
     "김이박최정강조윤장임한오서신권황안송류유홍전고문양손배백허남심노하곽성차주우구민진나지엄채원천방공현함변염여추도소석선설마길연위표명기반왕금옥육인맹제모탁국어은편용예경봉사부가복태목형피두감음빈동온호범좌팽승간상갈"
+    "라계시"
 )
 _KOREAN_PERSONAL_NAME = re.compile(r"[가-힣]{2,4}")
 

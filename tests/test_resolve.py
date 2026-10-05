@@ -200,6 +200,13 @@ def test_t1_team_word_members_note_and_person_alias_list():
     assert not team_person_mismatch(team, {"name_ko": "루멘 랩", "name_en": "", "reviewer_note": "", "aliases": ""})
 
 
+def test_surnames_from_the_census_rule_are_personal_names():
+    # 라, 계 and 시 each have more than 2,000 bearers in the 2015 census.
+    for name in ("라도윤", "계하늘", "시은솔"):
+        assert person_like(name)
+    assert not person_like("휘바람")
+
+
 def test_e1_merges_a_shared_website_and_refuses_a_different_host(tmp_path: Path):
     ledger = _ledger(tmp_path)
     _seed(
