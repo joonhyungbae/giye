@@ -445,8 +445,6 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
     /** last pointer movement over the canvas (hover), which does not count as input for the idle spin */
     pointerMovedAt: 0,
     lastTurnAt: 0,
-    lastHash: "",
-    hashAt: 0,
     sx: new Float32Array(layout.records.length),
     sy: new Float32Array(layout.records.length),
     kx: new Float32Array(layout.artists.length),
@@ -652,7 +650,16 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
   }, [st, lastRing, touch]);
   const [citeNotice, setCiteNotice] = useState<{ id: number; text: string } | null>(null);
   const copyView = useCallback(async () => {
-    const url = window.location.href;
+    // The view is written into a link only here, when the reader asks to cite it. The address
+    // bar is left alone while they turn the disc, so a reload always returns to the home view.
+    const rings = layout.rings;
+    const a = st.focus >= 0 ? layout.artists[st.focus]!.id : null;
+    // a focus tilt is a camera courtesy, not a view the reader chose: share it only when opened on purpose
+    const tShared = st.userTilt || st.stage > 0 ? st.tilt : 0;
+    const yearOf = (i: number) => rings[i]!.year ?? (rings[1]?.year ?? 2017) - 1;
+    const period = st.yr0 > 0 || st.yr1 < lastRing ? `&p=${yearOf(st.yr0)}-${yearOf(st.yr1)}` : "";
+    const hash = `v=1&r=${st.rot.toFixed(3)}&t=${tShared.toFixed(2)}&y=${st.spread.toFixed(2)}${period}${a ? `&a=${a}` : ""}`;
+    const url = `${window.location.origin}${window.location.pathname}${window.location.search}#${hash}`;
     let text: string;
     let notice: string;
     try {
@@ -730,6 +737,14 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
       // a shared view: turn the strand to the needle and open its sheet, no zoom
       const i = data.artists.findIndex((a) => a.id === initial.a);
       if (i >= 0) openSheet(i);
+    }
+    // The shared view is restored; drop it from the address so a reload returns to the home view.
+    if (initial) {
+      try {
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      } catch {
+        /* ignore */
+      }
     }
     // once, from the permalink
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3044,41 +3059,6 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
       } else if (!st.pointer.inside) {
         st.hover = null;
         hitHold = "";
-      }
-
-      /* -- permalink (debounced) -- */
-      // the slow idle spin is not a view the reader chose: write the hash only after their input
-      // settles, not every 400 ms while the disc turns on its own
-      if (
-        st.asmDone &&
-        st.gesture === "none" &&
-        now - st.lastInput > 500 &&
-        now - st.lastInput < 4000
-      ) {
-        const a = st.focus >= 0 ? layout.artists[st.focus]!.id : null;
-        // a focus tilt is a camera courtesy, not a view the reader chose: share it only when opened on purpose
-        const tShared = st.userTilt || st.stage > 0 ? st.tilt : 0;
-        const hash = `v=1&r=${st.rot.toFixed(3)}&t=${tShared.toFixed(2)}&y=${st.spread.toFixed(2)}${st.yr0 > 0 || st.yr1 < rings.length - 1 ? `&p=${rings[st.yr0]!.year ?? (rings[1]?.year ?? 2017) - 1}-${rings[st.yr1]!.year ?? (rings[1]?.year ?? 2017) - 1}` : ""}${a ? `&a=${a}` : ""}`;
-        if (hash !== st.lastHash && now - st.hashAt > 400) {
-          st.lastHash = hash;
-          st.hashAt = now;
-          const changed =
-            st.rot !== 0 ||
-            st.tilt > 0.01 ||
-            st.spread > 0.01 ||
-            st.yr0 > 0 ||
-            st.yr1 < rings.length - 1 ||
-            a;
-          try {
-            window.history.replaceState(
-              null,
-              "",
-              changed ? `#${hash}` : window.location.pathname + window.location.search,
-            );
-          } catch {
-            /* ignore */
-          }
-        }
       }
 
       raf = requestAnimationFrame(draw);
