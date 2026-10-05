@@ -442,8 +442,6 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
     notes: [] as SoundedNote[],
     versions: false,
     lastInput: 0,
-    /** last pointer movement over the canvas (hover), which does not count as input for the idle spin */
-    pointerMovedAt: 0,
     lastTurnAt: 0,
     sx: new Float32Array(layout.records.length),
     sy: new Float32Array(layout.records.length),
@@ -943,7 +941,6 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
 
     let raf = 0;
     let last = performance.now();
-    let lastPaint = 0;
     // settled record positions, reused while spread, stage and the year window stay put
     let posHold = "";
     // last pointer/geometry the hit test ran for; a still pointer over a still disc is the same pick
@@ -983,28 +980,6 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         if (Math.abs(st.targetSpread - st.spread) < 0.004) st.targetSpread = null;
       }
       st.stageT = damp(st.stageT, st.stage, 2.4, dt);
-
-      // Quiet frames: after 4 s without input the disc only turns by itself (0.7 degrees a second)
-      // while every record is redrawn, which kept the page busy at full frame rate. With no input,
-      // no pointer movement, no camera target in flight and no sounded record, paint at most 12
-      // times a second; motion state above still advances every frame, so nothing jumps.
-      const quiet =
-        st.asmDone &&
-        st.gesture === "none" &&
-        now - st.lastInput > 4000 &&
-        now - st.pointerMovedAt > 600 &&
-        st.targetRot == null &&
-        st.targetZoom == null &&
-        st.targetTilt == null &&
-        st.targetSpread == null &&
-        st.vel === 0 &&
-        Math.abs(st.stageT - st.stage) < 1e-3 &&
-        st.notes.length === 0;
-      if (quiet && now - lastPaint < 1000 / 12) {
-        raf = requestAnimationFrame(draw);
-        return;
-      }
-      lastPaint = now;
       const diagram = smooth(0, 1, st.stageT); // exploded-diagram look: diagonal axis
       const subSplit = smooth(2, 3, st.stageT); // year plates split into frame segments
       const partsOut = smooth(3, 4, st.stageT); // one artist's records pulled out as numbered parts
@@ -3159,7 +3134,6 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
     const onMove = (e: PointerEvent) => {
       const c = center();
       st.pointer = { x: e.clientX - c.left, y: e.clientY - c.top, inside: true, shift: e.shiftKey };
-      st.pointerMovedAt = performance.now();
       if (!st.pointers.has(e.pointerId)) return;
       st.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (st.pointers.size >= 2) {
