@@ -32,7 +32,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from giye.collect.fetch import Fetcher, Page, fetcher_from_config
+from giye.collect.fetch import Fetcher, Page, TermsRefused, fetcher_from_config
+from giye.collect.robots import RobotsRefused
 from giye.collect.snapshot import MAX_BYTES, SnapshotStore
 from giye.ledger import Ledger
 
@@ -211,6 +212,8 @@ class RosterCollector:
             self.fetcher.prefer_frame = self.frame
         self.store = store if store is not None else SnapshotStore(Path(config.raw))  # type: ignore[attr-defined]
         self.run_id = run_id or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        # Fetches refused in the last ``run`` (robots.txt or a terms block).
+        self.refusals: list[Refusal] = []
 
     def editions(self) -> Iterator[Edition]:
         """Yield each edition of this frame's public roster. Subclasses implement this."""
@@ -311,6 +314,14 @@ class RosterCollector:
         A frame whose ``eligibility.decision`` is not ``included`` or
         ``adjacent`` is not collected. ``run`` prints one line and returns no
         rows, and it does not fetch or write the ledger.
+
+        A fetch that robots.txt or the terms block refuses (``RobotsRefused``,
+        ``TermsRefused``) ends this collector's editions: the refusal is
+        recorded in ``self.refusals`` and printed as one line, and the editions
+        already read are written as usual. Why: a refusal is a rule working,
+        not a crash, and one refused page must not discard the rest of the
+        roster or stop the other collectors. A collector that can skip just the
+        refused edition catches the exception inside ``editions``.
         """
         from giye.collect.frames import is_admitted
         from giye.config import checked_frames
@@ -325,6 +336,27 @@ class RosterCollector:
         live_stamp = collected_at or datetime.now(timezone.utc).date().isoformat()
         rows: list[dict[str, str]] = []
         batches: dict[str, list[dict[str, str]]] = {}
+        self.refusals = []
+        try:
+            self._read_editions(rows, batches, live_stamp)
+        except (RobotsRefused, TermsRefused) as exc:
+            self.refusals.append(_refused(self.frame, exc))
+        ledger = Ledger.open(self.config)
+        for code, batch in batches.items():
+            ledger.apply_roster(code, batch, task="collect")
+        if type(self).expand_members and any(row.get("members") for row in rows):
+            # Imported here: giye.resolve imports the ledger, which this module also imports.
+            from giye.resolve.teams import expand_teams
+
+            # Only this run's editions: a collector must not touch other frames' teams.
+            expand_teams(ledger, frames=set(batches))
+        self.write_csv(rows)
+        return rows
+
+    def _read_editions(
+        self, rows: list[dict[str, str]], batches: dict[str, list[dict[str, str]]], live_stamp: str
+    ) -> None:
+        """Turn each edition's people into roster rows, appending to ``rows`` and ``batches``."""
         for edition in self.editions():
             code = self.edition_code(edition)
             batch = batches.setdefault(code, [])
@@ -357,17 +389,6 @@ class RosterCollector:
                     row["activity"] = False
                 rows.append(row)
                 batch.append(row)
-        ledger = Ledger.open(self.config)
-        for code, batch in batches.items():
-            ledger.apply_roster(code, batch, task="collect")
-        if type(self).expand_members and any(row.get("members") for row in rows):
-            # Imported here: giye.resolve imports the ledger, which this module also imports.
-            from giye.resolve.teams import expand_teams
-
-            # Only this run's editions: a collector must not touch other frames' teams.
-            expand_teams(ledger, frames=set(batches))
-        self.write_csv(rows)
-        return rows
 
     def _row_date(self, edition: Edition, person: Person, live_stamp: str) -> str:
         """``collected_at`` for one roster row (see ``run``)."""
@@ -425,12 +446,29 @@ def load_collectors(config: object) -> list[type[RosterCollector]]:
     return classes
 
 
+@dataclass(frozen=True)
+class Refusal:
+    """One fetch a collector did not send: the frame, the URL, and the verdict."""
+
+    frame: str
+    url: str
+    verdict: str
+
+
+def _refused(frame: str, exc: RobotsRefused | TermsRefused) -> Refusal:
+    """Record a refused fetch and print it as one line (no traceback)."""
+    found = Refusal(frame=frame, url=getattr(exc, "url", ""), verdict=getattr(exc, "verdict", ""))
+    print(f"refused {frame}: {exc}; editions read before it are kept", file=sys.stderr)
+    return found
+
+
 def run_configured(
     config: object,
     *,
     collected_at: str | None = None,
     run_id: str | None = None,
     from_snapshots: bool = False,
+    refusals: list[Refusal] | None = None,
 ) -> list[tuple[str, list[dict[str, str]], Path]]:
     """Run every configured collector. One fetcher and one snapshot store are shared.
 
@@ -443,6 +481,9 @@ def run_configured(
     ``from_snapshots`` reads each page from the snapshot store. No socket is
     opened and no new snapshot line is written. ``collected_at`` on the rows
     is then the kept page's fetch date, not this argument and not today.
+
+    A refused fetch does not stop the run: each collector's refusals are
+    appended to ``refusals`` (when given) and the next collector runs.
     """
     from giye.collect.frames import is_admitted
     from giye.config import ConfigError, checked_frames
@@ -468,7 +509,14 @@ def run_configured(
             _skip_notice(cls.frame, decision)
             continue
         collector = cls(config, fetcher=fetcher, store=store, run_id=stamp)
-        rows = collector.run(collected_at=collected_at)
+        try:
+            rows = collector.run(collected_at=collected_at)
+        except (RobotsRefused, TermsRefused) as exc:
+            # Raised outside the editions loop (a subclass's own run, say).
+            collector.refusals.append(_refused(cls.frame, exc))
+            rows = []
+        if refusals is not None:
+            refusals.extend(collector.refusals)
         results.append((cls.frame, rows, collector.csv_path()))
     return results
 
