@@ -1048,6 +1048,8 @@ function ArtistFind({
     (document.activeElement as HTMLElement | null)?.blur();
   };
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    // The Enter that finishes an IME syllable (Korean) is not a choice; see StudySearch.
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setActive((a) => (hits.length ? (a + 1) % hits.length : 0));

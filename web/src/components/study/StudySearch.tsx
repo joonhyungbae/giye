@@ -96,6 +96,10 @@ export function StudySearch({
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    // Korean (and other IME) input: the Enter that finishes composing a syllable arrives here too,
+    // while the query still holds the half-composed text, so it chose the top hit for the wrong
+    // string. Let the IME have it; the next Enter chooses.
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setOpen(true);
