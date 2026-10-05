@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
-import { getNetworkData, getStudyData } from "@/lib/giye.functions";
+import { getStudyData } from "@/lib/giye.functions";
 import type { StudyData } from "@/components/study/model";
-import type { NetworkData } from "@/lib/giye.network";
-import { ModeSwitch, NETWORK_VIEW } from "@/components/study/ModeSwitch";
 import { unpackRecords, type Packed } from "@/lib/study-pack";
 import { useLang } from "@/lib/i18n";
 
@@ -14,14 +12,8 @@ import { useLang } from "@/lib/i18n";
 function loadArchivalStudy() {
   return import("@/components/study/ArchivalStudy").then((m) => ({ default: m.ArchivalStudy }));
 }
-function loadNetworkStudy() {
-  return import("@/components/network/NetworkStudy").then((m) => ({ default: m.NetworkStudy }));
-}
 
 const ArchivalStudy = lazy(loadArchivalStudy);
-const NetworkStudy = lazy(loadNetworkStudy);
-
-type Search = { mode?: "network" };
 
 /** getStudyData answers with a raw JSON response; rebuild the StudyRecord rows from its columns. */
 async function loadStudy(): Promise<StudyData> {
@@ -31,29 +23,21 @@ async function loadStudy(): Promise<StudyData> {
   return { ...rest, records: unpackRecords(records_packed) };
 }
 
-type HomeData = { mode: "search"; study: StudyData } | { mode: "network"; network: NetworkData };
+type HomeData = { study: StudyData };
 
 export const Route = createFileRoute("/")({
   // The whole ledger feeds the canvas; keep it out of the server-rendered HTML so a single
   // page fetch is not a dataset download. The browser loads it through a same-origin call.
   ssr: false,
-  validateSearch: (s: Record<string, unknown>): Search => ({
-    mode: NETWORK_VIEW && s.mode === "network" ? "network" : undefined,
-  }),
-  loaderDeps: ({ search }) => ({ mode: search.mode }),
   // The canvas writes its view into the URL hash; that must not refetch and rebuild the whole
-  // ledger. Load once per mode (a mode change is a new match, so it still loads).
+  // ledger. Load once.
   staleTime: Infinity,
   shouldReload: false,
-  loader: async ({ deps }): Promise<HomeData> => {
+  loader: async (): Promise<HomeData> => {
     // Start the view chunk before the payload arrives, on the same import React.lazy uses,
     // so the download overlaps the data request instead of waiting for it.
-    if (deps.mode === "network") {
-      void import("@/components/network/NetworkStudy");
-      return { mode: "network", network: await getNetworkData() };
-    }
     void import("@/components/study/ArchivalStudy");
-    return { mode: "search", study: await loadStudy() };
+    return { study: await loadStudy() };
   },
   head: () => ({
     meta: [
@@ -61,7 +45,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "기예의 기록을 연도의 고리 위에, 처음 명단에 오른 세대별로 그린 생성 시각화와 같은 행사에 함께한 사람들의 네트워크. The archive drawn as rings of years, arranged by the generation in which each person first appeared on a roster, and as a network of people who shared an event.",
+          "기예의 기록을 연도의 고리 위에, 처음 명단에 오른 세대별로 그린 생성 시각화. The archive drawn as rings of years, arranged by the generation in which each person first appeared on a roster.",
       },
       { property: "og:title", content: "Giye 기예 — Archival Study 기록 연구" },
       { property: "og:url", content: "/" },
@@ -97,7 +81,7 @@ function Shell({ artists, detail }: { artists?: number; detail?: string }) {
 function Home() {
   const data = Route.useLoaderData() as HomeData;
   const { t } = useLang();
-  const artists = data.mode === "network" ? data.network.artists : data.study?.artists;
+  const artists = data.study?.artists;
   if (!artists || artists.length === 0) {
     return (
       <div className="wrap py-24">
@@ -116,23 +100,6 @@ function Home() {
       </div>
     );
   }
-  if (data.mode === "network") {
-    return (
-      <Suspense
-        fallback={
-          <Shell
-            artists={artists.length}
-            detail={t(
-              `공동 행사 ${data.network.events.length}`,
-              `${data.network.events.length} shared events`,
-            )}
-          />
-        }
-      >
-        <NetworkStudy data={data.network} modeSwitch={<ModeSwitch mode="network" />} />
-      </Suspense>
-    );
-  }
   return (
     <Suspense
       fallback={
@@ -142,7 +109,7 @@ function Home() {
         />
       }
     >
-      <ArchivalStudy data={data.study} modeSwitch={<ModeSwitch mode="search" />} />
+      <ArchivalStudy data={data.study} />
     </Suspense>
   );
 }

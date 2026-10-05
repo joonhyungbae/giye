@@ -31,7 +31,6 @@ import {
   loadVocabularies,
 } from "./giye.data";
 import { loadRimOrder } from "./giye.rim";
-import { buildNetwork } from "./giye.network";
 import { domainOf, fold, foldVenue } from "./record-text";
 import { packRecords } from "./study-pack";
 import { countFrameDecisions } from "./frame-population";
@@ -630,19 +629,3 @@ export const searchStudyRecords = createServerFn({ method: "GET" })
       })),
     };
   });
-
-/** Co-participation network for the home's network mode: artists, and the events they shared. */
-/** Building the co-participation network takes about a second; hold it until the data changes. */
-let networkCache: { stamp: string; value: ReturnType<typeof buildNetwork> } | null = null;
-
-export const getNetworkData = createServerFn({ method: "GET" }).handler(async () => {
-  const stamp = dataStamp(["artists.json", "activities.json", "frames.json", "coverage.json"]);
-  if (networkCache?.stamp === stamp) return networkCache.value;
-  const versions = loadDatasetVersions().sort((a, b) => b.released_at.localeCompare(a.released_at));
-  const value = buildNetwork(loadAllArtists(), loadActivities(), loadFrames(), {
-    version: versions[0]?.version ?? "0.1",
-    generated_at: loadCoverage()?.generated_at ?? null,
-  });
-  networkCache = { stamp, value };
-  return value;
-});
