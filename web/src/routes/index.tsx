@@ -4,7 +4,7 @@ import { lazy, Suspense } from "react";
 import { getNetworkData, getStudyData } from "@/lib/giye.functions";
 import type { StudyData } from "@/components/study/model";
 import type { NetworkData } from "@/lib/giye.network";
-import { ModeSwitch } from "@/components/study/ModeSwitch";
+import { ModeSwitch, NETWORK_VIEW } from "@/components/study/ModeSwitch";
 import { unpackRecords, type Packed } from "@/lib/study-pack";
 import { useLang } from "@/lib/i18n";
 
@@ -38,7 +38,7 @@ export const Route = createFileRoute("/")({
   // page fetch is not a dataset download. The browser loads it through a same-origin call.
   ssr: false,
   validateSearch: (s: Record<string, unknown>): Search => ({
-    mode: s.mode === "network" ? "network" : undefined,
+    mode: NETWORK_VIEW && s.mode === "network" ? "network" : undefined,
   }),
   loaderDeps: ({ search }) => ({ mode: search.mode }),
   // The canvas writes its view into the URL hash; that must not refetch and rebuild the whole

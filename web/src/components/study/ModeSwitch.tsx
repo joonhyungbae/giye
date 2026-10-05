@@ -4,9 +4,14 @@ import { useLang } from "@/lib/i18n";
 
 export type HomeMode = "search" | "network";
 
+/** The network reading is hidden while its graph does not draw (author, 2026-10-05). Set to true to
+ *  bring back the switch and the ?mode=network route; the view's code is unchanged. */
+export const NETWORK_VIEW = false;
+
 /** The home's two readings of the archive: records on growth rings, or who shared an event. */
 export function ModeSwitch({ mode }: { mode: HomeMode }) {
   const { t } = useLang();
+  if (!NETWORK_VIEW) return null;
   const item =
     "px-2 py-0.5 no-underline transition hover:text-primary aria-[current=page]:bg-foreground aria-[current=page]:text-background aria-[current=page]:hover:text-background";
   return (
