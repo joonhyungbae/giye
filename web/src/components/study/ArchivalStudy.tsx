@@ -441,7 +441,6 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
     music: null as Ensemble | null,
     notes: [] as SoundedNote[],
     versions: false,
-    ambient: { idx: -1, until: 0, next: 0 },
     lastInput: 0,
     /** last pointer movement over the canvas (hover), which does not count as input for the idle spin */
     pointerMovedAt: 0,
@@ -857,7 +856,6 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
 
     st.asmStart = performance.now();
     if (reduced) st.asmDone = true;
-    st.ambient.next = performance.now() + 6000;
 
     const { records, artists, rings, groups, chords, revealOrder, rimR, R, unit } = layout;
     const { sources, sourceOf, plateR, depthSources, depthFrames } = strata;
@@ -1970,7 +1968,7 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
       // the chosen years, which are not drawn or hovered, are skipped. A reused link layer
       // already holds the dots. While the reader is turning the disc the pointer is not
       // picking, so the per-record projection can wait; a resting pointer still needs it
-      // for hit testing and the ambient card.
+      // for hit testing and the info card.
       const trayOn = tray.size > 0;
       const needRecordPx =
         !reuse ||
@@ -2844,24 +2842,10 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         }
       }
 
-      /* -- ambient reading -- */
-      let cardTarget: Hover = hov;
-      if (
-        !cardTarget &&
-        st.gesture === "none" &&
-        st.focus < 0 &&
-        st.asmDone &&
-        !reduced &&
-        diagram < 0.3
-      ) {
-        if (now > st.ambient.until && now > st.ambient.next) {
-          st.ambient.idx = revealOrder[Math.floor(Math.random() * total)]!;
-          st.ambient.until = now + 2600;
-          st.ambient.next = now + 2600 + 4500 + Math.random() * 4000;
-        }
-        if (now < st.ambient.until && st.ambient.idx >= 0 && ra[st.ambient.idx]! > 0)
-          cardTarget = { kind: "record", idx: st.ambient.idx };
-      }
+      /* -- info card target -- */
+      // Only what the reader points at. The page once showed a random record every few seconds
+      // while idle; on arrival that read as a selection nobody made, so nothing opens by itself.
+      const cardTarget: Hover = hov;
 
       /* -- info card -- */
       if (cardTarget && cardTarget.kind !== "ring") {
