@@ -31,6 +31,7 @@ from giye.explore.rim import build_rim_order, write_rim_order
 from giye.extract.service import extract
 from giye.ledger.io import read_csv
 from giye.ledger.ledger import Ledger
+from giye.normalize.language import LanguageModule, language_for
 from giye.normalize.service import normalize
 from giye.normalize.venue_names import trimmed
 from giye.publish import publish, render
@@ -117,7 +118,7 @@ def run_demo(
         merges=merges,
         blocked={"T1": len(resolve_result.blocked_team)},
         queue_items=queue_items,
-        institution_merges=_institution_counts(norm.venue_merges, norm.processed),
+        institution_merges=_institution_counts(norm.venue_merges, norm.processed, language_for(cfg)),
         files=files,
         summary="",
     )
@@ -143,7 +144,7 @@ def _summary(result: DemoResult) -> str:
     return "\n".join(lines)
 
 
-def _institution_counts(merges: dict[str, int], processed: Path) -> dict[str, int]:
+def _institution_counts(merges: dict[str, int], processed: Path, lang: LanguageModule) -> dict[str, int]:
     """Counts the demo summary prints: V7, V8, V9, in that order.
 
     V8 and V9 are joins the audit records. V7e is recorded the same way and is
@@ -165,7 +166,7 @@ def _institution_counts(merges: dict[str, int], processed: Path) -> dict[str, in
         spellings = [item for item in spellings if item]
         if len(spellings) < 2:
             continue
-        counts["V7"] += sum(1 for spelling in spellings if trimmed(spelling))
+        counts["V7"] += sum(1 for spelling in spellings if trimmed(spelling, lang))
     return counts
 
 

@@ -272,7 +272,7 @@ def classify_fragments(texts: list[str], lang: LanguageModule) -> list[Fragment]
     return fragments
 
 
-def institution_key(text: str) -> str:
+def institution_key(text: str, lang: LanguageModule | None = None) -> str:
     """V4 exact entity key, plus V7a–d when the spelling rules are on.
 
     V7a–d are skipped only while a build() ablation has turned V7 off.
@@ -291,7 +291,7 @@ def institution_key(text: str) -> str:
     key = re.sub(r"^the\s+", "", key)
     key = re.sub(r"\s+the$", "", key)
     if _V7_SPELLING.get():
-        return venue_names.normalize_key(key.strip())  # V7b–d
+        return venue_names.normalize_key(key.strip(), lang)  # V7b–d
     return key.strip()
 
 
@@ -343,7 +343,7 @@ def _audit_text(
             detail = ", ".join(value for value in (place.city, place.country, place.kr_region) if value)
             return f"`{clean(fragment.text)}` → place ({detail})"
         if fragment.kind in {"institution", "funder"}:
-            root = root_for_key[institution_key(fragment.text)]
+            root = root_for_key[institution_key(fragment.text, lang)]
             entity = entity_by_root[root]
             return f"`{clean(fragment.text)}` → {fragment.kind} → {entity['venue_id']} ({clean(entity['name'])})"
         return f"`{clean(fragment.text)}` → {fragment.kind}"
@@ -417,7 +417,7 @@ def _audit_text(
                 continue
             if not code_like.fullmatch(fragment.text.strip()) and not lang.gazetteer.is_admin1_name(fragment.text):
                 continue
-            key = institution_key(fragment.text)
+            key = institution_key(fragment.text, lang)
             item = suspicious[key]
             spellings = item["spellings"]
             assert isinstance(spellings, Counter)
@@ -439,7 +439,7 @@ def _audit_text(
     )
     ordered_suspicious = sorted(
         suspicious.items(),
-        key=lambda item: (-len(item[1]["rows"]), institution_key(item[0])),
+        key=lambda item: (-len(item[1]["rows"]), institution_key(item[0], lang)),
     )[:30]
     if not ordered_suspicious:
         lines.append("- none")
@@ -543,9 +543,9 @@ def _name_rule_merges(
             ]
             for fragment in row.fragments:
                 if fragment.kind == "institution" and cities:
-                    key_cities[institution_key(fragment.text)][cities[0]] += 1
+                    key_cities[institution_key(fragment.text, lang)][cities[0]] += 1
         for key in sorted(keys):
-            parent = venue_names.hangul_part_parent(key) or venue_names.latin_part_parent(key)
+            parent = venue_names.hangul_part_parent(key, lang) or venue_names.latin_part_parent(key, lang)
             if parent and parent in keys and venue_names.part_parent_ok(parent, lang):
                 join("V8", parent, key)
                 continue
@@ -631,7 +631,7 @@ def _resolve(
         for fragment in row.fragments:
             if fragment.kind not in {"institution", "funder"}:
                 continue
-            key = institution_key(fragment.text)
+            key = institution_key(fragment.text, lang)
             key_kinds[key].add(fragment.kind)
             marker = key, fragment.text
             if marker not in seen:
@@ -646,7 +646,7 @@ def _resolve(
             left_fragment, right_fragment = classify_fragment(left, lang), classify_fragment(right, lang)
             if left_fragment.kind != "institution" or right_fragment.kind != "institution":
                 continue
-            left_key, right_key = institution_key(left), institution_key(right)
+            left_key, right_key = institution_key(left, lang), institution_key(right, lang)
             if left_key == right_key or left_key not in key_kinds or right_key not in key_kinds:
                 continue
             candidate_artists[tuple(sorted((left_key, right_key)))].add(row.ledger_id)
@@ -684,7 +684,7 @@ def _resolve(
             {
                 "n_rows": len(rows),
                 "n_artists": len(artists),
-                "names": sorted(names, key=lambda name: (not _mostly_hangul(name), institution_key(name))),
+                "names": sorted(names, key=lambda name: (not _mostly_hangul(name), institution_key(name, lang))),
             }
         )
     blocked_components.sort(key=lambda component: (-component["n_rows"], -component["n_artists"], component["names"]))
@@ -735,7 +735,7 @@ def _resolve(
         for fragment in row.fragments:
             if fragment.kind not in {"institution", "funder"}:
                 continue
-            key = institution_key(fragment.text)
+            key = institution_key(fragment.text, lang)
             if fragment.kind == "institution" and chosen_institution is None:
                 chosen_institution = key
             root = root_for_key[key]
@@ -762,18 +762,18 @@ def _resolve(
         # then that key's most used spelling.
         by_key: dict[str, dict[str, set[str]]] = defaultdict(dict)
         for spelling, row_ids in spellings.items():
-            by_key[institution_key(spelling)][spelling] = row_ids
+            by_key[institution_key(spelling, lang)][spelling] = row_ids
 
         def key_rank(item: tuple[str, dict[str, set[str]]]) -> tuple:
             _key, group = item
-            was_trimmed = all(venue_names.trimmed(spelling) for spelling in group)
+            was_trimmed = all(venue_names.trimmed(spelling, lang) for spelling in group)
             rows = set().union(*group.values())
             return was_trimmed, -len(rows), 0 if any(HANGUL_RE.search(spelling) for spelling in group) else 1, min(group)
 
         ordered_spellings = [
             spelling
             for _key, group in sorted(by_key.items(), key=key_rank)
-            for spelling, _ids in sorted(group.items(), key=lambda item: (venue_names.trimmed(item[0]), *_spelling_sort(item)))
+            for spelling, _ids in sorted(group.items(), key=lambda item: (venue_names.trimmed(item[0], lang), *_spelling_sort(item)))
         ]
         n_rows = len(entity_rows[root])
         city = country = kr_region = ""

@@ -9,12 +9,20 @@ from __future__ import annotations
 import re
 
 from giye.normalize.gazetteer import Gazetteer
+from giye.normalize.language import VenueWords
 
 
 class Toy:
     """One made-up script pair. ``load`` matches ``KoreanEnglish.load``."""
 
     name = "toy-qx"
+    # Toy venue words: "zz" is a trailing qualifier, "vol N" an edition, "wing" a building part.
+    venue_words = VenueWords(
+        qualifiers=("zz",),
+        edition_lead=(r"vol \d+",),
+        edition_tail=(r"vol \d+",),
+        latin_building_parts=("wing",),
+    )
 
     def __init__(self) -> None:
         self._glossary = {"qx": (("kwa",),)}

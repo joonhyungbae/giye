@@ -14,9 +14,9 @@ from pathlib import Path
 import pytest
 
 from giye.normalize.gazetteer import Gazetteer
-from giye.normalize.language import KoreanEnglish, LanguageModule, load_glossary
+from giye.normalize.language import KoreanEnglish, LanguageModule, VenueWords, load_glossary
 from giye.normalize.rules import venue_place
-from giye.normalize.venue_names import hangul_bags, skeleton
+from giye.normalize.venue_names import hangul_bags, hangul_part_parent, latin_part_parent, skeleton
 from giye.normalize.venues import NAME_RULES, UnionFind, _name_rule_merges, build, institution_key
 from giye.resolve.names import hangul_name_keys
 
@@ -209,6 +209,8 @@ def test_language_module_loads_files_and_a_toy_pair(tmp_path: Path) -> None:
         def gazetteer(self):
             return self._gazetteer
 
+        venue_words = VenueWords()
+
         def personal_name(self, name: str) -> bool:
             return False
 
@@ -257,3 +259,25 @@ def test_glossary_and_gazetteer_have_no_person_names() -> None:
 def test_missing_geonames_tree_is_an_error(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         Gazetteer.from_geonames(tmp_path)
+
+
+def test_venue_words_come_from_the_language_module() -> None:
+    """V7b, V7c, V7d and V8 read their words from the module: a toy module changes the keys."""
+    from tests.toy_language import Toy
+
+    toy = Toy()
+    korean = KoreanEnglish.load()
+    # V7b: the toy qualifier is trimmed only under the toy module; 외 only under Korean.
+    assert institution_key("north hall zz", toy) == institution_key("north hall", toy)
+    assert institution_key("north hall zz", korean) != institution_key("north hall", korean)
+    assert institution_key("서울시립미술관 외", toy) != institution_key("서울시립미술관", toy)
+    # V7c: a toy edition marker.
+    assert institution_key("vol 3 north hall", toy) == "north hall"
+    assert institution_key("제12회 광주비엔날레", toy) != institution_key("광주비엔날레", toy)
+    # V7d: the toy language declares no unstable spacing.
+    assert institution_key("탈영역 우정국", toy) != institution_key("탈영역우정국", toy)
+    # V8: building parts.
+    assert latin_part_parent("north museum wing", toy) == "north museum"
+    assert latin_part_parent("north museum wing", korean) == ""
+    assert hangul_part_parent("서울시립미술관본관", korean) == "서울시립미술관"
+    assert hangul_part_parent("서울시립미술관본관", toy) == ""

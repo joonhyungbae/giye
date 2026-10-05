@@ -109,13 +109,15 @@ Place names, generic institution words, and romanisation come from a language mo
 | V7a | A work title in 《》〈〉<>「」『』 is not part of the name. V4 would drop the brackets and keep the title. | ported |
 | V7b | A trailing qualifier (외, 등, 일대, 일원, etc., and others) is not the name. | ported |
 | V7c | An edition marker (leading 제N회 or Nth, a glued or separate 19xx/20xx year) is not the name. A series is one entity; co-presence is still year-bound. | ported |
-| V7d | A mostly-Hangul name ignores spaces. Korean spacing in names is not stable. | ported |
+| V7d | A name mostly in the language's script ignores spaces when the module marks its spacing unstable. Korean spacing in names is not stable. | ported |
 | V7e | Two Latin names with the same bag of words are one entity when the bag holds a proper word. Order is free only when a place anchors the bag. of/the/and are dropped; centre/center; a plural -s only on generic words. Generic words alone name no place, so Museum of Modern Art and Modern Art Museum stay apart. The romanisation-tolerant skeleton is not used here: it would join ACC/AAS, BUG/Book, and MMCA/MCA. | ported |
 | V8 | A part of a known entity is that entity: a Hangul name plus a building or room word (본관, 서울관, 창고동, 전시실, …), a Latin name plus main building/annex/lobby/floor, or an acronym plus a place when that acronym's own rows are in that city (ZKM Karlsruhe, not a chain whose rows sit elsewhere). | ported |
 | V9 | A Hangul name and a Latin name are one entity when the Hangul name, read with the glossary, the gazetteer, and syllable romanisation for the rest, gives the same bag as the Latin name, the bag holds a proper word, and every link in the connected component uses that one reading. Two different readings in one component are ambiguous and are not merged. The first reading that matches anything is the one used (현대 = contemporary before modern). | ported |
 | G1 | An ISO alpha-2 or alpha-3 code is a country when the fragment is that code (`KR`, `KOR`). | ported |
 | G3 | An uppercase two- or three-letter token after a place inherits that place's country (and, for Korea, its region). `Los Angeles, CA` stays in the US. | ported |
 | G6 | A two-letter US postal abbreviation that is not itself a country code (`NY`) is the US, when G3 had no previous place. | ported |
+
+The words of V7b, V7c, V7d and V8 (qualifiers, edition markers, the script and its spacing, building and room words) are the language module's `venue_words`; the examples above are the Korean–English module's.
 
 The synthetic demo's venue strings exercise V7a (an exhibition title in 《》), V7b (the qualifier 외 on 서울시립미술관), V8 (서울시립미술관 전시실, a hall of that museum), and V9 (that name with Seoul Museum of Art). The audit records the V8 and V9 joins. V7a–d do not, because they change the key before the join; the demo summary still counts those trimmed spellings under V7. See `examples/demo/EXPECTED.md`.
 

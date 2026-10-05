@@ -10,10 +10,11 @@ Rules (deterministic; no network, no fuzzy score). Each merge is written to the
 audit with its rule id.
 
 V7a  A work title in 《》〈〉<>「」『』 is not part of a venue's name.
-V7b  Trailing 외·등·일대·일원·etc.·and others are qualifiers, not the name.
+V7b  Trailing qualifiers (외·등·일대·일원·etc.·and others) are not the name.
 V7c  An edition marker (leading 제N회·Nth, a glued or separate 19xx/20xx year)
      is not the name. Co-presence is year-bound anyway, so a series is one entity.
-V7d  A mostly-Hangul name ignores spaces. Korean spacing in names is not stable.
+V7d  A name mostly in the language's script ignores spaces when that language's
+     spacing in names is not stable (Korean).
 V7e  Two Latin names with the same bag of words (order-free only when a place
      anchors the bag; of/the/and… dropped; centre/center; plural -s on generic
      words only) are one entity when the bag holds a proper word. Generic words
@@ -21,29 +22,33 @@ V7e  Two Latin names with the same bag of words (order-free only when a place
      The bag is exact words. The romanisation-tolerant skeleton is NOT used
      here: it would join ACC/AAS, BUG/Book, and MMCA/MCA.
 V8   A part of a known entity is that entity. A Hangul entity plus a building or
-     room word (본관·서울관·창고동·전시실…). An acronym entity plus a place that
+     room word (본관·서울관·창고동·전시실…), or a Latin one plus a Latin part. An acronym entity plus a place that
      is not somewhere else (ZKM Karlsruhe, not a chain whose rows sit in another city).
 V9   A Hangul name and a Latin name are one entity when the Hangul name, read
      with the glossary (generic words), the gazetteer (place names), and
      ``romanise`` for the rest, gives the same bag as the Latin name, the bag
      holds a proper word, and the match is one reading per connected component.
      Two different readings in one component are ambiguous and are not merged.
+
+The words of V7b, V7c, V7d, and V8 are the language module's ``venue_words``
+(``giye.normalize.language.VenueWords``); the lists above are the Korean–English
+module's. The rules here only assemble them.
 """
 
 from __future__ import annotations
 
 import re
+from functools import cache
 from itertools import product
+from types import SimpleNamespace
 
 from giye.normalize.gazetteer import CITY_SUFFIX, place_key
-from giye.normalize.language import LanguageModule
+from giye.normalize.language import LanguageModule, VenueWords, default_language
 
 HANGUL_RE = re.compile(r"[가-힣]")
 TITLE_RE = re.compile(r"[《〈<「『][^》〉>」』]*[》〉>」』]")
-QUALIFIER_RE = re.compile(r"\s*(?:외|등|일대|일원|etc|and others)\.?$", re.IGNORECASE)
-EDITION_LEAD_RE = re.compile(r"^(?:제\s?\d{1,3}\s?회|\d{1,3}(?:st|nd|rd|th)|(?:19|20)\d{2})\s+", re.IGNORECASE)
 EDITION_GLUED_RE = re.compile(r"(?<=[a-z])(?:19|20)\d{2}\b")
-EDITION_TAIL_RE = re.compile(r"(?:\s+|(?<=[a-z가-힣]))(?:(?:19|20)\d{2}|제?\s?\d{1,3}\s?회)$", re.IGNORECASE)
+_YEAR = r"(?:19|20)\d{2}"
 STOP = {"of", "the", "and", "for", "de", "des", "du", "la", "le", "für", "und", "fur", "at", "in", "&"}
 # Municipal and provincial markers have no English counterpart in most house names.
 DROP = {"metropolitan", "municipal", "city", "provincial", "county"}
@@ -90,15 +95,6 @@ GENERIC = {
     "complex",
 }
 DATE_RE = re.compile(r"\d+\s?(?:월|일|년)")
-# V8 parts: building/room words after a known Hangul entity; Latin parts after a known entity.
-HANGUL_PART_RE = re.compile(
-    r"^(?P<parent>.{2,}?)(?:본관|별관|신관|구관|서울관|과천관|덕수궁관|청주관|창고동|전시동|전시관|전시장|"
-    r"제?\d*전시실\d*|멀티프로젝트홀|대극장|소극장|로비|앞광장|야외광장|광장|라운지|지하\d*층?|\d+층)$"
-)
-LATIN_PART_RE = re.compile(
-    r"^(?P<parent>.+?)\s+(?:main building|annex|lobby|main hall|hall [a-z0-9]+|gallery \d+|"
-    r"\d+(?:st|nd|rd|th)? floor)$"
-)
 ACRONYM_SPELLING_RE = re.compile(r"(?=.{2,8}$)(?=.*[A-Z])[A-Z0-9.&]+")
 
 
@@ -107,23 +103,60 @@ def mostly_hangul(text: str) -> bool:
     return bool(letters) and sum(bool(HANGUL_RE.fullmatch(char)) for char in letters) > len(letters) / 2
 
 
+@cache
+def _patterns(words: VenueWords) -> SimpleNamespace:
+    """V7b–d and V8 expressions built from one language's venue words."""
+
+    def either(parts: tuple[str, ...]) -> str:
+        return "|".join(parts)
+
+    script = re.compile(f"[{words.script}]") if words.script else None
+    qualifiers = either(tuple(re.escape(word) for word in words.qualifiers))
+    lead = either((*words.edition_lead, _YEAR))
+    tail = either((_YEAR, *words.edition_tail))
+    parts = either(words.building_parts)
+    latin_parts = either(words.latin_building_parts)
+    return SimpleNamespace(
+        script=script,
+        qualifier=re.compile(rf"\s*(?:{qualifiers})\.?$", re.IGNORECASE) if qualifiers else None,
+        edition_lead=re.compile(rf"^(?:{lead})\s+", re.IGNORECASE),
+        edition_tail=re.compile(rf"(?:\s+|(?<=[a-z{words.script}]))(?:{tail})$", re.IGNORECASE),
+        letters=re.compile(f"[{words.script}a-z]"),
+        part=re.compile(rf"^(?P<parent>.{{2,}}?)(?:{parts})$") if parts else None,
+        latin_part=re.compile(rf"^(?P<parent>.+?)\s+(?:{latin_parts})$") if latin_parts else None,
+    )
+
+
+def _words(lang: LanguageModule | None) -> SimpleNamespace:
+    return _patterns((lang or default_language()).venue_words)
+
+
+def _mostly_script(text: str, script: re.Pattern[str] | None) -> bool:
+    if script is None:
+        return False
+    letters = [char for char in text if char.isalpha()]
+    return bool(letters) and sum(bool(script.fullmatch(char)) for char in letters) > len(letters) / 2
+
+
 def strip_titles(text: str) -> str:
     """V7a, on the raw fragment: V4 drops the bracket characters but would keep the title inside them."""
     stripped = TITLE_RE.sub(" ", text).strip()
     return stripped if len(re.findall(r"[가-힣A-Za-z]", stripped)) >= 2 else text
 
 
-def normalize_key(key: str) -> str:
+def normalize_key(key: str, lang: LanguageModule | None = None) -> str:
     """V7b–d on a V4 key (already casefolded, quotes and periods removed)."""
+    words = _words(lang)
     text = EDITION_GLUED_RE.sub("", key)
     for _ in range(2):
-        text = QUALIFIER_RE.sub("", text).strip()
-        text = EDITION_LEAD_RE.sub("", text).strip()
-        text = EDITION_TAIL_RE.sub("", text).strip()
+        if words.qualifier is not None:
+            text = words.qualifier.sub("", text).strip()
+        text = words.edition_lead.sub("", text).strip()
+        text = words.edition_tail.sub("", text).strip()
     text = re.sub(r"\s+", " ", text).strip()
-    if len(re.findall(r"[가-힣a-z]", text)) < 2:
+    if len(words.letters.findall(text)) < 2:
         return key  # nothing name-like left: keep the V4 key
-    if mostly_hangul(text):
+    if (lang or default_language()).venue_words.unstable_spacing and _mostly_script(text, words.script):
         text = text.replace(" ", "")  # V7d
     return text
 
@@ -244,18 +277,24 @@ def part_parent_ok(key: str, lang: LanguageModule) -> bool:
     return mostly_hangul(key) and key not in lang.glossary and not DATE_RE.search(key) and len(key) >= 4
 
 
-def trimmed(spelling: str) -> bool:
+def trimmed(spelling: str, lang: LanguageModule | None = None) -> bool:
     """True when V7a/V7b had to cut a work title or a qualifier out of this spelling."""
-    return bool(TITLE_RE.search(spelling) or QUALIFIER_RE.search(spelling.strip()))
+    qualifier = _words(lang).qualifier
+    return bool(TITLE_RE.search(spelling) or (qualifier is not None and qualifier.search(spelling.strip())))
 
 
-def hangul_part_parent(key: str) -> str:
-    match = HANGUL_PART_RE.match(key) if mostly_hangul(key) else None
+def hangul_part_parent(key: str, lang: LanguageModule | None = None) -> str:
+    """V8: the entity before a building or room word, for a name mostly in the language's script."""
+    words = _words(lang)
+    match = words.part.match(key) if words.part is not None and _mostly_script(key, words.script) else None
     return match.group("parent") if match else ""
 
 
-def latin_part_parent(key: str) -> str:
-    match = LATIN_PART_RE.match(key) if not HANGUL_RE.search(key) else None
+def latin_part_parent(key: str, lang: LanguageModule | None = None) -> str:
+    """V8: the entity before a Latin building or room word, for a name with no letter of the language's script."""
+    words = _words(lang)
+    native = words.script is not None and words.script.search(key)
+    match = words.latin_part.match(key) if words.latin_part is not None and not native else None
     return match.group("parent") if match else ""
 
 

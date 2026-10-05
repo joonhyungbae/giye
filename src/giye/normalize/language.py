@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import importlib
 import re
+from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
@@ -36,6 +37,52 @@ KOREAN_SURNAMES = frozenset(
     "김이박최정강조윤장임한오서신권황안송류유홍전고문양손배백허남심노하곽성차주우구민진나지엄채원천방공현함변염여추도소석선설마길연위표명기반왕금옥육인맹제모탁국어은편용예경봉사부가복태목형피두감음빈동온호범좌팽승간상갈"
 )
 _KOREAN_PERSONAL_NAME = re.compile(r"[가-힣]{2,4}")
+
+
+@dataclass(frozen=True)
+class VenueWords:
+    """Words and markers of one script pair that the venue spelling rules read.
+
+    ``script`` is the character-class body of the pair's own (non-Latin) script.
+    V7c reads an edition marker glued to a letter of it, V7d removes spaces in a
+    name mostly written in it when ``unstable_spacing`` is set, and V8 reads
+    ``building_parts`` after a name mostly written in it. ``qualifiers`` are
+    literal trailing words (V7b). ``edition_lead`` and ``edition_tail`` are
+    regular-expression alternatives for an edition marker at the start or the
+    end of a name (V7c); a four-digit year is handled by the rule itself.
+    ``building_parts`` and ``latin_building_parts`` are regular-expression
+    alternatives for a V8 part after a name in the pair's script or a Latin name.
+    """
+
+    script: str = ""
+    qualifiers: tuple[str, ...] = ()
+    edition_lead: tuple[str, ...] = ()
+    edition_tail: tuple[str, ...] = ()
+    unstable_spacing: bool = False
+    building_parts: tuple[str, ...] = ()
+    latin_building_parts: tuple[str, ...] = ()
+
+
+# Korean–English venue words. The lists are the production rules' words, in their order.
+KO_EN_VENUE_WORDS = VenueWords(
+    script="가-힣",
+    # 외 / 등 ("and others"), 일대 / 일원 ("around"), and their English forms.
+    qualifiers=("외", "등", "일대", "일원", "etc", "and others"),
+    # 제12회 ("the 12th"), 12th.
+    edition_lead=(r"제\s?\d{1,3}\s?회", r"\d{1,3}(?:st|nd|rd|th)"),
+    edition_tail=(r"제?\s?\d{1,3}\s?회",),
+    # Korean spacing in names is not stable.
+    unstable_spacing=True,
+    # Buildings (본관 main, 별관 annex, …관 a branch), halls, rooms, floors, lobbies, squares.
+    building_parts=(
+        "본관", "별관", "신관", "구관", "서울관", "과천관", "덕수궁관", "청주관", "창고동", "전시동", "전시관",
+        "전시장", r"제?\d*전시실\d*", "멀티프로젝트홀", "대극장", "소극장", "로비", "앞광장", "야외광장", "광장",
+        "라운지", r"지하\d*층?", r"\d+층",
+    ),
+    latin_building_parts=(
+        "main building", "annex", "lobby", "main hall", "hall [a-z0-9]+", r"gallery \d+", r"\d+(?:st|nd|rd|th)? floor",
+    ),
+)
 
 
 def packaged_dir() -> Path:
@@ -77,6 +124,10 @@ class LanguageModule(Protocol):
     def personal_name(self, name: str) -> bool:
         """True for a bare personal name of the kind that collides across people (A3, A4, A6, T1)."""
 
+    @property
+    def venue_words(self) -> VenueWords:
+        """Qualifier, edition, spacing, and building-part words of the venue rules (V7b–d, V8)."""
+
     def name_keys(self, name: str) -> set[str]:
         """Romanized matching keys of a personal name. Empty when the name does not yield any."""
 
@@ -96,6 +147,7 @@ class KoreanEnglish:
     """Korean–English module. Glossary and gazetteer are files; romanisation is Revised Romanization."""
 
     name = "ko-en"
+    venue_words = KO_EN_VENUE_WORDS
 
     def __init__(self, glossary: dict[str, tuple[tuple[str, ...], ...]], gazetteer: Gazetteer) -> None:
         self._glossary = glossary
