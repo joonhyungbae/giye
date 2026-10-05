@@ -29,5 +29,12 @@ fi
   mkdir -p "$backup" && cp data/ledger/*.csv "$backup/"
   ./scripts/pipeline.sh "$MODE"
   deploy/push.sh --data-only
+  # Off-machine copy of the ledger: the private repository versions data/ledger/*.csv (AGENTS.md,
+  # two git directories). The public checkout has no ./gitp, so this step is skipped there.
+  if [[ -x ./gitp ]]; then
+    ./gitp add -f data/ledger/*.csv
+    ./gitp diff --cached --quiet -- data/ledger || ./gitp commit -q -m "Ledger after the scheduled $MODE run ($(date +%F))"
+    ./gitp push -q || echo "ledger push failed; the commit stays local"
+  fi
   echo "# done $(date -Iseconds)"
 } >> "$LOG" 2>&1
