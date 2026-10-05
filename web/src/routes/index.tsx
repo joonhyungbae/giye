@@ -47,7 +47,7 @@ export const Route = createFileRoute("/")({
         content:
           "기예의 기록을 연도의 고리 위에, 처음 명단에 오른 세대별로 그린 생성 시각화. The archive drawn as rings of years, arranged by the generation in which each person first appeared on a roster.",
       },
-      { property: "og:title", content: "Giye 기예 — Archival Study 기록 연구" },
+      { property: "og:title", content: "Giye — Media Art Archive" },
       { property: "og:url", content: "/" },
     ],
     links: [{ rel: "canonical", href: "/" }],
