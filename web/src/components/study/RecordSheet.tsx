@@ -60,6 +60,9 @@ export type SheetPreview = {
   activities: SheetActivity[];
 };
 
+/** placeholder widths (%) for titles still loading, chosen by a row's ord so they stay put */
+const BAR_WIDTHS = [74, 58, 86, 64, 49, 79, 68];
+
 /** where the floating dialog was last dragged to; kept across artists while the page lives */
 let floatOffset = { x: 0, y: 0 };
 
@@ -139,6 +142,8 @@ export const RecordSheet = memo(function RecordSheet({
   const { lang, t } = useLang();
   const [rec, setRec] = useState<Record_ | undefined>(undefined);
   const [failed, setFailed] = useState(false);
+  // bumped by the Retry button to ask the server again
+  const [attempt, setAttempt] = useState(0);
   const box = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -155,7 +160,7 @@ export const RecordSheet = memo(function RecordSheet({
     return () => {
       alive = false;
     };
-  }, [id]);
+  }, [id, attempt]);
 
   // The study's frame loop writes the side sheet's width straight onto this element. React never
   // owns that property, so it survives a switch to "float" (stage 0–1 → 2–4) and stretches the
@@ -185,6 +190,9 @@ export const RecordSheet = memo(function RecordSheet({
   const artist = rec?.artist ?? preview.artist;
   const acts: SheetPreview["activities"] = rec?.activities ?? preview.activities;
   const links: ArtistLink[] = rec?.links ?? [];
+  const loading = rec == null && !failed;
+  // what the server record adds (titles, degrees, links) fades in rather than popping in
+  const arrive = "motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500";
   // degrees first: the newest at the top, as a CV lists them
   const education = (rec?.background ?? [])
     .filter((b) => b.section === "education")
@@ -238,8 +246,17 @@ export const RecordSheet = memo(function RecordSheet({
             onPointerMove={onDragMove}
             onPointerUp={onDragEnd}
             onPointerCancel={onDragEnd}
-            className={`flex items-start justify-between gap-3 border-b border-foreground/30 px-4 pb-3 pt-3 ${floating ? "cursor-move select-none touch-none" : ""}`}
+            className={`relative flex items-start justify-between gap-3 border-b border-foreground/30 px-4 pb-3 pt-3 ${floating ? "cursor-move select-none touch-none" : ""}`}
           >
+            {/* while the record loads, a short segment runs along the header's bottom rule */}
+            {loading ? (
+              <span
+                aria-hidden
+                className="sheet-sweep pointer-events-none absolute inset-x-0 -bottom-px h-px overflow-hidden"
+              >
+                <span className="absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-primary/80 to-transparent" />
+              </span>
+            ) : null}
             <div className="min-w-0">
               <p className="font-mono text-[9.5px] uppercase tracking-[0.16em] text-muted-foreground">
                 {picked
@@ -341,7 +358,7 @@ export const RecordSheet = memo(function RecordSheet({
                 {/* in the small floating window a picked record already fills the top; the
                     artist's degrees give way so the ledger below stays readable */}
                 {education.length && !(floating && picked) ? (
-                  <tr className="border-b border-foreground/15 align-top">
+                  <tr className={`border-b border-foreground/15 align-top ${arrive}`}>
                     <td className="border-r border-foreground/15 px-3 py-0.5 text-muted-foreground">
                       {t("학력", "education")}
                     </td>
@@ -426,7 +443,7 @@ export const RecordSheet = memo(function RecordSheet({
                       className={`-mx-1 px-1 ${hot ? "bg-primary/10 outline outline-1 outline-primary/50" : ""}`}
                     >
                       {a.title != null ? (
-                        <>
+                        <div className={arrive}>
                           <p className="text-[12.5px] leading-5">
                             {a.title}
                             {a.venue ? (
@@ -453,6 +470,21 @@ export const RecordSheet = memo(function RecordSheet({
                               ? ` · ${t("수집", "collected")} ${a.collected_at.slice(0, 10)}`
                               : ""}
                           </p>
+                        </div>
+                      ) : loading ? (
+                        // a placeholder where the title will stand (widths vary so the column
+                        // reads like text), with what the preview already knows beneath it
+                        <>
+                          <p className="flex h-5 items-center" aria-hidden>
+                            <span
+                              className="h-2 bg-foreground/[0.09] motion-safe:animate-pulse"
+                              style={{ width: `${BAR_WIDTHS[(a.ord ?? 0) % BAR_WIDTHS.length]}%` }}
+                            />
+                          </p>
+                          <p className="font-mono text-[10px] leading-4 text-muted-foreground">
+                            {/* the year already heads this group */}
+                            {[a.venue, typeName(a.activity_type)].filter(Boolean).join(" · ")}
+                          </p>
                         </>
                       ) : (
                         <p className="text-[12.5px] leading-5">{cite(a)}</p>
@@ -464,7 +496,7 @@ export const RecordSheet = memo(function RecordSheet({
             </div>
           ))}
           {links.length > 0 ? (
-            <div className="mt-3 border-t border-foreground/15 pt-3">
+            <div className={`mt-3 border-t ${arrive} border-foreground/15 pt-3`}>
               <p className="font-mono text-[9.5px] uppercase tracking-[0.16em] text-muted-foreground">
                 {t("링크", "Links")}
               </p>
@@ -501,6 +533,28 @@ export const RecordSheet = memo(function RecordSheet({
         >
           {t("전체 기록 페이지 →", "Full record →")}
         </Link>
+        {loading ? (
+          <span
+            role="status"
+            className="text-muted-foreground motion-safe:animate-in motion-safe:fade-in motion-safe:delay-300 motion-safe:fill-mode-backwards"
+          >
+            {t("기록 불러오는 중", "Loading records")}
+          </span>
+        ) : failed ? (
+          <span className="flex items-center gap-2 text-muted-foreground">
+            {t("불러오지 못함", "Could not load")}
+            <button
+              type="button"
+              onClick={() => {
+                setFailed(false);
+                setAttempt((n) => n + 1);
+              }}
+              className="border border-input px-1.5 leading-5 text-foreground/80 hover:border-primary hover:text-primary"
+            >
+              {t("다시 시도", "Retry")}
+            </button>
+          </span>
+        ) : null}
       </footer>
     </section>
   );

@@ -209,3 +209,33 @@
 @utility cite-notice {
   animation: cite-notice 2.2s ease-out forwards;
 }
+
+/* record sheet loading: a short segment runs along the header rule. It appears only after a
+   moment, so a record that loads at once never flashes it; under reduced motion it rests. */
+@keyframes sheet-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+@keyframes sheet-sweep-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@utility sheet-sweep {
+  animation: sheet-sweep-in 0.3s ease-out 0.25s backwards;
+  & > span {
+    animation: sheet-sweep 1.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    & > span {
+      animation: none;
+      left: 33%;
+    }
+  }
+}
