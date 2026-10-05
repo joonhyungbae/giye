@@ -307,6 +307,7 @@ def _queue_decide(args: argparse.Namespace) -> int:
         args.decision,
         evidence=args.evidence or "",
         note=args.note or "",
+        override_distinct=args.override_distinct,
     )
     print(f"decide {item.get('queue_id')} {args.decision} status={item.get('status')}")
     return 0
@@ -320,7 +321,9 @@ def _merge_people(args: argparse.Namespace) -> int:
     # A survivor can already be the target of an older retirement. Report the
     # gy_id this call retired, not that earlier redirect.
     before = {row["gy_id"] for row in ledger.read("gy_retired")} if ledger.path("gy_retired").exists() else set()
-    keep, drop = merge_people(ledger, args.keep_id, args.drop_id, evidence=args.evidence)
+    keep, drop = merge_people(
+        ledger, args.keep_id, args.drop_id, evidence=args.evidence, override_distinct=args.override_distinct
+    )
     retired = [row["gy_id"] for row in ledger.read("gy_retired") if row["gy_id"] not in before]
     print(f"merge {drop} → {keep}" + (f" retired {', '.join(retired)}" if retired else ""))
     return 0
@@ -483,13 +486,23 @@ def _add_tool_parsers(sub: argparse._SubParsersAction) -> None:
     queue_decide.add_argument("item_id")
     queue_decide.add_argument("--config", default="giye.toml")
     queue_decide.add_argument("--decision", required=True, choices=("merge", "distinct", "dismiss"))
-    queue_decide.add_argument("--evidence", default="", help="required for --decision merge")
+    queue_decide.add_argument(
+        "--evidence", default="", help="required for --decision merge: E1-E4 (or X1+E) with a citation, or H with a reason and date"
+    )
+    queue_decide.add_argument(
+        "--override-distinct", action="store_true", help="allow a merge of a pair decided distinct (recorded)"
+    )
     queue_decide.add_argument("--note", default="")
     merge_cmd = sub.add_parser("merge", help="merge two people and retire the dropped gy_id")
     merge_cmd.add_argument("keep_id", help="ledger id or gy_id to keep")
     merge_cmd.add_argument("drop_id", help="ledger id or gy_id to retire")
     merge_cmd.add_argument("--config", default="giye.toml")
-    merge_cmd.add_argument("--evidence", required=True, help="why these rows are one person")
+    merge_cmd.add_argument(
+        "--evidence", required=True, help="E1-E4 (or X1+E) with a citation, or H with a reason and date"
+    )
+    merge_cmd.add_argument(
+        "--override-distinct", action="store_true", help="allow merging a pair decided distinct (recorded)"
+    )
     hide_cmd = sub.add_parser("hide", help="hide a page (HIDDEN_BY_REQUEST tombstone)")
     hide_cmd.add_argument("gy_id")
     hide_cmd.add_argument("--config", default="giye.toml")
