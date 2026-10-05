@@ -36,5 +36,8 @@ fi
     ./gitp diff --cached --quiet -- data/ledger || ./gitp commit -q -m "Ledger after the scheduled $MODE run ($(date +%F))"
     ./gitp push -q || echo "ledger push failed; the commit stays local"
   fi
+  # Original evidence and audit material go to the VPS (deploy/backup.sh). A failed copy does not
+  # undo the published run; the next week retries.
+  deploy/backup.sh || echo "backup to the VPS failed"
   echo "# done $(date -Iseconds)"
 } >> "$LOG" 2>&1
