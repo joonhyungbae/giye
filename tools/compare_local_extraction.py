@@ -18,6 +18,10 @@ requires.
     python3 tools/compare_local_extraction.py
     python3 tools/compare_local_extraction.py --model qwen2.5:7b
     python3 tools/compare_local_extraction.py --model qwen2.5:14b --base-url http://localhost:11434/v1
+    python3 tools/compare_local_extraction.py --model gemma4:26b --reasoning-effort none
+
+A thinking model (Qwen3.5, Gemma 4) writes its reasoning first unless
+``--reasoning-effort none`` is passed; that multiplies the time per call.
 
 Temperature is 0 because the demo cache records 0. A sample would not be an
 agreement check. The report is ``docs/local-extraction.md``. A second model
@@ -273,9 +277,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model", default="qwen2.5:14b")
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
     parser.add_argument("--timeout", type=float, default=600)
+    parser.add_argument("--reasoning-effort", choices=["none", "low", "medium", "high"], default=None)
     args = parser.parse_args(argv)
     cases = load_cases(DEMO_CONFIG)
-    provider = OpenAICompatibleProvider(args.model, args.base_url, temperature=0, timeout=args.timeout)
+    provider = OpenAICompatibleProvider(
+        args.model, args.base_url, temperature=0, timeout=args.timeout, reasoning_effort=args.reasoning_effort
+    )
     prompt = prompt_text()
     scores = [score_case(case, provider, prompt) for case in cases]
     when = datetime.now(timezone.utc).date().isoformat()
