@@ -159,6 +159,15 @@ def _extract_pending(ledger: Ledger, config: Config, result: ExtractResult, *, r
         path = extract_dir / f"{ledger_id}.json"
         if _extraction_current(path, sources, prompt_sha=prompt_sha, model=model, chunk_chars=chunk_chars):
             continue
+        # A merge moves every CV source onto the survivor and leaves each
+        # reading in the file it was written to. The survivor's own file then
+        # omits the other source, and hashing both texts together misses the
+        # cache: each CV is keyed by its own text, not by the joined text.
+        # The files already on disk are that reading.
+        if _sources_already_extracted(
+            extract_dir, sources, prompt_sha=prompt_sha, model=model, chunk_chars=chunk_chars
+        ):
+            continue
         documents = _documents(config, sources)
         if not documents:
             result.invalid.append(ledger_id)
@@ -171,40 +180,60 @@ def _extract_pending(ledger: Ledger, config: Config, result: ExtractResult, *, r
         source_ids = {source["source_id"] for source in sources}
         activities = []
         failed = False
-        for rendered, digest in pieces:
-            try:
-                raw = _complete(
-                    cache_dir,
-                    prompt=prompt,
-                    document=rendered,
-                    content_sha256=digest,
-                    prompt_sha256=prompt_sha,
-                    model=model,
-                    temperature=config.extract_temperature,
-                    replay_only=replay_only,
-                    provider=config.extract_provider,
-                    base_url=config.extract_base_url,
-                    api_key_env=config.extract_api_key_env,
-                    reasoning_effort=config.extract_reasoning_effort,
-                )
-            except ProviderError:
-                result.invalid.append(ledger_id)
-                failed = True
-                break
-            if isinstance(raw, CacheMiss):
-                result.replay_misses.append(ledger_id)
-                failed = True
-                break
-            try:
-                parsed = parse_extraction(raw)
-            except ValidationError:
-                result.invalid.append(ledger_id)
-                failed = True
-                break
-            kept, _dropped = without_unknown_sources(parsed, source_ids)
-            activities.extend(kept.activities)
-        if failed:
-            continue
+        # Several whole CVs used to be one cache key, the hash of the texts
+        # joined together. Each CV is stored under its own text hash: that is
+        # the key from when the CV belonged to its own row. A merge puts both
+        # sources on the survivor, and the joined hash is not in the cache, so
+        # the next run would call the model again. Replay each document on the
+        # key it was stored under. A bundle that is already cached is left to
+        # the loop below (this returns None when any document misses).
+        separate = None
+        if len(documents) > 1 and chunk_count == len(documents):
+            separate = _replay_each_document(
+                cache_dir,
+                name=names.get(ledger_id, ""),
+                documents=documents,
+                prompt=prompt,
+                prompt_sha=prompt_sha,
+                model=model,
+            )
+        if separate is not None:
+            activities = separate
+        else:
+            for rendered, digest in pieces:
+                try:
+                    raw = _complete(
+                        cache_dir,
+                        prompt=prompt,
+                        document=rendered,
+                        content_sha256=digest,
+                        prompt_sha256=prompt_sha,
+                        model=model,
+                        temperature=config.extract_temperature,
+                        replay_only=replay_only,
+                        provider=config.extract_provider,
+                        base_url=config.extract_base_url,
+                        api_key_env=config.extract_api_key_env,
+                        reasoning_effort=config.extract_reasoning_effort,
+                    )
+                except ProviderError:
+                    result.invalid.append(ledger_id)
+                    failed = True
+                    break
+                if isinstance(raw, CacheMiss):
+                    result.replay_misses.append(ledger_id)
+                    failed = True
+                    break
+                try:
+                    parsed = parse_extraction(raw)
+                except ValidationError:
+                    result.invalid.append(ledger_id)
+                    failed = True
+                    break
+                kept, _dropped = without_unknown_sources(parsed, source_ids)
+                activities.extend(kept.activities)
+            if failed:
+                continue
         extract_dir.mkdir(parents=True, exist_ok=True)
         payload = {
             "ledger_id": ledger_id,
@@ -218,6 +247,45 @@ def _extract_pending(ledger: Ledger, config: Config, result: ExtractResult, *, r
         }
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
         result.extracted.append(ledger_id)
+
+
+def _replay_each_document(
+    cache_dir,
+    *,
+    name: str,
+    documents: list[tuple[str, str]],
+    prompt: str,
+    prompt_sha: str,
+    model: str,
+) -> list | None:
+    """Cached activities for each CV, or None when any document is not cached.
+
+    The replay key of one CV is ``bundle_fingerprint`` of that text alone.
+    Joining every text the survivor now holds is a different key, so a merge
+    would orphan the cache. Reading each document back on its own key keeps
+    the stored response. This does not call a model: a miss returns None and
+    the caller tries the joined key, then a live call.
+    """
+    activities = []
+    for source_id, text in sorted(documents, key=lambda item: item[0]):
+        single = [(source_id, text)]
+        replay = ReplayProvider(
+            cache_dir,
+            content_sha256=bundle_fingerprint(single),
+            prompt_sha256=prompt_sha,
+            model=model,
+        )
+        try:
+            raw = replay.complete(prompt, _render_document(name, single))
+        except CacheMiss:
+            return None
+        try:
+            parsed = parse_extraction(raw)
+        except ValidationError:
+            return None
+        kept, _dropped = without_unknown_sources(parsed, {source_id})
+        activities.extend(kept.activities)
+    return activities
 
 
 def _pieces(name: str, documents: list[tuple[str, str]], chunk_chars: int) -> tuple[list[tuple[str, str]], int]:
@@ -245,6 +313,37 @@ def _pieces(name: str, documents: list[tuple[str, str]], chunk_chars: int) -> tu
         digest = hashlib.sha256(rendered.encode("utf-8")).hexdigest()
         pieces.append((rendered, digest))
     return pieces, count
+
+
+def _sources_already_extracted(
+    extract_dir, sources: list[dict[str, str]], *, prompt_sha: str, model: str, chunk_chars: int
+) -> bool:
+    """True when some extraction files together already cover ``sources``.
+
+    See the call in ``_extract_pending``. A file from before this check, with
+    no ``chunk_chars``, counts as 0, the same rule as ``_extraction_current``.
+    """
+    if not extract_dir.is_dir():
+        return False
+    needed = {source["source_id"]: source.get("content_sha256") for source in sources}
+    if not needed:
+        return False
+    found: dict[str, str | None] = {}
+    for path in extract_dir.glob("*.json"):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        if data.get("prompt_sha256") != prompt_sha or data.get("extracted_by") != model:
+            continue
+        if data.get("chunk_chars", 0) != chunk_chars:
+            continue
+        for item in data.get("sources") or []:
+            if isinstance(item, dict) and item.get("source_id"):
+                found[item["source_id"]] = item.get("content_sha256")
+    return all(found.get(source_id) == digest for source_id, digest in needed.items())
 
 
 def _extraction_current(

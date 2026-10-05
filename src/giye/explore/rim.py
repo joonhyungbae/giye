@@ -211,6 +211,9 @@ def _clock(now: datetime | None) -> datetime:
 
 def _tables(source: Config | Mapping[str, Any]) -> dict[str, Any]:
     if isinstance(source, Config):
+        from giye.config import checked_frames
+
+        checked_frames(source)
         return {
             "artists": read_csv(source.ledger / "artists.csv"),
             "activities": read_csv(source.ledger / "activities.csv"),

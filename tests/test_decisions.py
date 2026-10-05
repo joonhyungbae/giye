@@ -1,0 +1,183 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+"""Queue, merge, hide, and evidence commands on a temp copy of the demo ledger."""
+
+from __future__ import annotations
+
+import csv
+import json
+import shutil
+import socket
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pytest
+import requests
+
+from giye.cli import main
+from giye.config import load
+from giye.demo import run_demo
+from giye.ledger.ledger import Ledger
+
+ROOT = Path(__file__).resolve().parents[1]
+DEMO = ROOT / "examples" / "demo"
+CLOCK = datetime(2026, 1, 15, tzinfo=timezone.utc)
+
+
+def _copy(tmp_path: Path) -> Path:
+    dest = tmp_path / "demo"
+    shutil.copytree(DEMO, dest, ignore=shutil.ignore_patterns("data", "__pycache__", "*.pyc"))
+    run_demo(dest / "giye.toml", dest / "data", now=CLOCK)
+    return dest
+
+
+def _artists(dest: Path) -> list[dict[str, str]]:
+    return Ledger.open(load(dest / "giye.toml")).read("artists")
+
+
+def _named(rows: list[dict[str, str]], name: str) -> list[dict[str, str]]:
+    return [row for row in rows if row.get("name_ko") == name or row.get("name_en") == name]
+
+
+def _other_live(item: dict[str, str], live: set[str]) -> bool:
+    from giye.resolve.candidates import review_id_set
+
+    own = item.get("ledger_id") or ""
+    others = review_id_set(item) - {own}
+    return len(others) == 1 and own in live and others <= live
+
+
+def _queue(dest: Path) -> list[dict[str, str]]:
+    path = dest / "data" / "ledger" / "review_queue.csv"
+    with path.open(encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def test_queue_merge_hide_and_evidence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]):
+    def boom(self, url, *args, **kwargs):
+        raise requests.ConnectionError(f"network blocked: {url}")
+
+    monkeypatch.setattr(requests.Session, "get", boom)
+    monkeypatch.setattr(socket, "create_connection", boom)
+    dest = _copy(tmp_path)
+    config = str(dest / "giye.toml")
+    artists = _artists(dest)
+    minsoo = _named(artists, "최민수")
+    assert len(minsoo) == 2
+    bae = _named(artists, "배수아")
+    assert len(bae) == 2
+    assert any("members=" in (row.get("reviewer_note") or "") for row in bae)
+    assert any("members=" not in (row.get("reviewer_note") or "") for row in bae)
+
+    assert main(["queue", "list", "--config", config, "--status", "open"]) == 0
+    listed = [line for line in capsys.readouterr().out.splitlines() if "\topen\t" in line]
+    assert len(listed) == 3
+
+    live = {row["ledger_id"] for row in artists}
+    open_items = [row for row in _queue(dest) if row["status"] == "open" and row["reason"] == "possible_same_person"]
+    by_detail = {row["queue_id"]: row.get("detail") or "" for row in open_items}
+
+    def item_for(token: str) -> dict[str, str]:
+        found = [row for row in open_items if token in by_detail[row["queue_id"]]]
+        assert len(found) == 1, by_detail
+        return found[0]
+
+    distinct = item_for("서지우")
+    dismiss = item_for("배수아")
+    merging = item_for("최민수")
+    assert _other_live(merging, live)
+
+    assert main(["queue", "decide", distinct["queue_id"], "--config", config, "--decision", "distinct"]) == 0
+    capsys.readouterr()
+    assert main(
+        ["queue", "decide", dismiss["queue_id"], "--config", config, "--decision", "dismiss", "--note", "not this edition"]
+    ) == 0
+    capsys.readouterr()
+    assert main(["queue", "decide", merging["queue_id"], "--config", config, "--decision", "merge"]) == 2
+    assert "evidence" in capsys.readouterr().err
+    assert (
+        main(
+            [
+                "queue",
+                "decide",
+                merging["queue_id"],
+                "--config",
+                config,
+                "--decision",
+                "merge",
+                "--evidence",
+                "the queued pair is one person",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    decided = next(row for row in _queue(dest) if row["queue_id"] == merging["queue_id"])
+    assert decided["status"] == "done" and "decided=same" in decided["detail"]
+
+    assert main(["merge", minsoo[0]["gy_id"], minsoo[1]["gy_id"], "--config", config, "--evidence", "   "]) == 2
+    err = capsys.readouterr().err
+    assert err.startswith("giye: error:") and "Traceback" not in err
+    # The queue decision already merged this pair. A second merge of the same gy_id
+    # is the dropped id, which no longer has a row. The CLI path is exercised on
+    # two other people below, after the team guard.
+    assert main(["merge", bae[0]["gy_id"], bae[1]["gy_id"], "--config", config, "--evidence", "E1 a team is not a person"]) == 2
+    err = capsys.readouterr().err
+    assert err.startswith("giye: error:") and "T1" in err and "Traceback" not in err
+    assert len(_named(_artists(dest), "배수아")) == 2
+
+    others = [
+        row
+        for row in _artists(dest)
+        if row["gy_id"] not in {item["gy_id"] for item in minsoo + bae} and "members=" not in (row.get("reviewer_note") or "")
+    ]
+    keep, drop = others[0], others[1]
+    assert (
+        main(
+            ["merge", keep["gy_id"], drop["gy_id"], "--config", config, "--evidence", "E1 the two rows are one person"]
+        )
+        == 0
+    )
+    merged_out = capsys.readouterr().out
+    assert f"retired {drop['gy_id']}" in merged_out
+    retired = Ledger.open(load(dest / "giye.toml")).read("gy_retired")
+    redirect = next(row for row in retired if row["gy_id"] == drop["gy_id"])
+    assert redirect["merged_into_ledger_id"] == keep["ledger_id"]
+    retired_gy = {row["gy_id"] for row in retired}
+    gone = [row for row in minsoo if row["gy_id"] in retired_gy]
+    kept_minsoo = [row for row in minsoo if row["gy_id"] not in retired_gy]
+    assert len(gone) == 1 and len(kept_minsoo) == 1
+    redirect_minsoo = next(row for row in retired if row["gy_id"] == gone[0]["gy_id"])
+    assert redirect_minsoo["merged_into_ledger_id"] == kept_minsoo[0]["ledger_id"]
+    assert any((dest / "data" / "work" / "backups").glob("artists-*-before-merge.csv"))
+    assert main(["resolve", "--config", config]) == 0
+    capsys.readouterr()
+    after = {row["queue_id"]: row for row in _queue(dest)}
+    assert after[distinct["queue_id"]]["status"] == "done"
+    assert "decided=different" in after[distinct["queue_id"]]["detail"]
+    assert after[dismiss["queue_id"]]["status"] == "dismissed"
+
+    hidden = next(row for row in _artists(dest) if row.get("status") != "MERGED" and row.get("name_ko"))
+    gy = hidden["gy_id"]
+    name = hidden["name_ko"]
+    assert main(["hide", gy, "--config", config, "--reason", "asked to be removed"]) == 0
+    capsys.readouterr()
+    assert any((dest / "data" / "work" / "backups").glob("artists-*-before-hide.csv"))
+    assert main(["publish", "--config", config]) == 0
+    capsys.readouterr()
+    stubs = json.loads((dest / "data" / "site" / "artist_stubs.json").read_text(encoding="utf-8"))
+    published = json.loads((dest / "data" / "site" / "artists.json").read_text(encoding="utf-8"))
+    assert stubs[gy] == "HIDDEN_BY_REQUEST"
+    assert name not in {row.get("name_ko") for row in published}
+    assert main(["unhide", gy, "--config", config]) == 0
+    capsys.readouterr()
+    assert main(["publish", "--config", config]) == 0
+    capsys.readouterr()
+    published = json.loads((dest / "data" / "site" / "artists.json").read_text(encoding="utf-8"))
+    assert name in {row.get("name_ko") for row in published}
+    stubs = json.loads((dest / "data" / "site" / "artist_stubs.json").read_text(encoding="utf-8"))
+    assert gy not in stubs
+
+    assert main(["evidence", "--config", config]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("evidence ")
+    assert "Traceback" not in capsys.readouterr().err

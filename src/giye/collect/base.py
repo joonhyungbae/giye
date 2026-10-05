@@ -50,6 +50,20 @@ ROSTER_FIELDS = [
     "aliases",
 ]
 _HANGUL = re.compile(r"[가-힣]")
+_YEAR = re.compile(r"\d{4}$")
+
+
+def edition_code(frame: str, year: int | str) -> str:
+    """``FRAME-YYYY`` when ``year`` is four digits, otherwise the bare frame.
+
+    A label that is not a year must not grow a fake suffix. Rule R1 reads the
+    suffix as the entry year and does not fall back to the activity year, so a
+    bare frame code leaves that person on the undated rim (``GEN-UNDATED``).
+    """
+    text = str(year)
+    if _YEAR.fullmatch(text):
+        return f"{frame}-{text}"
+    return frame
 
 
 @dataclass
@@ -158,27 +172,42 @@ class RosterCollector:
         The ledger is the source of truth: a new person gets a ``gy_id``, the frame
         gains a membership, and each appearance is an activity. The CSV is the
         collection report for this run.
+
+        One ``apply_roster`` per edition, not one for the whole programme. The
+        code it is given is both the membership and the activity origin, and
+        those two strings have to be equal (team expansion and the published
+        roster role match on them). The code is ``<frame>-<year>`` when the
+        edition label is a year. Rule R1 reads that suffix and does not use the
+        activity's year column, so a single call with the bare frame would
+        leave every membership undated. The snapshot path stays the bare frame:
+        ``fetch`` uses ``self.frame``, not the edition.
         """
         stamp = collected_at or datetime.now(timezone.utc).date().isoformat()
         rows: list[dict[str, str]] = []
+        batches: dict[str, list[dict[str, str]]] = {}
         for edition in self.editions():
+            code = edition_code(self.frame, edition.year)
+            batch = batches.setdefault(code, [])
             for person in edition.people:
-                rows.append(
-                    {
-                        "frame_code": self.frame,
-                        "year": str(edition.year),
-                        "name": person.name,
-                        "name_ko": person.name_ko,
-                        "name_en": person.name_en,
-                        "source_url": edition.source_url,
-                        "collected_at": stamp,
-                        "website": person.website,
-                        "role": person.role,
-                        "members": person.members,
-                        "aliases": person.aliases,
-                    }
-                )
-        Ledger.open(self.config).apply_roster(self.frame, rows, task="collect")
+                row = {
+                    "frame_code": code,
+                    "year": str(edition.year),
+                    "name": person.name,
+                    "name_ko": person.name_ko,
+                    "name_en": person.name_en,
+                    "source_url": edition.source_url,
+                    "collected_at": stamp,
+                    "website": person.website,
+                    "role": person.role,
+                    "members": person.members,
+                    "aliases": person.aliases,
+                    "identity": person.identity,
+                }
+                rows.append(row)
+                batch.append(row)
+        ledger = Ledger.open(self.config)
+        for code, batch in batches.items():
+            ledger.apply_roster(code, batch, task="collect")
         self.write_csv(rows)
         return rows
 
@@ -227,8 +256,20 @@ def load_collectors(config: object) -> list[type[RosterCollector]]:
 def run_configured(
     config: object, *, collected_at: str | None = None, run_id: str | None = None
 ) -> list[tuple[str, list[dict[str, str]], Path]]:
-    """Run every configured collector. One fetcher and one snapshot store are shared."""
+    """Run every configured collector. One fetcher and one snapshot store are shared.
+
+    The frames file is read first. A collector whose ``frame`` is not declared
+    there is refused before any page is fetched.
+    """
+    from giye.config import ConfigError, checked_frames
+
+    registry = checked_frames(config)  # type: ignore[arg-type]
     classes = load_collectors(config)
+    missing = [cls.frame for cls in classes if registry.by_code(cls.frame) is None]
+    if missing:
+        raise ConfigError(
+            f"collector frame not declared in {config.frames}: {', '.join(missing)}"  # type: ignore[attr-defined]
+        )
     if not classes:
         return []
     fetcher = fetcher_from_config(config)

@@ -38,7 +38,7 @@ from giye.resolve.candidates import (
     x1_candidates,
     x1_detail,
 )
-from giye.resolve.cv import load_cv_activities, move_extract_file
+from giye.resolve.cv import fold_merged_cvs, load_cv_activities, move_extract_file
 from giye.resolve.evidence import (
     evidence_e1,
     evidence_e2_e4,
@@ -100,6 +100,11 @@ def resolve_ledger(ledger: Ledger, *, dry_run: bool = False) -> ResolveResult:
         review.extend(queued)
         ledger.write("review_queue", review, task="resolve")
     result.blocked_team = sorted(set(result.blocked_team))
+    # Extract applied each CV while the records were still two people. Apply
+    # again now that the sources share an owner, so a repeated line and a CV
+    # line that only restates the other roster row are folded before publish.
+    if not dry_run and result.merges:
+        fold_merged_cvs(ledger)
     return result
 
 
@@ -148,10 +153,15 @@ class _State:
 
     def transfer_cv(self, keep: str, drop: str) -> None:
         move_extract_file(self.ledger.config, keep, drop)
-        if drop in self.cvs and keep not in self.cvs:
-            self.cvs[keep] = self.cvs.pop(drop)
+        # Both readings stay on the survivor. Dropping the second list would
+        # hide a CV line from a later pair in this same run.
+        dropped = self.cvs.pop(drop, None)
+        if not dropped:
+            return
+        if keep not in self.cvs:
+            self.cvs[keep] = dropped
         else:
-            self.cvs.pop(drop, None)
+            self.cvs[keep] = [*self.cvs[keep], *dropped]
 
 
 def _evidence(state: _State, left: str, right: str) -> str | None:

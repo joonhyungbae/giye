@@ -245,7 +245,11 @@ def _apply_file(
     # Old CV rows whose key is absent from this extraction are dropped facts.
     # They are not given a new id (production counts them and does not invent one).
     id_changes.extend(zip_activity_id_changes(old_cv, new_rows, cv_activity_key))
-    stats.added += len(new_rows)
+    # ``added`` is an id the ledger did not already hold. Applying the same
+    # extraction again rewrites those ids; that rewrite is not a new activity,
+    # so a second run of the pipeline can report that nothing was added.
+    prior_ids = {row.get("activity_id") for row in old_cv} | {row.get("activity_id") for row in kept}
+    stats.added += sum(1 for row in new_rows if row["activity_id"] not in prior_ids)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     for item in queue:
         if item.get("ledger_id") == ledger_id and item.get("reason") in ("cv_new", "cv_changed") and item.get("status") == "open":

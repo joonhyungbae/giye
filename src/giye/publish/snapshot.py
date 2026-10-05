@@ -90,6 +90,9 @@ class PublishResult:
 
 def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
     """Write the snapshot under ``config.site``. ``now`` defaults to the current UTC time."""
+    from giye.config import checked_frames
+
+    checked_frames(config)
     clock = _clock(now)
     stamp = clock.strftime("%Y-%m-%dT%H:%M:%SZ")
     today = clock.date().isoformat()
@@ -120,6 +123,9 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
         mem_by_ledger.setdefault(row["ledger_id"], []).append(row["frame_code"])
 
     scope = {row["ledger_id"] for row in ledger.read("scope") if row.get("scope") == "out"}
+    # A hidden person stays on the roster. That is not a row the pipeline forgot
+    # to publish: the tombstone is the page. Scope-out is the other exclusion.
+    hidden = {row["ledger_id"] for row in artists_in if row.get("status") == "HIDDEN_BY_REQUEST"}
     frame_url = {str(row.get("code") or ""): row.get("source_url") or "" for row in frame_rows}
     roster_url: dict[str, str] = {}
     for row in membership:
@@ -177,7 +183,7 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
     collaborations_out = _collaborations(ledger, ledger_to_gy)
     background_out = _background(acts_in, ledger_to_gy, clock.year)
     frames_out = _frames(frame_rows, membership, edition_of, ledger_to_gy, scope)
-    unpublished = sorted(set(mem_by_ledger) - set(ledger_to_gy) - scope)
+    unpublished = sorted(set(mem_by_ledger) - set(ledger_to_gy) - scope - hidden)
     if unpublished:
         raise SystemExit(
             f"{len(unpublished)} roster members are not published (e.g. {unpublished[:5]}); "
@@ -579,7 +585,9 @@ def _activities(rows: list[dict], ledger_to_gy: dict[str, str], flags: dict[str,
         if row.get("activity_id") in flags:
             record["flags"] = flags[row["activity_id"]]
         out.append(record)
-    out.sort(key=lambda item: (-item["year"], item["title"]))
+    # Year and title are not unique. The id keeps the order when a later apply
+    # rewrites the same rows, so a second run publishes the same bytes.
+    out.sort(key=lambda item: (-item["year"], item["title"], item["id"]))
     return out
 
 

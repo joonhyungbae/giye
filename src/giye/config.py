@@ -89,6 +89,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+
+class GiyeError(Exception):
+    """A problem the command prints as one line. Exit status 2. Not a bug.
+
+    Unexpected exceptions are not this class, so they still show a traceback.
+    """
+
+
+class ConfigError(GiyeError):
+    """``giye.toml`` or ``frames.yml`` cannot be used. The message is the line."""
+
 from giye.field import Field, load_field
 
 try:  # Python 3.11+
@@ -231,6 +242,26 @@ def _collector_modules(collect: dict) -> tuple[str, ...]:
     if not isinstance(modules, list) or not all(isinstance(item, str) for item in modules):
         raise TypeError("[collect] collector_modules must be a list of paths")
     return tuple(modules)
+
+
+def checked_frames(config: Config):
+    """Load ``frames.yml`` before a stage uses it.
+
+    A file that is not a mapping with a ``frames`` list used to pass ``giye
+    collect`` and then raise ``TypeError`` inside publish, explore, or render.
+    The same check runs at the start of every stage that reads the file.
+    """
+    # Imported here: giye.collect.frames does not import this module, but a
+    # top-level import would couple configuration to collection at import time.
+    from giye.collect.frames import load_frames
+
+    path = config.frames
+    if not path.is_file():
+        raise ConfigError(f"frames file not found: {path}")
+    try:
+        return load_frames(path)
+    except (TypeError, ValueError, OSError) as exc:
+        raise ConfigError(str(exc)) from exc
 
 
 def load(path: str | Path) -> Config:

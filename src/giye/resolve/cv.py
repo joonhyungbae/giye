@@ -97,13 +97,50 @@ def load_cv_activities(ledger: Ledger, config: Config) -> dict[str, list[dict]]:
 
 
 def move_extract_file(config: Config, keep: str, drop: str) -> None:
-    """Point a dropped person's extraction file at the survivor, when the survivor has none."""
+    """Point a dropped person's extraction file at the survivor, when the survivor has none.
+
+    When both people already have a file, both files stay. Apply folds the two
+    readings once they share an owner. Joining them into one document would
+    change that fold (a repeated title is dropped inside one file only when the
+    venues match, and across files when the title and year match). The extract
+    stage treats the pair of files as the survivor's reading, so it does not
+    hash both texts together and miss the per-CV cache.
+    """
     directory = config.work / "cv_extract"
     source = directory / f"{drop}.json"
     dest = directory / f"{keep}.json"
     if source.is_file() and not dest.is_file():
         dest.write_text(source.read_text(encoding="utf-8").replace(drop, keep), encoding="utf-8")
         source.unlink()
+
+
+def fold_merged_cvs(ledger: Ledger) -> None:
+    """Apply CV rows again after a merge, when the files are extraction output.
+
+    Extract runs before resolve, so each CV is applied while the two records
+    are still different people. A repeated event and a CV line that only
+    restates the other record's roster row become duplicates only once they
+    share a ledger id. Applying again folds them in this run. Files that are
+    only an activities list (the resolver's evidence, not an extraction) are
+    left alone: apply expects ``ledger_id`` and ``sources``.
+    """
+    directory = ledger.config.work / "cv_extract"
+    if not directory.is_dir():
+        return
+    paths = sorted(directory.glob("*.json"))
+    if not paths:
+        return
+    for path in paths:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return
+        if not isinstance(data, dict) or "ledger_id" not in data or "sources" not in data:
+            return
+    # Imported here: giye.extract.apply imports the ledger, not this module.
+    from giye.extract.apply import apply_extractions
+
+    apply_extractions(ledger)
 
 
 def _match(artists: list[dict], person: dict) -> str | None:

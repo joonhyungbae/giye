@@ -270,6 +270,7 @@ def test_demo_ledger_rim_matches_the_published_people(tmp_path: Path, monkeypatc
     order = [row["id"] for row in doc["artists"]]
     for team in set(team_of.values()):
         indexes = [order.index(person) for person, name in team_of.items() if name == team and person in order]
-        assert indexes == list(range(min(indexes), max(indexes) + 1))
+        # Activity order follows year, title, and id, so this scan is not rim order.
+        assert sorted(indexes) == list(range(min(indexes), max(indexes) + 1))
     written = json.loads(write_rim_order(doc, tmp_path / "site").read_text(encoding="utf-8"))
     assert written["artists"] == doc["artists"]

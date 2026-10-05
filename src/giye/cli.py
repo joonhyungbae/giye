@@ -11,6 +11,7 @@ import argparse
 import sys
 
 from giye import __version__
+from giye.config import GiyeError
 from giye.resolve.names import hangul_name_keys, latin_name_keys
 
 STAGES = ["collect", "extract", "ledger", "resolve", "normalize", "explore", "publish"]
@@ -21,11 +22,22 @@ def _not_ported(stage: str) -> int:
     return 2
 
 
+def _open_config(path: str):
+    """Load ``giye.toml``. A bad file is a ``ConfigError``, not a traceback."""
+    from giye.config import ConfigError, GiyeError, load
+
+    try:
+        return load(path)
+    except GiyeError:
+        raise
+    except (OSError, ValueError, TypeError) as exc:
+        raise ConfigError(str(exc)) from exc
+
+
 def _resolve(args: argparse.Namespace) -> int:
-    from giye.config import load
     from giye.resolve.service import resolve
 
-    result = resolve(load(args.config), dry_run=getattr(args, "dry_run", False))
+    result = resolve(_open_config(args.config), dry_run=getattr(args, "dry_run", False))
     for item in result.merges:
         print(f"same person: {item.evidence} → keep {item.kept}, merge {item.dropped}")
     for left, right in result.blocked_team:
@@ -42,9 +54,8 @@ def _resolve(args: argparse.Namespace) -> int:
 
 def _collect(args: argparse.Namespace) -> int:
     from giye.collect.base import run_configured
-    from giye.config import load
 
-    config = load(args.config)
+    config = _open_config(args.config)
     results = run_configured(config)
     if not results:
         print(
@@ -60,10 +71,10 @@ def _collect(args: argparse.Namespace) -> int:
 def _extract(args: argparse.Namespace) -> int:
     from dataclasses import replace
 
-    from giye.config import default_chunk_chars, load
+    from giye.config import default_chunk_chars
     from giye.extract.service import extract
 
-    config = load(args.config)
+    config = _open_config(args.config)
     overrides = {}
     provider = getattr(args, "provider", None)
     base_url = getattr(args, "base_url", None)
@@ -104,28 +115,25 @@ def _extract(args: argparse.Namespace) -> int:
 
 
 def _ledger(args: argparse.Namespace) -> int:
-    from giye.config import load
     from giye.demo import ledger_counts
 
-    counts = ledger_counts(load(args.config))
+    counts = ledger_counts(_open_config(args.config))
     for name, count in counts.items():
         print(f"{name}\t{count}")
     return 0
 
 
 def _publish(args: argparse.Namespace) -> int:
-    from giye.config import load
     from giye.publish import publish
 
-    publish(load(args.config))
+    publish(_open_config(args.config))
     return 0
 
 
 def _render(args: argparse.Namespace) -> int:
-    from giye.config import load
     from giye.publish import render
 
-    pages = render(load(args.config))
+    pages = render(_open_config(args.config))
     print(f"pages={len(pages)}")
     return 0
 
@@ -139,10 +147,9 @@ def _demo(args: argparse.Namespace) -> int:
 
 
 def _normalize(args: argparse.Namespace) -> int:
-    from giye.config import load
     from giye.normalize.service import normalize
 
-    result = normalize(load(args.config), venue_name_rules=getattr(args, "venue_name_rules", None))
+    result = normalize(_open_config(args.config), venue_name_rules=getattr(args, "venue_name_rules", None))
     print(result.report, end="")
     return 0
 
@@ -150,11 +157,10 @@ def _normalize(args: argparse.Namespace) -> int:
 def _export(args: argparse.Namespace) -> int:
     from pathlib import Path
 
-    from giye.config import load
     from giye.export.rocrate import export_ro_crate
     from giye.export.warc import export_warc
 
-    config = load(args.config)
+    config = _open_config(args.config)
     output = Path(args.output) if args.output else None
     if args.export_cmd == "warc":
         result = export_warc(config, output, wacz=args.wacz)
@@ -174,10 +180,9 @@ def _explore_ties(args: argparse.Namespace) -> int:
     import json
     from pathlib import Path
 
-    from giye.config import load
     from giye.explore.ties import format_layers, layers_for_config, ties_for_config
 
-    config = load(args.config)
+    config = _open_config(args.config)
     kind = getattr(args, "kind", None) or "roster-independent"
     out = getattr(args, "out", None)
     layers = getattr(args, "layers", None)
@@ -205,13 +210,12 @@ def _explore(args: argparse.Namespace) -> int:
     import json
     from pathlib import Path
 
-    from giye.config import load
     from giye.explore.evaluate import evaluate
     from giye.explore.rim import build_rim_order, write_rim_order
 
     if getattr(args, "action", None) == "ties":
         return _explore_ties(args)
-    config = load(args.config)
+    config = _open_config(args.config)
     document = build_rim_order(config)
     path = write_rim_order(document, config.site)
     artists = sum(int(family.get("n") or 0) for family in document.get("families") or [])
@@ -276,6 +280,78 @@ def _name_keys(args: argparse.Namespace) -> int:
     for name in args.names:
         keys = hangul_name_keys(name) or latin_name_keys(name)
         print(f"{name}\t{' '.join(sorted(keys)) or '-'}")
+    return 0
+
+
+def _queue_list(args: argparse.Namespace) -> int:
+    from giye.ledger.ledger import Ledger
+    from giye.resolve.decide import list_queue
+
+    status = None if args.status == "any" else args.status
+    for item in list_queue(Ledger.open(_open_config(args.config)), kind=args.kind, status=status):
+        print(
+            f"{item.get('queue_id')}\t{item.get('status')}\t{item.get('reason')}\t"
+            f"{item.get('ledger_id')}\t{item.get('detail')}"
+        )
+    return 0
+
+
+def _queue_decide(args: argparse.Namespace) -> int:
+    from giye.ledger.ledger import Ledger
+    from giye.resolve.decide import decide_queue
+
+    item = decide_queue(
+        Ledger.open(_open_config(args.config)),
+        args.item_id,
+        args.decision,
+        evidence=args.evidence or "",
+        note=args.note or "",
+    )
+    print(f"decide {item.get('queue_id')} {args.decision} status={item.get('status')}")
+    return 0
+
+
+def _merge_people(args: argparse.Namespace) -> int:
+    from giye.ledger.ledger import Ledger
+    from giye.resolve.decide import merge_people
+
+    ledger = Ledger.open(_open_config(args.config))
+    # A survivor can already be the target of an older retirement. Report the
+    # gy_id this call retired, not that earlier redirect.
+    before = {row["gy_id"] for row in ledger.read("gy_retired")} if ledger.path("gy_retired").exists() else set()
+    keep, drop = merge_people(ledger, args.keep_id, args.drop_id, evidence=args.evidence)
+    retired = [row["gy_id"] for row in ledger.read("gy_retired") if row["gy_id"] not in before]
+    print(f"merge {drop} → {keep}" + (f" retired {', '.join(retired)}" if retired else ""))
+    return 0
+
+
+def _hide(args: argparse.Namespace) -> int:
+    from giye.ledger.ledger import Ledger
+    from giye.resolve.decide import hide_person
+
+    hide_person(Ledger.open(_open_config(args.config)), args.gy_id, reason=args.reason)
+    print(f"hidden {args.gy_id}")
+    return 0
+
+
+def _unhide(args: argparse.Namespace) -> int:
+    from giye.ledger.ledger import Ledger
+    from giye.resolve.decide import unhide_person
+
+    unhide_person(Ledger.open(_open_config(args.config)), args.gy_id)
+    print(f"unhidden {args.gy_id}")
+    return 0
+
+
+def _evidence(args: argparse.Namespace) -> int:
+    from collections import Counter
+
+    from giye.collect.evidence import archive_cited
+
+    status = archive_cited(_open_config(args.config))
+    counts = Counter(item.get("status") or "" for item in status.values())
+    summary = " ".join(f"{key}={counts[key]}" for key in sorted(counts)) or "urls=0"
+    print(f"evidence {len(status)} {summary}")
     return 0
 
 
@@ -374,7 +450,41 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="directory or ro-crate-metadata.json path; default is <data>/work/export/ro-crate/",
     )
+    queue = sub.add_parser("queue", help="list or close a review-queue item")
+    queue_sub = queue.add_subparsers(dest="queue_cmd", required=True)
+    queue_list = queue_sub.add_parser("list", help="list review items")
+    queue_list.add_argument("--config", default="giye.toml")
+    queue_list.add_argument("--kind", default=None, help="reason column, for example possible_same_person")
+    queue_list.add_argument("--status", default="open", help="status to list; 'any' lists every status")
+    queue_decide = queue_sub.add_parser("decide", help="close one item: merge, distinct, or dismiss")
+    queue_decide.add_argument("item_id")
+    queue_decide.add_argument("--config", default="giye.toml")
+    queue_decide.add_argument("--decision", required=True, choices=("merge", "distinct", "dismiss"))
+    queue_decide.add_argument("--evidence", default="", help="required for --decision merge")
+    queue_decide.add_argument("--note", default="")
+    merge_cmd = sub.add_parser("merge", help="merge two people and retire the dropped gy_id")
+    merge_cmd.add_argument("keep_id", help="ledger id or gy_id to keep")
+    merge_cmd.add_argument("drop_id", help="ledger id or gy_id to retire")
+    merge_cmd.add_argument("--config", default="giye.toml")
+    merge_cmd.add_argument("--evidence", required=True, help="why these rows are one person")
+    hide_cmd = sub.add_parser("hide", help="hide a page (HIDDEN_BY_REQUEST tombstone)")
+    hide_cmd.add_argument("gy_id")
+    hide_cmd.add_argument("--config", default="giye.toml")
+    hide_cmd.add_argument("--reason", required=True)
+    unhide_cmd = sub.add_parser("unhide", help="publish a hidden page again")
+    unhide_cmd.add_argument("gy_id")
+    unhide_cmd.add_argument("--config", default="giye.toml")
+    evidence_cmd = sub.add_parser("evidence", help="keep a copy of every URL the ledger cites")
+    evidence_cmd.add_argument("--config", default="giye.toml")
     args = ap.parse_args(argv)
+    try:
+        return _dispatch(args)
+    except GiyeError as exc:
+        print(f"giye: error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _dispatch(args: argparse.Namespace) -> int:
     if args.cmd == "name-keys":
         return _name_keys(args)
     if args.cmd == "collect":
@@ -399,6 +509,18 @@ def main(argv: list[str] | None = None) -> int:
         return _explore(args)
     if args.cmd == "run":
         return _run(args)
+    if args.cmd == "queue" and args.queue_cmd == "list":
+        return _queue_list(args)
+    if args.cmd == "queue" and args.queue_cmd == "decide":
+        return _queue_decide(args)
+    if args.cmd == "merge":
+        return _merge_people(args)
+    if args.cmd == "hide":
+        return _hide(args)
+    if args.cmd == "unhide":
+        return _unhide(args)
+    if args.cmd == "evidence":
+        return _evidence(args)
     return _not_ported(args.cmd)
 
 

@@ -18,6 +18,11 @@ from giye.config import Config
 
 def render(config: Config) -> list[Path]:
     """Write ``<site>/html/index.html`` and one page per id. Returns the paths."""
+    from giye.config import checked_frames
+
+    # The pages come from the snapshot. The frames file is still checked here
+    # so a bad file fails before render, the same way publish fails.
+    checked_frames(config)
     site = config.site
     artists = _read(site / "artists.json")
     if not isinstance(artists, list):

@@ -9,7 +9,7 @@ The summary (paths omitted; they depend on `--output`) is:
 ```
 people: 20
 roster rows: 23
-activities: 40
+activities: 38
 merges: E1 1, E2 1, E3 1, E4 1, X1+E2 1
 blocked: T1 1
 queue items: 3
@@ -35,7 +35,7 @@ Attachment runs at collection. A later merge of two existing records is a separa
 | T1 | The person 배수아 and the team row 배수아 (members 김솔, 박솔) are not merged. The team row does not repeat `sua.example.org`: A6 would attach them at collection. T1 still blocks the merge because one side is a team. The summary line is `blocked: T1 1`. |
 | Queue | Three open `possible_same_person` items. The two 최민수 rows are an exact same-script name with no evidence. The person 배수아 and the team 배수아 are the same kind of pair. 서지우 ~ Jiwoo Seo share a romanization key and have no evidence. Near-misses that E1–E4 later join (한별, 표은솔, 정다운, 문지호) are closed by the merge. |
 
-`GY-000001` lists the residency, the workshop, and the forum under Roster (the forum row attached by A2) and, under Activities, those roster rows and the CV lines from both languages. Each line links to its source. The page does not carry an open same-name review. `GY-000007` and `GY-000018` (the two 최민수 rows) each link to the other.
+`GY-000001` lists the residency, the workshop, and the forum under Roster (the forum row attached by A2) and, under Activities, those roster rows and the CV lines from both languages. The two CVs are folded in that same run: one `예시 미디어전 (2024)` is published, and the English line `Example Residency (2019)` is not, because it restates the residency roster row. Each published line links to its source. The page does not carry an open same-name review. `GY-000007` and `GY-000018` (the two 최민수 rows) each link to the other.
 
 Membership is `<FRAME>-<YYYY>`. The roster block names the programme and that edition (`예시 레지던시 2019`). The activity title is the membership code (`2019 — EXAMPLE-RESIDENCY-2019`).
 
@@ -55,7 +55,7 @@ The bare spelling `서울시립미술관` is on the Korean CV so the entity's di
 
 ## Co-presence ties
 
-Two more fictitious CVs (`cvs/seoyeon-ko.html` for 박서연, `cvs/seoyeon-kim-en.html` for Kim Seoyeon, three rows in all) give `giye.explore.ties` something to count. They are why the activity count is 40, not 37. The golden file stores the whole layer report under `ties`.
+Two more fictitious CVs (`cvs/seoyeon-ko.html` for 박서연, `cvs/seoyeon-kim-en.html` for Kim Seoyeon, three rows in all) give `giye.explore.ties` something to count. They are why the activity count is 38, not 35. The golden file stores the whole layer report under `ties`.
 
 | Pair | Row | CV listing | Roster independent |
 |---|---|---|---|

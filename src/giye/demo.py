@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from giye.collect.base import run_configured
-from giye.config import Config, load
+from giye.config import Config, ConfigError, load
 from giye.explore.rim import build_rim_order, write_rim_order
 from giye.explore.ties import LAYERS, layers_for_config
 from giye.extract.service import extract
@@ -71,17 +71,21 @@ class DemoResult:
 
 
 def resolve_demo_config(path: str | Path | None) -> Path:
-    """The demo archive. An explicit path wins; otherwise ``examples/demo/giye.toml``."""
+    """The demo archive. An explicit path wins; otherwise ``examples/demo/giye.toml`` in the working directory.
+
+    The file is not looked up from the installed package. ``giye demo`` outside
+    a checkout has to be given ``--config``, and that miss is a configuration
+    error rather than a traceback.
+    """
     if path:
-        return Path(path)
-    candidates = [
-        Path.cwd() / "examples" / "demo" / "giye.toml",
-        Path(__file__).resolve().parents[2] / "examples" / "demo" / "giye.toml",
-    ]
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate
-    raise FileNotFoundError("giye demo: pass --config, or run from the repository (examples/demo/giye.toml)")
+        found = Path(path)
+        if not found.is_file():
+            raise ConfigError(f"giye demo: config not found: {found}")
+        return found
+    candidate = Path.cwd() / "examples" / "demo" / "giye.toml"
+    if candidate.is_file():
+        return candidate
+    raise ConfigError("giye demo: pass --config, or run from the repository (examples/demo/giye.toml)")
 
 
 def run_demo(
@@ -96,7 +100,13 @@ def run_demo(
     out.mkdir(parents=True, exist_ok=True)
     if (out / "ledger" / "artists.csv").is_file():
         raise FileExistsError(f"{out} already holds a ledger; giye demo needs an empty directory")
-    cfg = replace(load(path), data=out.resolve())
+    try:
+        loaded = load(path)
+    except ConfigError:
+        raise
+    except (OSError, ValueError, TypeError) as exc:
+        raise ConfigError(str(exc)) from exc
+    cfg = replace(loaded, data=out.resolve())
     if now is not None and now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
     collected = now.astimezone(timezone.utc).date().isoformat() if now is not None else None

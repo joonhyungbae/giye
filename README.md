@@ -118,6 +118,24 @@ The replay cache key is the CV hash, the prompt hash, and that model string as g
 
 `[extract] chunk_chars` splits a CV into pieces of at most that many characters before the call, because a long CV and its JSON reply do not fit a local context and fewer rows survive as the file grows. It defaults to 0 (off) for `anthropic` and 8000 for `openai_compatible`; a value in the file wins, and changing it extracts again. `[extract] reasoning_effort` (`none`, `low`, `medium`, `high`) is sent to an OpenAI-compatible server only when set; `none` stops a thinking model (Qwen3.5, Gemma 4) from writing its reasoning before the JSON, which otherwise multiplies the time per call.
 
+## Decisions a person makes
+
+The pipeline queues a pair it will not merge, and a page can be hidden. These commands record that decision. Each ledger write copies the file into `data/work/backups/` first.
+
+```bash
+giye queue list --config giye.toml
+giye queue list --kind possible_same_person --status open
+giye queue decide QUEUE_ID --decision merge --evidence "the shared site is theirs"
+giye queue decide QUEUE_ID --decision distinct
+giye queue decide QUEUE_ID --decision dismiss --note "not this edition"
+giye merge KEEP_ID DROP_ID --evidence "E1 the website is the same person"
+giye hide GY-000010 --reason "asked to be removed"
+giye unhide GY-000010
+giye evidence --config giye.toml
+```
+
+`KEEP_ID` and `DROP_ID` are a ledger id or a `gy_id`. `merge` refuses a team paired with a person (T1) and retires the dropped `gy_id` with a redirect, the same way an automatic merge does. `hide` sets `HIDDEN_BY_REQUEST`; publish then writes a tombstone with no name. `evidence` keeps a copy of every URL the ledger cites.
+
 ## Extending to another field
 
 1. **Frame.** Add a programme to `frames.yml` with a code, names, a public `source_url`, and a

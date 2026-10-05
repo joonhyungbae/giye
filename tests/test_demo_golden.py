@@ -69,7 +69,7 @@ def test_demo_snapshot_matches_golden(tmp_path: Path, monkeypatch):
     assert result.activities == len(got["site"]["activities.json"])
     assert result.roster_rows == 23
     assert result.people == 20
-    assert result.activities == 40
+    assert result.activities == 38
     assert "merges: E1 1, E2 1, E3 1, E4 1, X1+E2 1" in result.summary
     assert "blocked: T1 1" in result.summary
     assert "queue items: 3" in result.summary
@@ -83,7 +83,8 @@ def test_demo_snapshot_matches_golden(tmp_path: Path, monkeypatch):
     assert "예시 레지던시" in text and "예시 워크숍" in text
     assert "서울시립미술관 외" in text and "서울시립미술관 《빛》" in text
     assert "서울시립미술관 전시실" in text and "Seoul Museum of Art" in text
-    assert "Example Residency" in text
+    assert "EXAMPLE-RESIDENCY-2019" in text
+    assert text.count("예시 미디어전") == 1
     assert "Open same-name review" not in text
     assert (site / "html" / "GY-000020.html").read_text(encoding="utf-8").count("GY-000001") >= 1
     assert "Open same-name review: GY-000018" in (site / "html" / "GY-000007.html").read_text(encoding="utf-8")
