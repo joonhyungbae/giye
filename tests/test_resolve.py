@@ -492,7 +492,7 @@ def test_a_decision_covers_the_row_that_absorbed_one_side(tmp_path: Path):
     artists = ledger.read("artists")
     artists.append(_artist("LED-d", "GY-000003", "Ada Example", ""))
     ledger.write("artists", artists, task="test")
-    ledger.merge("LED-d", "LED-en", evidence="the English row was absorbed", rule="manual")
+    ledger._merge_rows("LED-d", "LED-en", evidence="the English row was absorbed", rule="manual")
     assert "merged LED-en" in next(row["reviewer_note"] for row in ledger.read("artists") if row["ledger_id"] == "LED-d")
     first = resolve_ledger(ledger)
     second = resolve_ledger(ledger)

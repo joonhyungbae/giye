@@ -249,7 +249,7 @@ def _apply(
         return
     for drop in drops:
         state.transfer_cv(keep, drop)
-    state.ledger.merge(keep, drops, evidence=evidence, rule=rule)
+    state.ledger._merge_rows(keep, drops, evidence=evidence, rule=rule)
     state.reload()
 
 

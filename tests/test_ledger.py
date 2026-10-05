@@ -277,7 +277,7 @@ def test_merge_refuses_without_evidence_and_retires_a_chain(tmp_path: Path):
     with pytest.raises(ValueError, match="evidence"):
         ledger.merge("LED-a", "LED-b", evidence="   ", rule="E1")
     with pytest.raises(ValueError, match="rule"):
-        ledger.merge("LED-a", "LED-b", evidence="same website https://example.org/haneul", rule="")
+        ledger._merge_rows("LED-a", "LED-b", evidence="same website https://example.org/haneul", rule="")
     assert list(ledger.directory.glob("*.csv")) == []
 
     ledger.write(
@@ -327,7 +327,7 @@ def test_merge_refuses_without_evidence_and_retires_a_chain(tmp_path: Path):
         [empty_row(CV_SOURCES_FIELDS, source_id="CV-b", ledger_id="LED-b", url="https://example.org/cv", lang="en")],
         task="seed",
     )
-    ledger.merge("LED-a", "LED-b", evidence="same website https://example.org/haneul", rule="E1")
+    ledger._merge_rows("LED-a", "LED-b", evidence="same website https://example.org/haneul", rule="E1")
     artists = {row["ledger_id"]: row for row in ledger.read("artists")}
     assert "LED-b" not in artists
     assert "GY-000002" not in {row["gy_id"] for row in artists.values()}
@@ -342,7 +342,7 @@ def test_merge_refuses_without_evidence_and_retires_a_chain(tmp_path: Path):
     assert membership[0]["ledger_id"] == "LED-a"
     assert ledger.redirects() == {"GY-000002": "GY-000001"}
 
-    ledger.merge("LED-c", "LED-a", evidence="cv lists the 2019 residency", rule="E2")
+    ledger._merge_rows("LED-c", "LED-a", evidence="cv lists the 2019 residency", rule="E2")
     live = {row["ledger_id"]: row for row in ledger.read("artists")}
     assert set(live) == {"LED-c"}
     assert live["LED-c"]["gy_id"] == "GY-000003"
@@ -369,7 +369,7 @@ def test_survivor_adopts_the_lowest_dropped_gy_id(tmp_path: Path):
         ],
         task="seed",
     )
-    ledger.merge("LED-a", ["LED-b", "LED-c"], evidence="same website https://example.org/haneul", rule="E1")
+    ledger._merge_rows("LED-a", ["LED-b", "LED-c"], evidence="same website https://example.org/haneul", rule="E1")
     survivor = next(row for row in ledger.read("artists") if row["ledger_id"] == "LED-a")
     assert survivor["gy_id"] == "GY-000002"
     assert ledger.redirects() == {"GY-000004": "GY-000002"}
@@ -413,7 +413,7 @@ def test_cv_row_belongs_to_the_owner_of_its_source(tmp_path: Path):
         task="seed",
     )
     # The dropped row is not the activity's person. The CV source already names the owner.
-    ledger.merge("LED-owner", "LED-drop", evidence="cv lists the residency https://example.org/cv", rule="E2")
+    ledger._merge_rows("LED-owner", "LED-drop", evidence="cv lists the residency https://example.org/cv", rule="E2")
     moved = ledger.read("activities")[0]
     assert moved["ledger_id"] == "LED-owner"
     assert moved["activity_id"] == "keep"
@@ -473,7 +473,7 @@ def test_merge_collapses_two_registrations_of_one_cv(tmp_path: Path):
         ),
         encoding="utf-8",
     )
-    ledger.merge("LED-a", "LED-b", evidence="same website https://example.org/haneul", rule="E1")
+    ledger._merge_rows("LED-a", "LED-b", evidence="same website https://example.org/haneul", rule="E1")
     sources = ledger.read("cv_sources")
     assert [row["source_id"] for row in sources] == ["CV-snap"]
     assert ledger.read("activities")[0]["origin"] == "cv:CV-snap"

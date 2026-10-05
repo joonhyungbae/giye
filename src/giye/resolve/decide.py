@@ -13,7 +13,10 @@ source: an E-code (``E1``-``E4``, or ``X1+E1``-``X1+E4``) followed by a
 citation (an http(s) URL, a ``cv_sources`` source id, or a roster edition
 code on the ledger), or ``H`` (a person's judgement) followed by the reason
 and an ISO date. Free text alone is refused, because a merge nobody can trace
-to a document or a dated judgement cannot be contested. A pair a person
+to a document or a dated judgement cannot be contested. The cited evidence is
+then checked against the ledger with the same code the resolver uses
+(:func:`verify_merge_evidence`), so a stored ``E1`` always means a website both
+records list, not a label someone typed. A pair a person
 decided ``distinct`` is not merged unless the caller passes
 ``override_distinct=True``; the evidence then records which decision it
 overrides.
@@ -106,14 +109,15 @@ def merge_people(
 
     ``keep`` and ``drop`` may be a ``ledger_id`` or a ``gy_id``. A team and a
     person are refused (T1). ``evidence`` must name a rule and a source (see
-    :func:`check_merge_evidence`); its code is stored as the merge's ``rule``.
+    :func:`check_merge_evidence`) and hold on the ledger
+    (:func:`verify_merge_evidence`); its code is stored as the merge's ``rule``.
     A pair decided ``distinct`` on the review queue is refused unless
     ``override_distinct`` is set; the stored evidence then says
     "overrides distinct decision of <date>" and that queue item is rewritten
     so it no longer reads ``decided=different``. The dropped ``gy_id`` is
     retired with a redirect, the same path an automatic merge uses.
     """
-    code = check_merge_evidence(ledger, evidence)
+    check_merge_evidence(ledger, evidence)
     artists = ledger.read("artists")
     kept = _person(artists, keep)
     dropped = _person(artists, drop)
@@ -124,6 +128,7 @@ def merge_people(
     if team_person_mismatch(kept, dropped, words=words, language=language):
         raise GiyeError("merge refused: a team and a person are not the same record (T1)")
     keep_id, drop_id = kept["ledger_id"], dropped["ledger_id"]
+    code = verify_merge_evidence(ledger, keep_id, drop_id, evidence)
     distinct = _distinct_items(ledger, artists, keep_id, drop_id)
     text = evidence.strip()
     if distinct and not override_distinct:
@@ -137,7 +142,8 @@ def merge_people(
         # A comma, not a semicolon: the kept row's note is split on ";".
         text = f"{text}, overrides distinct decision of {dates}"
     move_extract_file(ledger.config, keep_id, drop_id)
-    ledger.merge(keep_id, drop_id, evidence=text, rule=code)
+    # verify_merge_evidence ran above, so the unchecked path writes the merge.
+    ledger._merge_rows(keep_id, drop_id, evidence=text, rule=code)
     if distinct:
         _clear_distinct(ledger, {item.get("queue_id") or "" for item in distinct}, dates)
     fold_merged_cvs(ledger)
@@ -187,6 +193,169 @@ def check_merge_evidence(ledger: Ledger, evidence: str) -> str:
             raise GiyeError(f"merge refused: H needs the reason for the judgement; {_EVIDENCE_FORM}")
         return "H"
     raise GiyeError(f"merge refused: {_EVIDENCE_FORM}")
+
+
+# H: a reason is at least this many words besides the date. Why: "same" or
+# "checked" alone says nothing a later reader can contest.
+_H_MIN_WORDS = 3
+_WORD = re.compile(r"[^\W\d_][\w'’-]*")
+
+
+def verify_merge_evidence(ledger: Ledger, keep: str, drop: str, evidence: str) -> str:
+    """Check a manual merge's evidence against the ledger. Returns the rule code or raises ``GiyeError``.
+
+    The form comes first (:func:`check_merge_evidence`). Then the cited
+    evidence must hold for this pair of ledger ids, by the same code the
+    resolver runs (``giye.resolve.evidence``):
+
+    - ``E1``: a cited URL's site (``url_key``, the E1 key) is a website of both records.
+    - ``E2``: a cited CV source (``cv_sources`` id or its URL) belongs to one
+      record, and that CV lists a roster edition of the other (``cv_mentions``
+      with the edition years, ± one year).
+    - ``E3``: the cited work title (normalised) is a bracketed work both rosters
+      credit, or one roster credits and the other's CV lists, in the year window.
+    - ``E4``: the cited team name is a team both rosters credit with the team prefix.
+    - ``X1+E*``: the two records' name keys (``LanguageModule.name_keys`` over
+      ``name_ko`` and ``name_en``) intersect, and the E part holds as above.
+    - ``H``: every ISO date in the string is a real date no later than today,
+      and the reason has at least three words.
+    """
+    code = check_merge_evidence(ledger, evidence)
+    text = evidence.strip()
+    rest = text[len(code) :].strip()
+    if code == "H":
+        _verify_h(rest)
+        return code
+    # Imported here: giye.resolve.service imports this module's package.
+    from giye.resolve.service import _State
+
+    state = _State(ledger)
+    for lid in (keep, drop):
+        if lid not in state.by_id:
+            raise KeyError(lid)
+    if keep == drop:
+        raise GiyeError("merge needs two different people")
+    base = code
+    if code.startswith("X1+"):
+        base = code[3:]
+        left, right = state.by_id[keep], state.by_id[drop]
+        if not _name_keys_of(left, state.language) & _name_keys_of(right, state.language):
+            raise GiyeError(f"merge refused: {code} needs the two records' name keys to meet (X1), and they do not")
+    check = {"E1": _verify_e1, "E2": _verify_e2, "E3": _verify_e3, "E4": _verify_e4}[base]
+    problem = check(state, keep, drop, rest)
+    if problem:
+        raise GiyeError(f"merge refused: {code} does not hold on the ledger: {problem}")
+    return code
+
+
+def _verify_h(rest: str) -> None:
+    """H: real dates, none in the future, and a reason of at least ``_H_MIN_WORDS`` words."""
+    # The local calendar day, so a judgement dated today where the person sits is accepted.
+    today = datetime.now(timezone.utc).astimezone().date()
+    for year, month, day in _ISO_DATE.findall(rest):
+        try:
+            when = date(int(year), int(month), int(day))
+        except ValueError:
+            raise GiyeError(f"merge refused: H date {year}-{month}-{day} is not a calendar date") from None
+        if when > today:
+            raise GiyeError(f"merge refused: H date {when.isoformat()} is in the future")
+    words = _WORD.findall(_ISO_DATE.sub(" ", rest))
+    if len(words) < _H_MIN_WORDS:
+        raise GiyeError(f"merge refused: H needs a reason of at least {_H_MIN_WORDS} words; {_EVIDENCE_FORM}")
+
+
+def _name_keys_of(row: dict[str, str], language) -> set[str]:
+    """Personal-name keys of a record's names, through the language module (X1)."""
+    keys: set[str] = set()
+    for value in (row.get("name_ko") or "", row.get("name_en") or ""):
+        if value.strip():
+            keys |= language.name_keys(value)
+    return keys
+
+
+def _cited_urls(rest: str) -> list[str]:
+    return [url.rstrip(".,;:)") for url in _URL.findall(rest)]
+
+
+def _verify_e1(state, keep: str, drop: str, rest: str) -> str:
+    from giye.resolve.evidence import url_key
+
+    keys = {url_key(url) for url in _cited_urls(rest)} - {""}
+    if not keys:
+        return "E1 cites no website URL"
+    shared = state.sites.get(keep, set()) & state.sites.get(drop, set())
+    if keys & shared:
+        return ""
+    return f"the cited site ({', '.join(sorted(keys))}) is not a website of both records"
+
+
+def _verify_e2(state, keep: str, drop: str, rest: str) -> str:
+    from giye.resolve.evidence import cv_mentions, edition_years
+
+    ledger = state.ledger
+    sources = ledger.read("cv_sources") if ledger.path("cv_sources").exists() else []
+    tokens = {token.strip(_TOKEN_STRIP) for token in rest.split()} - {""}
+    urls = set(_cited_urls(rest))
+    cited = [
+        row
+        for row in sources
+        if (row.get("source_id") or "") in tokens
+        or (row.get("url") or "") in urls
+        or ((row.get("fetch_url") or "") and row.get("fetch_url") in urls)
+    ]
+    if not cited:
+        return "E2 cites no CV source on the ledger (a cv_sources id or its URL)"
+    pair = {keep: drop, drop: keep}
+    owned = [row for row in cited if row.get("ledger_id") in pair]
+    if not owned:
+        return "the cited CV source belongs to neither record"
+    for row in owned:
+        owner = row["ledger_id"]
+        other = pair[owner]
+        lines = state.cvs.get(owner, [])
+        tagged = [line for line in lines if line.get("source_id")]
+        if tagged:
+            lines = [line for line in tagged if line.get("source_id") == row.get("source_id")]
+        for frame_code in sorted(state.frames.get(other, ())):
+            years = edition_years(frame_code, state.rows_of.get(other, []))
+            if cv_mentions(lines, frame_code, years, state.patterns):
+                return ""
+    return "the cited CV does not list a roster edition of the other record"
+
+
+def _verify_e3(state, keep: str, drop: str, rest: str) -> str:
+    from giye.resolve.evidence import YEAR_WINDOW, cv_lists_work, norm_title, roster_works
+
+    works = {lid: roster_works(state.rows_of.get(lid, [])) for lid in (keep, drop)}
+    holding: set[str] = {
+        title
+        for title, year in works[keep]
+        if any(title == other and abs(year - when) <= YEAR_WINDOW for other, when in works[drop])
+    }
+    for this, other in ((keep, drop), (drop, keep)):
+        for title, year in works[other]:
+            if cv_lists_work(state.cvs.get(this, []), {(title, year)}):
+                holding.add(title)
+    if not holding:
+        return "no work is credited on both rosters, or on one roster and the other's CV"
+    cited = norm_title(rest)
+    if any(title in cited for title in holding):
+        return ""
+    return "the cited work is not the work the two records share"
+
+
+def _verify_e4(state, keep: str, drop: str, rest: str) -> str:
+    from giye.resolve.evidence import norm_title, teams
+
+    shared = teams(state.rows_of.get(keep, []), prefix=state.team_prefix) & teams(
+        state.rows_of.get(drop, []), prefix=state.team_prefix
+    )
+    if not shared:
+        return "the two rosters credit no team in common"
+    cited = norm_title(rest)
+    if any(team in cited for team in shared):
+        return ""
+    return "the cited team is not the team both rosters credit"
 
 
 def _has_date(text: str) -> bool:

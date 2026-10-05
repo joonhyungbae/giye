@@ -134,7 +134,7 @@ def test_queue_merge_hide_and_evidence(tmp_path: Path, monkeypatch: pytest.Monke
     keep, drop = others[0], others[1]
     assert (
         main(
-            ["merge", keep["gy_id"], drop["gy_id"], "--config", config, "--evidence", "E1 https://example.org/same-site the two rows are one person"]
+            ["merge", keep["gy_id"], drop["gy_id"], "--config", config, "--evidence", "H the two rows are one person, checked by the author 2026-01-15"]
         )
         == 0
     )
@@ -236,7 +236,7 @@ def test_merge_over_a_distinct_decision_needs_the_override(tmp_path: Path):
     assert "decided=different" in decided["detail"] and "decided_at=" in decided["detail"]
     left = item["ledger_id"]
     right = min(review_id_set(item) - {left})
-    evidence = "E2 https://example.org/press/seo-jiwoo"
+    evidence = "H the press release names both spellings 2026-01-15"
     with pytest.raises(GiyeError, match="distinct"):
         merge_people(ledger, left, right, evidence=evidence)
     assert {row["ledger_id"] for row in ledger.read("artists")} >= {left, right}
@@ -246,7 +246,7 @@ def test_merge_over_a_distinct_decision_needs_the_override(tmp_path: Path):
     import re
 
     assert re.search(r"overrides distinct decision of \d{4}-\d{2}-\d{2}", kept["reviewer_note"])
-    assert "rule=E2" in kept["reviewer_note"]
+    assert "rule=H" in kept["reviewer_note"]
     assert drop not in {row["ledger_id"] for row in ledger.read("artists")}
     after = next(row for row in ledger.read("review_queue") if row["queue_id"] == item["queue_id"])
     assert "decided=different" not in after["detail"]
