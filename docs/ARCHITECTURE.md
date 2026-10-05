@@ -26,7 +26,7 @@ synthetic field (`examples/demo/`).
           │
    4 RESOLVE  ── same-person rules (E1–E4, X1), team ≠ person guard, merges retire IDs
           │
-   5 NORMALIZE ── derived values with rule IDs (P1–P5), multilingual institution entities (V1–V9)
+   5 NORMALIZE ── derived values with rule IDs (P1–P6), multilingual institution entities (V1–V9)
           │
    6 EXPLORE  ── entry-generation rim order; scores for a division of the field
           │
@@ -67,7 +67,7 @@ Collection and CV extraction are the stages that use the network. The demo does 
 
 `giye export warc --config giye.toml` writes the snapshot store as WARC 1.1 (gzip). Each kept body is a `response` record with a reconstructed status line, `Content-Type`, and `Content-Length`. Each manifest line is a `metadata` record. Original response headers were not kept before manifest version 2, and the warcinfo record says so. `--wacz` also writes a WACZ 1.1.1 zip (the WARC, `pages/pages.jsonl`, a CDXJ index, `datapackage.json`).
 
-`giye export ro-crate --config giye.toml` writes `ro-crate-metadata.json` (RO-Crate 1.1) for the run: the software version, the sha256 of `giye.toml`, roster and CV URLs as `CreativeWork` (sha256 and `dateCreated` when the bytes were kept), snapshot files, and a `CreateAction` per stage. Collect carries F1–F5 and attachment A1–A6. Resolve carries E1–E4, T1, and X1. Normalize carries P1–P5, V1–V9, and the derived-value ids, including derived A1 (`active_since`), which is not attachment A1. Extract, the ledger, and publish have no production letter id; the action says so.
+`giye export ro-crate --config giye.toml` writes `ro-crate-metadata.json` (RO-Crate 1.1) for the run: the software version, the sha256 of `giye.toml`, roster and CV URLs as `CreativeWork` (sha256 and `dateCreated` when the bytes were kept), snapshot files, and a `CreateAction` per stage. Collect carries F1–F5 and attachment A1–A6. Resolve carries E1–E4, T1, and X1. Normalize carries P1–P6, V1–V9, and the derived-value ids, including derived A1 (`active_since`), which is not attachment A1. P6 (record depth) is not copied into the site snapshot. Extract, the ledger, and publish have no production letter id; the action says so.
 
 ## Stage 2 — extract
 
@@ -115,7 +115,7 @@ Attachment (A1–A6) already ran at collection and may have queued a near-miss. 
 - P1 flags a missing year, a year outside 1900 … this year + 2, and a year that is a period named in the title. Nothing is deleted.
 - P2 normalises title and venue text and records a script (`ko` / `en` / `mixed`).
 - P4 links a roster row to its frame edition, and a CV row to that edition when the title or venue names the frame's event in the same year.
-- P5 writes birth year (B1), base country and Korean region (L1), active-since (A1), and medium tags (M1). A value already on the artist row wins. A team CV is not that row's birth year.
+- P5 writes birth year (B1), base country and Korean region (L1), active-since (A1), and medium tags (M1). A value already on the artist row wins. A team CV is not that row's birth year. P6 writes one record-depth level per published person. The site snapshot does not copy it.
 - V1–V9 resolve venue strings into institution and funder entities. V2 splits, V4 keys exactly, V5 joins parenthetical aliases, V7 strips titles, qualifiers, editions, and unstable Hangul spaces and joins Latin names with the same words, V8 joins a building or an acronym plus its city, V9 joins a Hangul name to a Latin name when the glossary, the gazetteer, and romanisation give one shared reading. `venue_audit.md` lists every merge with its rule id.
 
 Everything that depends on the language is a `LanguageModule`: `personal_name` (the bare personal-name test of A3, A4, A6 and T1), `name_keys` (personal names, wrapping `giye.resolve.names` for Korean), `venue_words` (qualifier, edition, spacing and building-part words of V7b–d and V8), `glossary`, `gazetteer`, and `romanise`. `[normalize] language_module` selects it (`giye.normalize.lang.ko_en:KoEn` is the default). `[normalize] glossary` and `[normalize] gazetteer` replace those files. `[normalize] reference` points at a GeoNames tree (`geonames/` and `countries/`); that dump is CC BY 4.0 and is not in this repository. `[normalize] venue_name_rules` (or `giye normalize --venue-name-rules`) keeps a subset of V7, V8, V9, or `none`. Medium words, region tags, and the screening tag come from the field file.

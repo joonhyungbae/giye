@@ -31,8 +31,8 @@ from pathlib import Path
 
 import yaml
 
-from giye.collect.frames import load_frames
-from giye.config import Config
+from giye.collect.frames import load_frames, validate_transcribed_membership
+from giye.config import Config, ConfigError
 from giye.extract.apply import PRIVATE_TITLE
 from giye.field import Field, edition_alias
 from giye.ledger.ids import activity_id_for, activity_id_key, gy_number, mint_id
@@ -92,7 +92,12 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
     """Write the snapshot under ``config.site``. ``now`` defaults to the current UTC time."""
     from giye.config import checked_frames
 
-    checked_frames(config)
+    if not (config.site_url or "").strip():
+        raise ConfigError(
+            "[publish] site_url is required. Set it to this archive's public origin "
+            "(the demo uses https://example.org). Citations use <site_url>/artist/<id> and <site_url>/data."
+        )
+    registry = checked_frames(config)
     clock = _clock(now)
     stamp = clock.strftime("%Y-%m-%dT%H:%M:%SZ")
     today = clock.date().isoformat()
@@ -101,6 +106,10 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
     acts_in = ledger.read("activities")
     links_in = ledger.read("links")
     membership = ledger.read("frame_membership")
+    try:
+        validate_transcribed_membership(registry, membership)
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from exc
     prefix = config.id_prefix or "GY"
 
     # A collector writes the frame code into the roster activity's origin, so this is the
@@ -424,6 +433,10 @@ def _load_derived(path: Path) -> dict[str, dict[str, dict]]:
     out: dict[str, dict[str, dict]] = {}
     for row in read_csv(path) if path.exists() else []:
         fields = out.setdefault(row["ledger_id"], {})
+        if row["field"] == "record_depth":
+            # P6 feeds the depth queue. Copying it into artist.derived would add
+            # a key on every published person. Production's loader skips it.
+            continue
         if row["field"] == "medium":
             bucket = fields.setdefault("medium", {**row, "values": []})
             bucket["values"].append(row["value"])

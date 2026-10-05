@@ -66,6 +66,7 @@ Example (see examples/demo/giye.toml)::
     model = "claude-opus-5"
 
     # Site snapshot. site_url is the public origin cited on each page.
+    # Publish fails when it is unset: there is no default origin.
     # dataset_version 0.2 and citation_author "기예 Giye" match the live archive.
     # Another field sets its own title, author, and origin.
     [publish]
@@ -185,8 +186,9 @@ class Config:
     extract_allow_team: bool = False
     extract_sources: tuple[ExtractSource, ...] = ()
     # Public origin of the published site. Citations use ``<site_url>/artist/<id>``
-    # and ``<site_url>/data``. The default is the reference deployment.
-    site_url: str = "https://giye.org"
+    # and ``<site_url>/data``. Empty until the file sets it. Publish refuses to run
+    # without one, so a config cannot silently cite someone else's site.
+    site_url: str = ""
     # Production ``dataset_versions.json`` is version 0.2. The artist page in the
     # web app hard-codes 1.0; the snapshot uses this value for both.
     dataset_version: str = "0.2"
@@ -332,7 +334,7 @@ def load(path: str | Path) -> Config:
         extract_cache=_optional_path(root, extract.get("cache")),
         extract_allow_team=bool(extract.get("allow_team", False)),
         extract_sources=_extract_sources(extract),
-        site_url=_site_url(publish.get("site_url", "https://giye.org")),
+        site_url=_site_url(publish.get("site_url", "")),
         dataset_version=_plain(publish.get("dataset_version", "0.2"), "0.2", "[publish] dataset_version"),
         dataset_title=_plain(publish.get("dataset_title", ""), "", "[publish] dataset_title"),
         citation_author=_plain(publish.get("citation_author", "기예 Giye"), "기예 Giye", "[publish] citation_author"),
@@ -350,8 +352,9 @@ def _cadence(value: object) -> dict[str, str]:
 
 
 def _site_url(value: object) -> str:
+    """Public origin. Unset stays empty; ``giye publish`` then raises ``ConfigError``."""
     if value is None or value == "":
-        return "https://giye.org"
+        return ""
     if not isinstance(value, str):
         raise TypeError("[publish] site_url must be a string")
     return value.rstrip("/")

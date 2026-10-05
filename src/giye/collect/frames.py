@@ -36,6 +36,7 @@ percentage). ``None`` when the roster size is unknown or zero.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -70,6 +71,9 @@ class Frame:
     included_count: int | None = None
     years_covered: str = ""
     status: str = ""
+    # ``transcribed`` means the roster was copied by hand. The frame may then
+    # have no single source page; each membership row carries its own.
+    collector: str = ""
 
     def coverage(self, members_recorded: int | None = None) -> float | None:
         """Members recorded / roster size. Defaults to ``included_count`` when set.
@@ -143,8 +147,12 @@ def _frame(entry: object, path: Path) -> Frame:
     name_en = str(entry.get("name_en") or "").strip()
     if not name_en:
         raise ValueError(f"{code}: name_en is required")
+    collector = str(entry.get("collector") or "").strip()
     source_url = str(entry.get("source_url") or "").strip()
-    if not source_url.startswith(("http://", "https://")):
+    # A hand-copied roster has no single page. The frame URL may be empty only
+    # then; publish checks that every membership row of that frame has its own.
+    transcribed_without_page = collector == "transcribed" and not source_url
+    if not transcribed_without_page and not source_url.startswith(("http://", "https://")):
         raise ValueError(f"{code}: source_url must be an http(s) URL")
     eligibility = _eligibility(code, entry.get("eligibility"))
     return Frame(
@@ -157,7 +165,50 @@ def _frame(entry: object, path: Path) -> Frame:
         included_count=_optional_int(entry.get("included_count")),
         years_covered=str(entry.get("years_covered") or ""),
         status=str(entry.get("status") or ""),
+        collector=collector,
     )
+
+
+def validate_transcribed_membership(registry: FrameRegistry, membership: list[Mapping[str, str]]) -> None:
+    """Require a ``source_url`` on every membership row of a transcribed frame with none.
+
+    The frame-level URL may be empty only when ``collector`` is ``transcribed``.
+    The roster was copied from several third-party pages, so the source lives on
+    the membership row. A row whose ``frame_code`` is that frame, or an edition
+    of it (``CODE-2025``), counts.
+    """
+    needing = {frame.code for frame in registry.frames if frame.collector == "transcribed" and not frame.source_url}
+    if not needing:
+        return
+    codes = [frame.code for frame in registry.frames]
+    missing: list[str] = []
+    owners: set[str] = set()
+    for row in membership:
+        mem_code = str(row.get("frame_code") or "")
+        owner = _registry_code(mem_code, codes)
+        if owner not in needing:
+            continue
+        if str(row.get("source_url") or "").strip():
+            continue
+        missing.append(mem_code or owner)
+        owners.add(owner)
+    if missing:
+        shown = ", ".join(sorted(owners))
+        raise ValueError(
+            f"{shown}: collector is transcribed and source_url is empty, "
+            f"so every membership row needs a source_url ({len(missing)} missing)"
+        )
+
+
+def _registry_code(mem_code: str, codes: list[str]) -> str | None:
+    """Membership code → registry frame. The longest ``CODE`` such that the row is ``CODE`` or ``CODE-…``."""
+    if mem_code in codes:
+        return mem_code
+    best = ""
+    for code in codes:
+        if mem_code.startswith(code + "-") and len(code) > len(best):
+            best = code
+    return best or None
 
 
 def _eligibility(code: str, raw: object) -> Eligibility:

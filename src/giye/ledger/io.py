@@ -62,6 +62,26 @@ def hold_ledger_lock(ledger_dir: Path) -> None:
     atexit.register(_release)
 
 
+def _lineterminator(path: Path) -> str:
+    """The line ending already in ``path``, or ``\\n`` when the file is new.
+
+    Production ledger files use CRLF. Rewriting them as LF makes every row a
+    diff. A file that contains a CRLF pair keeps CRLF. Anything else, including
+    a file that does not exist yet, keeps the package default of LF.
+    """
+    if not path.is_file() or path.stat().st_size == 0:
+        return "\n"
+    with path.open("rb") as handle:
+        sample = handle.read(65536)
+        if b"\r\n" not in sample and len(sample) == 65536:
+            # A huge first line might hide the ending. One more window is enough
+            # for a ledger row.
+            sample += handle.read(65536)
+    if b"\r\n" in sample:
+        return "\r\n"
+    return "\n"
+
+
 def read_csv(path: Path) -> list[dict[str, str]]:
     """Read a ledger CSV. A missing file is an empty table, not an error."""
     if not path.exists():
@@ -78,12 +98,14 @@ def write_csv(*, path: Path, fields: Sequence[str], rows: Iterable[Mapping[str, 
 
     Keyword-only: production's positional ``(path, fields, rows)`` was easy to
     call backwards. Unknown keys are dropped. ``None`` is written as an empty
-    cell. Line endings are ``\\n`` (the roster CSV uses the same).
+    cell. An existing file keeps its line ending (the production ledger is
+    CRLF). A new file uses ``\\n``.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     columns = list(fields)
+    ending = _lineterminator(path)
     with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=columns, extrasaction="ignore", lineterminator="\n")
+        writer = csv.DictWriter(handle, fieldnames=columns, extrasaction="ignore", lineterminator=ending)
         writer.writeheader()
         for row in rows:
             writer.writerow({key: "" if row.get(key) is None else row.get(key, "") for key in columns})

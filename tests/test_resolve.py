@@ -481,6 +481,52 @@ def test_pinned_apart_blocks_e3(tmp_path: Path):
     assert len(ledger.read("artists")) == 2
 
 
+def test_expand_teams_reuses_a_person_by_attachment_not_exact_name(tmp_path: Path):
+    """English-only member credit joins the existing row by A2, not a duplicate.
+
+    The stored Korean name is not the credit string, so an exact ``name_ko``
+    lookup misses. The English tokens agree, which is attachment rule A2.
+    """
+    ledger = _ledger(tmp_path)
+    _seed(
+        ledger,
+        [
+            _artist("LED-team", "GY-000001", "노을 스튜디오", note="members=Lumen Lab"),
+            _artist("LED-lab", "GY-000002", "루멘 랩", "Lumen Lab"),
+        ],
+        [_act("LED-team", "EXAMPLE-RESIDENCY", 2019, title="EXAMPLE-RESIDENCY")],
+        [_mem("LED-team", "EXAMPLE-RESIDENCY")],
+    )
+    assert expand_teams(ledger) == []
+    assert {row["ledger_id"] for row in ledger.read("artists")} == {"LED-team", "LED-lab"}
+    assert any(
+        row["ledger_id"] == "LED-lab" and row["frame_code"] == "EXAMPLE-RESIDENCY"
+        for row in ledger.read("frame_membership")
+    )
+
+
+def test_expand_teams_does_not_guess_a_personal_name_on_another_programme(tmp_path: Path):
+    ledger = _ledger(tmp_path)
+    _seed(
+        ledger,
+        [
+            _artist("LED-team", "GY-000001", "노을 스튜디오", note="members=김하늘"),
+            _artist("LED-other", "GY-000002", "김하늘", "Haneul Kim"),
+        ],
+        [
+            _act("LED-team", "EXAMPLE-RESIDENCY", 2019),
+            _act("LED-other", "EXAMPLE-WORKSHOP", 2020),
+        ],
+        [_mem("LED-team", "EXAMPLE-RESIDENCY"), _mem("LED-other", "EXAMPLE-WORKSHOP")],
+    )
+    assert expand_teams(ledger) == []
+    assert len(ledger.read("artists")) == 2
+    assert not any(
+        row["ledger_id"] == "LED-other" and row["frame_code"] == "EXAMPLE-RESIDENCY"
+        for row in ledger.read("frame_membership")
+    )
+
+
 def test_expand_teams_adds_members_once_and_does_not_merge_them(tmp_path: Path):
     ledger = _ledger(tmp_path)
     _seed(

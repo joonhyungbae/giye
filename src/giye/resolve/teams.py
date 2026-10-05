@@ -26,6 +26,7 @@ from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from giye.field import frame_family
 from giye.ledger.ids import activity_id_for, activity_id_key, allocate_gy_id
 from giye.ledger.ledger import Ledger
 from giye.ledger.schemas import ACTIVITIES_FIELDS, ARTISTS_FIELDS, MEMBERSHIP_FIELDS, empty_row
@@ -233,11 +234,18 @@ def member_rows(
     return rows
 
 
+# A bare personal name that A1–A4 do not take. Expand does not guess a new row.
+_AMBIGUOUS = object()
+
+
 def expand_teams(ledger: Ledger, *, dry_run: bool = False) -> list[str]:
     """Give every named team member their own roster row. Returns new ledger ids.
 
-    The team row stays. Members are not merged with the team (T1). A member who
-    already has a row under that Hangul name is reused. A second run adds nothing.
+    The team row stays. Members are not merged with the team (T1). A member
+    joins an existing person under the roster attachment rules (A1–A4,
+    ``match_artist``), the same rules roster ingest uses. The team row itself
+    is never that member. A bare personal name those rules do not take is
+    skipped, not guessed. A second run adds nothing.
     """
     artists = ledger.read("artists")
     activities = ledger.read("activities")
@@ -247,6 +255,11 @@ def expand_teams(ledger: Ledger, *, dry_run: bool = False) -> list[str]:
     issued = [row.get("gy_id", "") for row in artists]
     issued += [row.get("gy_id", "") for row in ledger.read("gy_retired")]
     taken = {row["ledger_id"] for row in artists}
+    by_id = {row["ledger_id"]: row for row in artists}
+    field = ledger.config.field_config
+    families: dict[str, set[str]] = {}
+    for row in membership:
+        families.setdefault(row["ledger_id"], set()).add(frame_family(row.get("frame_code", ""), field))
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     from giye.normalize.language import language_for
 
@@ -284,8 +297,17 @@ def expand_teams(ledger: Ledger, *, dry_run: bool = False) -> list[str]:
                 collected=collected,
                 team_prefix=ledger.config.field_config.team_prefix or "팀:",
             ):
-                existing = _find_member(artists, row)
-                if existing is None and _ambiguous(artists, row):
+                existing = _attach_member(
+                    artists,
+                    by_id,
+                    families,
+                    frame,
+                    row,
+                    team_lid,
+                    field,
+                    language,
+                )
+                if existing is _AMBIGUOUS:
                     continue
                 if existing is None:
                     if dry_run:
@@ -312,6 +334,7 @@ def expand_teams(ledger: Ledger, *, dry_run: bool = False) -> list[str]:
                         updated_at=stamp,
                     )
                     artists.append(existing)
+                    by_id[lid] = existing
                     created.append(lid)
                     changed = True
                 note = row.get("reviewer_note") or ""
@@ -329,6 +352,7 @@ def expand_teams(ledger: Ledger, *, dry_run: bool = False) -> list[str]:
                         )
                     )
                     changed = True
+                families.setdefault(existing["ledger_id"], set()).add(frame_family(frame, field))
                 for activity in row.get("activities") or []:
                     if _has_activity(activities, existing["ledger_id"], frame, activity):
                         continue
@@ -349,25 +373,42 @@ def _split_pipe(value: str) -> list[str]:
     return [part.strip() for part in (value or "").split("|") if part.strip()]
 
 
-def _find_member(artists: list[dict], member: Mapping[str, str]) -> dict | None:
-    ko = (member.get("name_ko") or "").strip()
-    if not ko:
-        en = (member.get("name_en") or "").strip()
-        named = [row for row in artists if row.get("name_ko") == en and row.get("name_en") == en]
-        return named[0] if len(named) == 1 else None
-    named = [row for row in artists if row.get("name_ko") == ko]
-    if len(named) == 1:
-        return named[0]
-    en = (member.get("name_en") or "").strip()
-    exact = [row for row in named if row.get("name_en") == en]
-    return exact[0] if len(exact) == 1 else None
+def _attach_member(
+    artists: list[dict],
+    by_id: dict[str, dict],
+    families: dict[str, set[str]],
+    frame: str,
+    member: Mapping[str, str],
+    team_lid: str,
+    field: object,
+    language: LanguageModule | None,
+) -> dict | object | None:
+    """The person A1–A4 attach this member to.
 
+    ``None`` means no candidate: the caller creates a row. ``_AMBIGUOUS`` means
+    the name keys hit someone the rules do not take (a bare personal name on
+    another programme). That is not a new person and not a guessed join.
+    Imported here: ``attach`` imports this module.
+    """
+    from giye.field import Field
+    from giye.resolve.attach import match_artist
 
-def _ambiguous(artists: list[dict], member: Mapping[str, str]) -> bool:
-    """True when several rows share the name and none is an exact match. Do not guess."""
-    return _find_member(artists, member) is None and bool(
-        [row for row in artists if row.get("name_ko") == (member.get("name_ko") or member.get("name_en") or "")]
-    )
+    if not isinstance(field, Field):
+        raise TypeError("expand_teams needs the archive field file")
+    name_ko = member.get("name_ko") or ""
+    name_en = member.get("name_en") or ""
+
+    def decide(pool: list[dict]):
+        return match_artist(pool, families, frame, name_ko, name_en, "", field, language)
+
+    decision = decide(artists)
+    if decision.ledger_id == team_lid:
+        decision = decide([row for row in artists if row["ledger_id"] != team_lid])
+    if decision.ledger_id:
+        return by_id.get(decision.ledger_id)
+    if decision.ambiguous:
+        return _AMBIGUOUS
+    return None
 
 
 def _has_activity(activities: list[dict], ledger_id: str, frame: str, activity: Mapping[str, str]) -> bool:

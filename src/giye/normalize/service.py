@@ -6,7 +6,9 @@ A value already on the artist row wins over P5 (country, region, active_since,
 medium). Outputs:
 
   activities.csv          title/venue normalisation, place, venue id, P1 flags, P4 link
-  artist_attributes.csv   one row per derived value, with rule and evidence
+  artist_attributes.csv   one row per derived value, with rule and evidence.
+                          P6 record_depth (1–4) is one row per published person.
+                          It has no ledger cell and is not copied into the site snapshot.
   venues.csv              institution and funder entities
   venue_audit.md          every merge, with its rule
   manifest.json           hashes of the inputs, rule version, counts
@@ -32,9 +34,12 @@ from giye.normalize.rules import (
     birth_year,
     event_links,
     lang_of,
+    load_snippet_classes,
     match_key,
     medium_tags,
     norm_text,
+    published_ids,
+    record_depth,
     venue_place,
     year_flags,
 )
@@ -42,7 +47,8 @@ from giye.normalize.venues import NAME_RULES, build
 from giye.resolve.evidence import event_pattern, pattern_table
 from giye.resolve.teams import team_like
 
-RULES_VERSION = "2026-09-25.5"
+# 2026-10-05 adds P6 record depth. The earlier rules are unchanged.
+RULES_VERSION = "2026-10-05"
 ACT_FIELDS = [
     "activity_id",
     "ledger_id",
@@ -129,6 +135,34 @@ def _table(config: Config, filename: str) -> list[dict[str, str]]:
     return read_csv(config.ledger / filename)
 
 
+def _frame_rows(config: Config) -> list[dict[str, str]]:
+    """Registry frames as the dicts P6's published-person test reads.
+
+    A missing file is an empty registry: nothing can borrow a frame URL.
+    """
+    if not config.frames.is_file():
+        return []
+    from giye.collect.frames import load_frames
+
+    return [
+        {"code": frame.code, "source_url": frame.source_url, "years_covered": frame.years_covered}
+        for frame in load_frames(config.frames).frames
+    ]
+
+
+def _edition_of(config: Config, frames: list[dict[str, str]]):
+    """Membership code → (registry frame, edition year), including field-file aliases."""
+    from giye.publish.snapshot import resolve_frame_edition
+
+    codes = [row["code"] for row in frames if row.get("code")]
+    years = {row["code"]: row.get("years_covered") or "" for row in frames if row.get("code")}
+
+    def edition(mem_code: str):
+        return resolve_frame_edition(mem_code, codes, years, field=config.field_config)
+
+    return edition
+
+
 def normalize(config: Config, *, venue_name_rules: str | None = None) -> NormalizeResult:
     """Write the processed layer for ``config``. Does not change the ledger.
 
@@ -150,8 +184,27 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
     for source in read_csv(config.ledger / "cv_sources.csv"):
         sources[source.get("ledger_id") or ""].append(source)
     frames_of: dict[str, list[str]] = defaultdict(list)
-    for membership in read_csv(config.ledger / "frame_membership.csv"):
+    membership_rows = read_csv(config.ledger / "frame_membership.csv")
+    for membership in membership_rows:
         frames_of[membership.get("ledger_id") or ""].append(membership.get("frame_code") or "")
+    link_of: dict[str, list[dict]] = defaultdict(list)
+    for link in read_csv(config.ledger / "links.csv"):
+        link_of[link.get("ledger_id") or ""].append(link)
+    scope_rows = read_csv(config.ledger / "scope.csv")
+    frame_rows = _frame_rows(config)
+    published = published_ids(artists, membership_rows, scope_rows, frame_rows, _edition_of(config, frame_rows))
+    # T1 writes this beside the ledger. Absent → level 2 is the M1 rows of this run only.
+    snippet_path = config.work / "tendency" / "snippets.jsonl"
+    gy_to_ledger = {
+        artist["gy_id"]: artist["ledger_id"] for artist in artists if artist.get("gy_id") and artist.get("ledger_id")
+    }
+    # A retired gy_id redirects to the record that absorbed it (gy_retired.csv), so evidence
+    # filed under it belongs to that record, as the site's redirects do.
+    for row in read_csv(config.ledger / "gy_retired.csv"):
+        retired, survivor = row.get("gy_id") or "", row.get("merged_into_ledger_id") or ""
+        if retired and survivor and retired not in gy_to_ledger:
+            gy_to_ledger[retired] = survivor
+    snippets = load_snippet_classes(snippet_path, gy_to_ledger)
 
     patterns = pattern_table(config.field_config.event_patterns, config.event_patterns)
     tags = config.field_config.resolved()
@@ -196,6 +249,7 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
 
     attributes: list[dict] = []
     filled: Counter = Counter()
+    depth_counts: Counter = Counter()
 
     def put(ledger_id: str, field_name: str, value, rule: str, evidence: str = "", url: str = "") -> None:
         attributes.append(
@@ -237,6 +291,9 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
             got = active_since(rows, flags)
             if got:
                 put(ledger_id, "active_since", got[0], "A1 earliest public practice row", got[1])
+        medium_values: list[str] = []
+        # M1 is written only when the ledger has no field and no category. P6 reads those
+        # written rows, not a second pass over titles, so a ledger medium is not practice evidence.
         if not (artist.get("field") or artist.get("category")):
             for tag, ids in sorted(
                 medium_tags(
@@ -247,6 +304,23 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
                 ).items()
             ):
                 put(ledger_id, "medium", tag, f"M1 ≥{tags.medium_min_rows} rows name it", "|".join(ids[:20]))
+                medium_values.append(tag)
+        if ledger_id in published:
+            value, evidence = record_depth(
+                activities=rows,
+                links=link_of.get(ledger_id, []),
+                cv_sources=sources.get(ledger_id, []),
+                medium_values=medium_values,
+                snippet_classes=snippets.get(ledger_id, []),
+                memberships=frames_of.get(ledger_id, []),
+            )
+            put(ledger_id, "record_depth", value, "P6 record depth", evidence)
+            depth_counts[value] += 1
+
+    if sum(depth_counts.values()) != len(published):
+        raise ValueError(
+            f"P6 wrote {sum(depth_counts.values())} record_depth rows for {len(published)} published people"
+        )
 
     write_csv(path=out / "activities.csv", fields=ACT_FIELDS, rows=activity_out)
     write_csv(path=out / "artist_attributes.csv", fields=ATTR_FIELDS, rows=attributes)
@@ -263,7 +337,12 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
     if glossary_file.is_file():
         inputs[glossary_file.name] = _sha256(glossary_file)
 
+    snippet_state = "absent"
+    if snippet_path.is_file():
+        inputs["work/tendency/snippets.jsonl"] = _sha256(snippet_path)
+        snippet_state = "present"
     flag_counts = Counter(flag for group in flags.values() for flag in group)
+    depth_by_level = {level: depth_counts[level] for level in ("1", "2", "3", "4")}
     manifest = {
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "rules_version": RULES_VERSION,
@@ -275,6 +354,9 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
             "activities": len(activities),
             "flags": dict(flag_counts),
             "attributes": dict(filled),
+            "record_depth": depth_by_level,
+            "record_depth_published": len(published),
+            "record_depth_snippets": snippet_state,
             "venue_country": sum(1 for row in activity_out if row["venue_country"]),
             "venue_entities": venue_result.stats["entities"],
             "venue_entities_shared_2plus": venue_result.stats["shared_entities"],
@@ -343,6 +425,36 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
         f"| region | {filled['region']} | L1, Korean region only |",
         f"| active_since | {filled['active_since']} | A1 earliest year among public activities (flagged years excluded) |",
         f"| medium | {medium_artists} | M1 at least {tags.medium_min_rows} rows whose title, role, or strand name the same medium |",
+        "",
+        "## P6 record depth (published people; the highest level)",
+        "",
+        (
+            "A person is published by the same test as the site build: not scope=out, on a roster or "
+            "cv_link_ok=yes, with a source URL, status empty / PUBLISHED / STAGED. "
+            f"Published {len(published)} of {len(artists)}. One `record_depth` row each. "
+            "The value is not copied into the site snapshot."
+        ),
+        "",
+        "| Level | People | What justifies it |",
+        "|---|---|---|",
+        (
+            f"| 1 | {depth_by_level['1']} | Roster membership only: no M1 medium row, no T1 practice snippet, "
+            "no non-social link, no active CV source, no standing CV extraction |"
+        ),
+        (
+            f"| 2 | {depth_by_level['2']} | Practice evidence: an M1 medium row written above, "
+            "or a T1 snippet classed has_description or has_medium_word |"
+        ),
+        f"| 3 | {depth_by_level['3']} | A non-social link or an active cv_sources row, and no standing CV extraction |",
+        (
+            f"| 4 | {depth_by_level['4']} | An activities.csv row with origin cv: "
+            "whose note does not contain superseded_by_cv |"
+        ),
+        "",
+        (
+            f"Snippets file `work/tendency/snippets.jsonl`: {snippet_state}. "
+            "When it is absent, level 2 is the M1 rows only. A later run of this script reads the file if it is there."
+        ),
     ]
     report = "\n".join(lines) + "\n"
     (out / "report.md").write_text(report, encoding="utf-8")

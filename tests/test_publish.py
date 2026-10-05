@@ -410,12 +410,17 @@ def test_missing_gy_id_is_issued_in_name_order_and_kept(tmp_path: Path):
 
 
 def test_default_citation_author_is_the_production_string(tmp_path: Path):
+    from giye.config import ConfigError
+    from giye.publish import publish
+
     path = tmp_path / "giye.toml"
     path.write_text('[archive]\nname = "Field"\n', encoding="utf-8")
     cfg = load(path)
     assert cfg.citation_author == "기예 Giye"
-    assert cfg.site_url == "https://giye.org"
+    assert cfg.site_url == ""
     assert cfg.dataset_version == "0.2"
+    with pytest.raises(ConfigError, match=r"\[publish\] site_url is required"):
+        publish(cfg)
     demo = load(ROOT / "examples" / "demo" / "giye.toml")
     assert demo.site_url == "https://example.org"
     assert demo.citation_author == "Example Archive"

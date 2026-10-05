@@ -146,8 +146,8 @@ Object: retired `gy_id` → survivor `gy_id`.
 
 The dataset URL is `<site_url>/data`. A person URL is `<site_url>/artist/<gy_id>`.
 The author, title, and origin come from `[publish]` (`citation_author`, `dataset_title`,
-`site_url`). The default author is `기예 Giye` and the default origin is `https://giye.org`,
-matching the live cite dialog. The BibTeX key is `giye_<id with hyphens turned to underscores>`,
+`site_url`). The default author is `기예 Giye`. Publish fails when `site_url` is unset;
+the reference archive sets `https://giye.org`. The BibTeX key is `giye_<id with hyphens turned to underscores>`,
 or `giye_dataset`. The version in both citations is the dataset version. The artist page
 in the production web app hard-codes version `1.0`; this file uses the dataset version.
 

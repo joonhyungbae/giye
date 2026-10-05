@@ -1,0 +1,13 @@
+version: 1
+frames:
+  - code: HAND-COHORT
+    name_en: Hand Cohort
+    source_url: ""
+    collector: transcribed
+    eligibility:
+      decision: included
+      f1_purpose: States the field.
+      f2_cohort: A jury selects a cohort.
+      f3_territory: Held in the configured territory.
+      f4_roster: Copied from several public pages.
+      f5_period: Two editions.

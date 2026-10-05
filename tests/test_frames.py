@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from giye.collect.frames import coverage, load_frames
+from giye.collect.frames import coverage, load_frames, validate_transcribed_membership
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 DEMO = Path(__file__).resolve().parents[1] / "examples" / "demo" / "frames.yml"
@@ -55,6 +55,33 @@ def test_missing_criterion_names_the_rule(tmp_path: Path):
     path = tmp_path / "frames.yml"
     path.write_text(text, encoding="utf-8")
     with pytest.raises(ValueError, match=r"f1_purpose is required \(F1\)"):
+        load_frames(path)
+
+
+def test_transcribed_frame_may_omit_the_frame_url_when_every_row_has_one(tmp_path: Path):
+    """A hand-copied roster has no single page. Each membership row is the source."""
+    registry = load_frames(FIXTURES / "frames_transcribed.yml")
+    frame = registry.by_code("HAND-COHORT")
+    assert frame is not None
+    assert frame.collector == "transcribed"
+    assert frame.source_url == ""
+    rows = [
+        {"frame_code": "HAND-COHORT-2019", "source_url": "https://example.org/press/2019"},
+        {"frame_code": "HAND-COHORT", "source_url": "https://example.org/press/2020"},
+    ]
+    validate_transcribed_membership(registry, rows)
+    rows.append({"frame_code": "HAND-COHORT-2021", "source_url": ""})
+    with pytest.raises(ValueError, match="source_url"):
+        validate_transcribed_membership(registry, rows)
+
+
+def test_empty_frame_url_is_rejected_unless_the_collector_is_transcribed(tmp_path: Path):
+    text = (FIXTURES / "frames_transcribed.yml").read_text(encoding="utf-8").replace(
+        "collector: transcribed", "collector: roster", 1
+    )
+    path = tmp_path / "frames.yml"
+    path.write_text(text, encoding="utf-8")
+    with pytest.raises(ValueError, match="source_url must be an http"):
         load_frames(path)
 
 

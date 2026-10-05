@@ -98,6 +98,20 @@ def test_csv_round_trip_keeps_korean_names_and_quoted_commas(tmp_path: Path):
     assert ledger.read("artists")[0]["gy_id"] == "GY-000042"
 
 
+def test_write_csv_keeps_existing_crlf_and_new_files_use_lf(tmp_path: Path):
+    path = tmp_path / "artists.csv"
+    path.write_bytes("ledger_id,name_ko\r\nLED-1,김하늘\r\n".encode())
+    write_csv(path=path, fields=["ledger_id", "name_ko"], rows=[{"ledger_id": "LED-1", "name_ko": "김하늘"}])
+    raw = path.read_bytes()
+    assert raw.count(b"\r\n") == 2
+    assert raw.replace(b"\r\n", b"").count(b"\n") == 0
+    assert read_csv(path) == [{"ledger_id": "LED-1", "name_ko": "김하늘"}]
+    fresh = tmp_path / "new.csv"
+    write_csv(path=fresh, fields=["ledger_id"], rows=[{"ledger_id": "LED-2"}])
+    assert b"\r\n" not in fresh.read_bytes()
+    assert fresh.read_bytes().endswith(b"\n")
+
+
 def test_activity_ids_are_stable_and_ordinals_do_not_share_an_id():
     assert str(ACTIVITY_NAMESPACE) == "72269c7b-f42a-5278-8ace-6f316e83e50a"
     key = activity_id_key(**_FROZEN_KEY)

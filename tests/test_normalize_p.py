@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-"""Derived values P1–P5. People are fictitious. CV text is a local file, not a fetch."""
+"""Derived values P1–P6. People are fictitious. CV text is a local file, not a fetch."""
 
 from __future__ import annotations
 
@@ -8,7 +8,14 @@ from pathlib import Path
 from giye.cli import main
 from giye.config import load
 from giye.ledger.io import read_csv, write_csv
-from giye.ledger.schemas import ACTIVITIES_FIELDS, ARTISTS_FIELDS, CV_SOURCES_FIELDS, MEMBERSHIP_FIELDS, empty_row
+from giye.ledger.schemas import (
+    ACTIVITIES_FIELDS,
+    ARTISTS_FIELDS,
+    CV_SOURCES_FIELDS,
+    LINKS_FIELDS,
+    MEMBERSHIP_FIELDS,
+    empty_row,
+)
 from giye.normalize.rules import lang_of, match_key, norm_text, year_flags
 from giye.normalize.service import normalize
 
@@ -247,3 +254,69 @@ def test_cli_normalize_writes_processed(tmp_path: Path) -> None:
     assert (processed / "venue_audit.md").is_file()
     assert (processed / "manifest.json").is_file()
     assert "P1" in (processed / "report.md").read_text(encoding="utf-8")
+    assert "P6 record depth" in (processed / "report.md").read_text(encoding="utf-8")
+
+
+def test_p6_assigns_the_highest_level_and_names_the_evidence(tmp_path: Path) -> None:
+    url = "https://example.org/roster"
+    _write_ledger(
+        tmp_path,
+        [
+            {"ledger_id": "p-roster", "name_ko": "김하늘", "source_url": url, "status": "STAGED"},
+            {"ledger_id": "p-medium", "name_ko": "김바다", "source_url": url, "status": "STAGED"},
+            {"ledger_id": "p-site", "name_ko": "박서연", "source_url": url, "status": "STAGED"},
+            {"ledger_id": "p-cv", "name_ko": "이하루", "source_url": url, "status": "STAGED"},
+            {"ledger_id": "p-out", "name_ko": "정다운", "source_url": url, "status": "STAGED"},
+        ],
+        [
+            {"activity_id": "m1", "ledger_id": "p-medium", "title": "video study", "year": "2019", "publishable": "yes", "activity_type": "group_exhibition"},
+            {"activity_id": "m2", "ledger_id": "p-medium", "title": "video study two", "year": "2020", "publishable": "yes", "activity_type": "group_exhibition"},
+            {"activity_id": "cv1", "ledger_id": "p-cv", "title": "from the cv", "year": "2018", "origin": "cv:src-1", "publishable": "yes", "activity_type": "group_exhibition"},
+            {
+                "activity_id": "old",
+                "ledger_id": "p-cv",
+                "title": "replaced",
+                "year": "2017",
+                "origin": "cv:src-0",
+                "reviewer_note": "superseded_by_cv",
+                "publishable": "yes",
+                "activity_type": "group_exhibition",
+            },
+        ],
+        membership=[
+            {"ledger_id": lid, "frame_code": "EXAMPLE-RESIDENCY", "source_url": url}
+            for lid in ("p-roster", "p-medium", "p-site", "p-cv", "p-out")
+        ],
+    )
+    write_csv(
+        path=tmp_path / "data" / "ledger" / "links.csv",
+        fields=LINKS_FIELDS,
+        rows=[empty_row(LINKS_FIELDS, link_id="lnk-1", ledger_id="p-site", url="https://haneul.example.org", link_type="website")],
+    )
+    write_csv(
+        path=tmp_path / "data" / "ledger" / "scope.csv",
+        fields=["ledger_id", "scope"],
+        rows=[{"ledger_id": "p-out", "scope": "out"}],
+    )
+    snippets = tmp_path / "data" / "work" / "tendency"
+    snippets.mkdir(parents=True)
+    (snippets / "snippets.jsonl").write_text(
+        '{"ledger_id": "p-roster", "class": "has_title_only"}\n{"ledger_id": "p-medium", "class": "has_description"}\n',
+        encoding="utf-8",
+    )
+    result = normalize(load(_config(tmp_path)))
+    attrs = read_csv(result.processed / "artist_attributes.csv")
+    depth = {row["ledger_id"]: row for row in attrs if row["field"] == "record_depth"}
+    assert set(depth) == {"p-roster", "p-medium", "p-site", "p-cv"}
+    assert depth["p-roster"]["value"] == "1"
+    assert depth["p-roster"]["rule"] == "P6 record depth"
+    assert "frame_membership.csv" in depth["p-roster"]["evidence"]
+    assert depth["p-medium"]["value"] == "2"
+    assert "has_description" in depth["p-medium"]["evidence"]
+    assert depth["p-site"]["value"] == "3"
+    assert "lnk-1" in depth["p-site"]["evidence"]
+    assert depth["p-cv"]["value"] == "4"
+    assert "src-1" in depth["p-cv"]["evidence"]
+    assert "src-0" not in depth["p-cv"]["evidence"]
+    report = (result.processed / "report.md").read_text(encoding="utf-8")
+    assert "| 1 | 1 |" in report and "| 4 | 1 |" in report

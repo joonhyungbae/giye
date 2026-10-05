@@ -39,6 +39,7 @@ STAGE_RULES: dict[str, tuple[str, ...]] = {
         "P3",
         "P4",
         "P5",
+        "P6",
         "B1",
         "L1",
         "A1",

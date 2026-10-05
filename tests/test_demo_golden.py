@@ -62,6 +62,9 @@ def test_demo_snapshot_matches_golden(tmp_path: Path, monkeypatch):
         },
         "ties": result.copresence,
     }
+    for artist in got["site"]["artists.json"]:
+        assert "record_depth" not in (artist.get("derived") or {})
+    assert "P6 record depth" in got["processed"]["artist_attributes.csv"]
     expected = json.loads(GOLDEN.read_text(encoding="utf-8"))
     assert got == expected
     assert "rim_order.json" in got["site"]

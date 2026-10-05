@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-"""Preprocessing rules: checks (P1), text normalisation (P2), derived attributes (P5).
+"""Preprocessing rules: checks (P1), text normalisation (P2), derived attributes (P5, P6).
 
 Every rule is a function of the ledger (and the CV text the ledger points at).
 The same input gives the same output, and every derived value names the rule
@@ -11,15 +11,21 @@ only when both are empty. ``active_since`` is derived only when that cell is
 empty. Medium tags are derived only when both ``field`` and ``category`` are
 empty. Birth year has no ledger column; it is written only as a derived row.
 
+P6: record depth, one level per published person, the highest they satisfy.
+There is no ledger cell. The site snapshot does not copy the row.
+
 The place of a base phrase (L1) and of a venue (V1) comes from the language
 module's gazetteer, not from a path in the code.
 """
 
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
+from collections.abc import Callable
 from datetime import date
+from pathlib import Path
 
 from giye.normalize.gazetteer import Gazetteer
 
@@ -254,3 +260,238 @@ def event_links(rows: list[dict], memberships: list[str], event_pattern) -> dict
                 out[row["activity_id"]] = code
                 break
     return out
+
+
+# ── P6 record depth ──────────────────────────────────────────────────────────────────────────────
+# One level per published person, the highest they satisfy. No ledger cell, so
+# this is not a case of "the ledger value wins". The site loader drops the row.
+
+# The mark a later CV extraction writes on the row it replaced.
+SUPERSEDED_MARK = "superseded_by_cv"
+# T1 snippet classes that are practice evidence. has_title_only and nothing are not.
+PRACTICE_CLASSES = ("has_description", "has_medium_word")
+_SNIPPET_CLASS_FIELDS = ("classification", "label", "class", "kind")
+_SNIPPET_LIST_FIELDS = ("labels", "classes", "tags")
+
+
+def _id_list(rows: list[dict], key: str, limit: int) -> str:
+    """Sorted unique ids, capped so one artist's evidence cannot grow with every row."""
+    vals = sorted({(row.get(key) or "") for row in rows if row.get(key)})
+    shown = "|".join(vals[:limit])
+    extra = len(vals) - limit
+    if extra > 0:
+        return f"{shown}|+{extra}"
+    return shown
+
+
+def extracted_cv_rows(activities: list[dict]) -> list[dict]:
+    """Level 4: a CV extraction that still stands.
+
+    ``origin`` ``cv:`` is a row the extraction apply step wrote. A note containing
+    ``superseded_by_cv`` is a row a later extraction replaced, so it is not standing.
+    ``publishable`` is not consulted: a private or future CV row is still an extraction.
+    """
+    kept = []
+    for row in activities:
+        origin = row.get("origin") or ""
+        if not origin.startswith("cv:"):
+            continue
+        if SUPERSEDED_MARK in (row.get("reviewer_note") or ""):
+            continue
+        kept.append(row)
+    return kept
+
+
+def own_site_rows(links: list[dict]) -> list[dict]:
+    """Level 3, own website: a non-social link.
+
+    ``link_type`` ``social`` is the exclusion used when a personal site is the
+    identity key. Video and repository links are not social, so they count.
+    A dead link still counts: the location is registered on the row.
+    """
+    return [
+        row
+        for row in links
+        if (row.get("link_type") or "") != "social" and (row.get("url") or "").strip()
+    ]
+
+
+def active_cv_rows(sources: list[dict]) -> list[dict]:
+    """Level 3, registered CV location: a ``cv_sources`` row that is still active.
+
+    ``active`` defaults to true. ``false`` is a retired location. Extraction reads
+    these rows, not links.
+    """
+    return [row for row in sources if (row.get("active") or "true") != "false"]
+
+
+def load_snippet_classes(path: Path, gy_to_ledger: dict[str, str] | None = None) -> dict[str, list[str]]:
+    """ledger_id → practice classes in ``data/work/tendency/snippets.jsonl``.
+
+    When the path is missing, nobody has snippet evidence and level 2 is the M1
+    rows only. A later preprocess reads the file if it has appeared.
+
+    One object per person: ``gy_id`` and ``class`` (``has_description``,
+    ``has_medium_word``, ``has_title_only``, or ``nothing``). The first two are
+    practice evidence. ``gy_to_ledger`` maps that id onto the ledger row. A line
+    may instead carry ``ledger_id``.
+
+    Also accepted, so a differently shaped file still counts: boolean fields
+    ``has_description`` / ``has_medium_word``; a string ``classification`` /
+    ``label`` / ``class`` / ``kind``; a list ``labels`` / ``classes`` / ``tags``.
+    ``kept`` false drops the line. A practice line with no resolvable id is an
+    error: dropping it would publish level 2 too low.
+    """
+    if not path.is_file():
+        return {}
+    gy_to_ledger = gy_to_ledger or {}
+    found: dict[str, set[str]] = {}
+    with path.open(encoding="utf-8") as handle:
+        for lineno, line in enumerate(handle, 1):
+            text = line.strip()
+            if not text:
+                continue
+            try:
+                obj = json.loads(text)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"{path}:{lineno}: {exc}") from exc
+            if not isinstance(obj, dict):
+                raise ValueError(f"{path}:{lineno}: expected a JSON object")  # noqa: TRY004 — a bad file, not a bad call
+            if obj.get("kept") is False or obj.get("kept") == "false":
+                continue
+            classes = _snippet_classes(obj)
+            if not classes:
+                continue
+            ledger_id = _snippet_ledger_id(obj, gy_to_ledger, path, lineno)
+            found.setdefault(ledger_id, set()).update(classes)
+    return {ledger_id: sorted(classes) for ledger_id, classes in found.items()}
+
+
+def _snippet_ledger_id(obj: dict, gy_to_ledger: dict[str, str], path: Path, lineno: int) -> str:
+    ledger_id = (obj.get("ledger_id") or "").strip()
+    gy_id = (obj.get("gy_id") or "").strip()
+    if ledger_id and gy_id:
+        mapped = gy_to_ledger.get(gy_id)
+        if mapped and mapped != ledger_id:
+            raise ValueError(f"{path}:{lineno}: gy_id does not match ledger_id")
+        return ledger_id
+    if ledger_id:
+        return ledger_id
+    if not gy_id:
+        raise ValueError(f"{path}:{lineno}: practice snippet has no ledger_id or gy_id")
+    mapped = gy_to_ledger.get(gy_id)
+    if not mapped:
+        raise ValueError(f"{path}:{lineno}: gy_id is not on an artist row")
+    return mapped
+
+
+def _snippet_classes(obj: dict) -> set[str]:
+    found: set[str] = set()
+    for name in PRACTICE_CLASSES:
+        if obj.get(name) in (True, "true", "yes", 1):
+            found.add(name)
+    for key in _SNIPPET_CLASS_FIELDS:
+        value = obj.get(key)
+        if isinstance(value, str) and value in PRACTICE_CLASSES:
+            found.add(value)
+    for key in _SNIPPET_LIST_FIELDS:
+        value = obj.get(key)
+        if isinstance(value, list):
+            found.update(item for item in value if item in PRACTICE_CLASSES)
+    return found
+
+
+def record_depth(
+    *,
+    activities: list[dict],
+    links: list[dict],
+    cv_sources: list[dict],
+    medium_values: list[str],
+    snippet_classes: list[str],
+    memberships: list[str],
+) -> tuple[str, str]:
+    """P6: ``("1"|"2"|"3"|"4", evidence)``.
+
+    Evidence names the file and the rows that justify the level actually assigned.
+    Lower levels the person also meets are not listed. The evidence URL stays
+    empty: a personal site address is not copied into the derived row.
+    """
+    extracted = extracted_cv_rows(activities)
+    if extracted:
+        origins = sorted({(row.get("origin") or "")[3:] for row in extracted if (row.get("origin") or "")[3:]})
+        evidence = (
+            f"activities.csv origin=cv:{'|'.join(origins)} rows={len(extracted)} "
+            f"activity_id={_id_list(extracted, 'activity_id', 5)}"
+        )
+        return "4", evidence
+
+    sites = own_site_rows(links)
+    cvs = active_cv_rows(cv_sources)
+    if sites or cvs:
+        parts = []
+        if sites:
+            parts.append(f"links.csv link_id={_id_list(sites, 'link_id', 20)}")
+        if cvs:
+            parts.append(f"cv_sources.csv source_id={_id_list(cvs, 'source_id', 20)}")
+        return "3", "; ".join(parts)
+
+    parts = []
+    if medium_values:
+        parts.append("artist_attributes.csv field=medium value=" + "|".join(sorted(set(medium_values))))
+    classes = [name for name in PRACTICE_CLASSES if name in set(snippet_classes)]
+    if classes:
+        parts.append("snippets.jsonl " + "|".join(classes))
+    if parts:
+        return "2", "; ".join(parts)
+
+    codes = [code for code in memberships if code]
+    unique = sorted(set(codes))
+    shown = "|".join(unique[:20])
+    extra = f"|+{len(unique) - 20}" if len(unique) > 20 else ""
+    return "1", f"frame_membership.csv editions={len(codes)} frame_code={shown}{extra}"
+
+
+def published_ids(
+    artists: list[dict],
+    membership: list[dict],
+    scope_rows: list[dict],
+    frames: list[dict],
+    edition_of: Callable[[str], tuple[str, str | None] | None],
+) -> set[str]:
+    """Ledger ids the site publishes. P6 is defined on that population.
+
+    Same test as the site build: not ``scope=out``, on a roster or
+    ``cv_link_ok=yes``, a source URL (the row's, or else the roster page's), and
+    status empty, PUBLISHED, or STAGED. ``edition_of`` maps a membership code to
+    ``(registry frame, year)`` so a frame URL can fill a row that has none.
+    The artist row is not modified.
+    """
+    frame_url = {frame["code"]: frame.get("source_url") or "" for frame in frames if frame.get("code")}
+    roster_url: dict[str, str] = {}
+    members: set[str] = set()
+    for row in membership:
+        ledger_id = row.get("ledger_id") or ""
+        if ledger_id:
+            members.add(ledger_id)
+        edition = edition_of(row.get("frame_code") or "")
+        for url in (row.get("source_url") or "", frame_url.get(edition[0], "") if edition else ""):
+            if str(url).startswith("http"):
+                roster_url.setdefault(ledger_id, url)
+                break
+    out_of_scope = {row["ledger_id"] for row in scope_rows if row.get("scope") == "out" and row.get("ledger_id")}
+    published: set[str] = set()
+    for artist in artists:
+        ledger_id = artist.get("ledger_id") or ""
+        if not ledger_id or ledger_id in out_of_scope:
+            continue
+        if artist.get("cv_link_ok") != "yes" and ledger_id not in members:
+            continue
+        source = artist.get("source_url") or ""
+        if not source.startswith("http"):
+            source = roster_url.get(ledger_id, "")
+        if not source.startswith("http"):
+            continue
+        if artist.get("status") not in ("", "PUBLISHED", "STAGED"):
+            continue
+        published.add(ledger_id)
+    return published

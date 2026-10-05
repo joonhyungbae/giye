@@ -32,6 +32,9 @@ languages = ["ko", "en"]
 data = "{(tmp_path / "data").as_posix()}"
 frames = "{frames.as_posix()}"
 
+[publish]
+site_url = "https://example.org"
+
 [collect]
 user_agent = "GiyeTest/0.1 (+https://example.org/contact)"
 min_delay_s = 0.0
