@@ -21,9 +21,17 @@ V7e  Two Latin names with the same bag of words (order-free only when a place
      alone name no place: Museum of Modern Art and Modern Art Museum stay apart.
      The bag is exact words. The romanisation-tolerant skeleton is NOT used
      here: it would join ACC/AAS, BUG/Book, and MMCA/MCA.
-V8   A part of a known entity is that entity. A Hangul entity plus a building or
-     room word (본관·서울관·창고동·전시실…), or a Latin one plus a Latin part. An acronym entity plus a place that
-     is not somewhere else (ZKM Karlsruhe, not a chain whose rows sit in another city).
+V8   A part inside one site is that entity: a room, hall, floor, wing, or a
+     building named as part of the site (전시실·창고동·별관, main building, annex,
+     lobby). 별관 and annex stay parts because they do not name another city.
+     A branch does, and is not joined: Hangul <place>관 (서울관·청주관), or a Latin
+     name plus a city (MMCA Seoul). An acronym plus a place is still joined when
+     that acronym's own rows are all in that one city (ZKM Karlsruhe). More than
+     one city means those rows are branches and are not joined.
+V8b  An administrative office is not the place it administers. <place> plus
+     구청·시청·군청·도청·주민센터, or City Hall / District Office, is not joined to
+     the bare place by V8 or by any other merge rule. The office stays an
+     institution.
 V9   A Hangul name and a Latin name are one entity when the Hangul name, read
      with the glossary (generic words), the gazetteer (place names), and
      ``romanise`` for the rest, gives the same bag as the Latin name, the bag
@@ -270,6 +278,91 @@ def specific(key: str, lang: LanguageModule) -> bool:
     return bool(hangul_bags(key, lang) or latin_bag(key, lang))
 
 
+def _office_words(lang: LanguageModule | None) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    words = (lang or default_language()).venue_words
+    return words.admin_offices, words.latin_admin_offices
+
+
+def office_stem(key: str, lang: LanguageModule | None = None) -> str:
+    """V8b: the place before an office marker, or "" when ``key`` is not an office.
+
+    Hangul markers are matched with spaces removed (V7d). Latin markers keep a
+    space: ``nowon district office`` → ``nowon``. The marker is not a building
+    part, so V8 must not strip it and keep the place.
+    """
+    hangul_offices, latin_offices = _office_words(lang)
+    compact = re.sub(r"\s+", "", key)
+    for office in sorted(hangul_offices, key=len, reverse=True):
+        if office and compact.endswith(office) and len(compact) > len(office):
+            return compact[: -len(office)]
+    folded = re.sub(r"\s+", " ", key.strip().casefold())
+    for office in sorted(latin_offices, key=len, reverse=True):
+        tail = " " + office.casefold()
+        if folded.endswith(tail) and len(folded) > len(tail):
+            return folded[: -len(tail)].strip()
+    return ""
+
+
+def is_admin_office(key: str, lang: LanguageModule | None = None) -> bool:
+    """V8b: a district, city, county, or province office, not the place itself."""
+    return bool(office_stem(key, lang))
+
+
+def _canonical_place(text: str, lang: LanguageModule) -> str:
+    """Lower-cased canonical city when ``text`` is a whole place name, else ""."""
+    hit = lang.gazetteer.cities.get(place_key(text))
+    if hit:
+        return CITY_SUFFIX.sub("", hit[3]).casefold()
+    found = lang.gazetteer.resolve_fragments([text.strip()])
+    if found and found[0] and found[0][0]:
+        return found[0][0].casefold()
+    return ""
+
+
+def is_place_name(text: str, lang: LanguageModule) -> bool:
+    """True when the gazetteer resolves ``text`` as a whole place (V3c, V8 branches)."""
+    if len(place_key(text)) < 2:
+        return False
+    if lang.gazetteer.cities.get(place_key(text)):
+        return True
+    found = lang.gazetteer.resolve_fragments([text.strip()])
+    return bool(found and found[0])
+
+
+def _same_place(left: str, right: str, lang: LanguageModule) -> bool:
+    if place_key(left) == place_key(right):
+        return True
+    left_city, right_city = _canonical_place(left, lang), _canonical_place(right, lang)
+    if left_city and (left_city == right_city or left_city == place_key(right)):
+        return True
+    return bool(right_city and right_city == place_key(left))
+
+
+def forbids_place_office_merge(left: str, right: str, lang: LanguageModule) -> bool:
+    """V8b: one key is a bare place and the other is that place's office."""
+    for office_key, place in ((left, right), (right, left)):
+        stem = office_stem(office_key, lang)
+        if stem and _same_place(stem, place, lang):
+            return True
+    return False
+
+
+def is_hangul_branch(key: str, lang: LanguageModule) -> bool:
+    """V8: ``key`` is an entity plus <place>관 (서울관, 청주관), a separate site.
+
+    별관 is not a branch: 별 is not a place name. An annex is another building
+    on the same site, so the building-part list still matches it. The place
+    marker has to leave at least two characters of entity in front of it.
+    """
+    if not key.endswith("관"):
+        return False
+    head = key[:-1]
+    for length in range(len(head) - 2, 1, -1):
+        if is_place_name(head[-length:], lang):
+            return True
+    return False
+
+
 def part_parent_ok(key: str, lang: LanguageModule) -> bool:
     """V8 parent: a specific name, or a Hangul name longer than one glossary word."""
     if specific(key, lang):
@@ -284,22 +377,46 @@ def trimmed(spelling: str, lang: LanguageModule | None = None) -> bool:
 
 
 def hangul_part_parent(key: str, lang: LanguageModule | None = None) -> str:
-    """V8: the entity before a building or room word, for a name mostly in the language's script."""
-    words = _words(lang)
-    match = words.part.match(key) if words.part is not None and _mostly_script(key, words.script) else None
-    return match.group("parent") if match else ""
+    """V8: the entity before a room or same-site building word.
+
+    A branch (<place>관) and an administrative office return "" so they are not
+    stripped down to the parent institution or the bare place.
+    """
+    language = lang or default_language()
+    words = _words(language)
+    if not _mostly_script(key, words.script):
+        return ""
+    if is_admin_office(key, language) or is_hangul_branch(key, language):
+        return ""
+    match = words.part.match(key) if words.part is not None else None
+    if not match:
+        return ""
+    suffix = key[len(match.group("parent")) :]
+    if suffix.endswith("관") and is_place_name(suffix[:-1], language):
+        return ""
+    return match.group("parent")
 
 
 def latin_part_parent(key: str, lang: LanguageModule | None = None) -> str:
-    """V8: the entity before a Latin building or room word, for a name with no letter of the language's script."""
-    words = _words(lang)
+    """V8: the entity before a Latin room or same-site building word.
+
+    An office (City Hall, District Office) is not a part of the place name.
+    """
+    language = lang or default_language()
+    words = _words(language)
+    if is_admin_office(key, language):
+        return ""
     native = words.script is not None and words.script.search(key)
     match = words.latin_part.match(key) if words.latin_part is not None and not native else None
     return match.group("parent") if match else ""
 
 
 def acronym_place_parent(key: str, spellings: list[str], lang: LanguageModule) -> tuple[str, str]:
-    """``ZKM Karlsruhe`` → (``zkm``, ``karlsruhe``) when the first word is an acronym and the rest is a place."""
+    """``ZKM Karlsruhe`` → (``zkm``, ``karlsruhe``) when the first word is an acronym and the rest is a place.
+
+    The caller joins this only when the acronym's own rows are all in that one
+    city. Two cities make ``MMCA Seoul`` a branch, not the entity's only site.
+    """
     parts = key.split(" ", 1)
     if len(parts) != 2 or not any(ACRONYM_SPELLING_RE.fullmatch(spelling.split(" ", 1)[0]) for spelling in spellings):
         return "", ""

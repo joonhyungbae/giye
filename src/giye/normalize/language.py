@@ -58,6 +58,8 @@ class VenueWords:
     end of a name (V7c); a four-digit year is handled by the rule itself.
     ``building_parts`` and ``latin_building_parts`` are regular-expression
     alternatives for a V8 part after a name in the pair's script or a Latin name.
+    ``admin_offices`` and ``latin_admin_offices`` are the office markers of V8b
+    (a district office is not the district). Longer markers are tried first.
     """
 
     script: str = ""
@@ -67,6 +69,8 @@ class VenueWords:
     unstable_spacing: bool = False
     building_parts: tuple[str, ...] = ()
     latin_building_parts: tuple[str, ...] = ()
+    admin_offices: tuple[str, ...] = ()
+    latin_admin_offices: tuple[str, ...] = ()
 
 
 # Korean–English venue words. The lists are the production rules' words, in their order.
@@ -79,15 +83,22 @@ KO_EN_VENUE_WORDS = VenueWords(
     edition_tail=(r"제?\s?\d{1,3}\s?회",),
     # Korean spacing in names is not stable.
     unstable_spacing=True,
-    # Buildings (본관 main, 별관 annex, …관 a branch), halls, rooms, floors, lobbies, squares.
+    # Parts inside one site: rooms, halls, floors, wings, and buildings named as
+    # parts of that site. 별관 (annex) stays. It is another building on the same
+    # site, not a second city. A branch is the entity plus a place and 관
+    # (서울관, 과천관, 덕수궁관, 청주관) and is not listed here. 본관, 신관, 구관
+    # are the main, new, and old buildings of one site, the same class as 별관.
     building_parts=(
-        "본관", "별관", "신관", "구관", "서울관", "과천관", "덕수궁관", "청주관", "창고동", "전시동", "전시관",
+        "본관", "별관", "신관", "구관", "창고동", "전시동", "전시관",
         "전시장", r"제?\d*전시실\d*", "멀티프로젝트홀", "대극장", "소극장", "로비", "앞광장", "야외광장", "광장",
         "라운지", r"지하\d*층?", r"\d+층",
     ),
     latin_building_parts=(
         "main building", "annex", "lobby", "main hall", "hall [a-z0-9]+", r"gallery \d+", r"\d+(?:st|nd|rd|th)? floor",
     ),
+    # V8b. A city hall is not the city. Longer suffixes first when matched.
+    admin_offices=("주민센터", "구청", "시청", "군청", "도청"),
+    latin_admin_offices=("district office", "city hall"),
 )
 
 

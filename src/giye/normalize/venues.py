@@ -227,24 +227,40 @@ def _alias_rule(left: str, right: str) -> str:
     return "V5a" if cross_script else "V5d"
 
 
+def _resolved_place(text: str, lang: LanguageModule) -> Place | None:
+    """V3c: the gazetteer's whole-fragment hit, or None. Uses the enhanced index."""
+    text = text.strip()
+    if not text:
+        return None
+    found = lang.gazetteer.resolve_fragments([text])
+    if not found or found[0] is None:
+        return None
+    return Place(*found[0])
+
+
 def classify_fragment(text: str, lang: LanguageModule) -> Fragment:
-    """V3 classification, first match: place, city+country-code, online, funder, institution, else unclassified.
+    """V3 classification, first match: office, place, city+country-code, online, funder, institution.
 
     V1 / V3: a fragment is a place only when the whole fragment is a place name.
     V3b: a city followed by its own country code (``Seoul KR``) is a place, not an institution.
+    V3c: a fragment the gazetteer resolves to a place (city, district, county,
+    neighbourhood) is a place even when it is the venue's only fragment, and
+    also when V7a–d leave only that place name. It is not an institution, so
+    V7e, V8 and V9 never see it. A longer name that merely contains a place
+    word stays an institution.
+    V8b: an administrative office is an institution even though it starts with a place.
     """
-    gazetteer = lang.gazetteer
-    places = gazetteer.resolve(text, words=False)
-    if places:
-        details = gazetteer.resolve_detail(text, words=False)
-        if details:
-            city, country, region = details[0]
-        else:
-            country, region = places[0]
-            city = ""
-        return Fragment(text, "place", Place(city, country, region))
+    spelled = institution_key(text, lang)
+    if venue_names.is_admin_office(text, lang) or venue_names.is_admin_office(spelled, lang):
+        return Fragment(text, "institution")
+    place = _resolved_place(text, lang)
+    if place is None and spelled != text.strip() and not venue_names.is_admin_office(spelled, lang):
+        place = _resolved_place(spelled, lang)
+    if place:
+        return Fragment(text, "place", place)
     city_code = re.fullmatch(r"(.+?)\s+([A-Z]{2,3})\.?", text)
     if city_code:
+        gazetteer = lang.gazetteer
         index = gazetteer.index
         code = city_code.group(2)
         country = code if code in index.country_codes else index.alpha3_codes.get(code, "")
@@ -261,10 +277,16 @@ def classify_fragment(text: str, lang: LanguageModule) -> Fragment:
 
 
 def classify_fragments(texts: list[str], lang: LanguageModule) -> list[Fragment]:
-    """Classify venue fragments with the adjacency context G3 requires."""
+    """Classify venue fragments with the adjacency context G3 requires.
+
+    V3c applies to every fragment, including a venue string that is only a place.
+    V8b is checked first so an office is not swallowed by a place hit on its stem.
+    """
     fragments: list[Fragment] = []
     for text, detail in zip(texts, lang.gazetteer.resolve_fragments(texts)):
-        if detail:
+        if venue_names.is_admin_office(text, lang):
+            fragments.append(Fragment(text, "institution"))
+        elif detail:
             city, country, region = detail
             fragments.append(Fragment(text, "place", Place(city, country, region)))
         else:
@@ -519,6 +541,9 @@ def _name_rule_merges(
     merges: list[tuple[str, str, str]] = []
 
     def join(rule: str, left: str, right: str) -> None:
+        # V8b: an office is never the same entity as the place it administers.
+        if venue_names.forbids_place_office_merge(left, right, lang):
+            return
         if union_find.union(left, right):
             merges.append((rule, left, right))
 
@@ -553,8 +578,9 @@ def _name_rule_merges(
             if parent in keys and venue_names.specific(parent, lang):
                 city = venue_names.city_name(place, lang)
                 seen = key_cities.get(parent)
-                # A chain is not one place: the parent's own rows must not point elsewhere.
-                if seen and seen.most_common(1)[0][0] == city:
+                # One site, named by its city (ZKM Karlsruhe). More than one city
+                # means branches (MMCA Seoul, MMCA Cheongju): never join.
+                if seen and len(seen) == 1 and seen.most_common(1)[0][0] == city:
                     join("V8", parent, key)
 
     if "V9" not in rules:
@@ -694,6 +720,8 @@ def _resolve(
     alias_merges = 0
     v5_merges: list[tuple[str, str, str]] = []
     for left, right in sorted(qualified_pairs):
+        if venue_names.forbids_place_office_merge(left, right, lang):
+            continue
         if union_find.union(left, right):
             alias_merges += 1
             v5_merges.append((_alias_rule(left, right), left, right))
@@ -703,6 +731,8 @@ def _resolve(
             hangul_in[union_find.find(key)].add(key)
     single_merges = 0
     for left, right in single_pairs:
+        if venue_names.forbids_place_office_merge(left, right, lang):
+            continue
         left_root, right_root = union_find.find(left), union_find.find(right)
         if left_root == right_root or len(hangul_in[left_root] | hangul_in[right_root]) >= 2:
             continue

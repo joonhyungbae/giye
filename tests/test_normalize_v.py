@@ -96,8 +96,8 @@ def test_demo_v7_v8_v9_and_false_merges(tmp_path: Path) -> None:
     ids = _ids(rows, result)
     # V7 strips the title and the qualifier; V9 joins the English name.
     assert ids["서울시립미술관 《빛》"] == ids["서울시립미술관 외"] == ids["Seoul Museum of Art"]
-    # V8: a building part, and an acronym plus the city its rows already name.
-    assert ids["국립현대미술관 서울관"] == ids["국립현대미술관"]
+    # V8: 서울관 is a branch, so it stays apart. ZKM Karlsruhe is the acronym's only city.
+    assert ids["국립현대미술관 서울관"] != ids["국립현대미술관"]
     assert ids["ZKM Karlsruhe"] == ids["ZKM, Karlsruhe"]
     # V7e folds centre/center. V9 joins the Hangul name and the other word order.
     nabi = ids["Art Center Nabi"]
@@ -127,6 +127,94 @@ def test_demo_v7_v8_v9_and_false_merges(tmp_path: Path) -> None:
     bullets = [line for line in section.splitlines() if line.startswith("- ") and not line.startswith("- none")]
     assert len(bullets) == len(result.merges)
     assert all(line.split()[1] in {"V5a", "V5d", "V5f", "V7e", "V8", "V9"} for line in bullets)
+
+
+def test_v3c_place_v8_branch_and_v8b_office() -> None:
+    """Branches, offices, and bare places stay apart from the institution they were joined to."""
+    lang = KoreanEnglish.load()
+    assert hangul_part_parent("국립현대미술관전시실", lang) == "국립현대미술관"
+    assert hangul_part_parent("국립현대미술관창고동", lang) == "국립현대미술관"
+    assert hangul_part_parent("국립현대미술관별관", lang) == "국립현대미술관"
+    assert hangul_part_parent("국립현대미술관청주관", lang) == ""
+    assert hangul_part_parent("국립현대미술관서울관", lang) == ""
+    assert hangul_part_parent("국립현대미술관과천관", lang) == ""
+    assert hangul_part_parent("국립현대미술관덕수궁관", lang) == ""
+    assert hangul_part_parent("노원구청", lang) == ""
+    assert hangul_part_parent("노원구청주관", lang) == ""
+    # "hall annex" is itself a Latin part (hall N), so the parent example has no hall.
+    assert latin_part_parent("white cube annex", lang) == "white cube"
+    assert latin_part_parent("white cube lobby", lang) == "white cube"
+    assert latin_part_parent("seoul city hall", lang) == ""
+
+    rows = [
+        _row("mmca", "국립현대미술관"),
+        _row("hall", "국립현대미술관 전시실"),
+        _row("store", "국립현대미술관 창고동"),
+        _row("annex", "국립현대미술관 별관"),
+        _row("cheongju-branch", "국립현대미술관 청주관"),
+        _row("seoul-branch", "국립현대미술관 서울관"),
+        _row("zkm-city", "ZKM, Karlsruhe", "p2"),
+        _row("zkm-name", "ZKM Karlsruhe"),
+        _row("mmca-seoul-city", "MMCA, Seoul"),
+        _row("mmca-cheongju-city", "MMCA, Cheongju", "p2"),
+        _row("mmca-seoul", "MMCA Seoul"),
+        _row("mmca-cheongju", "MMCA Cheongju"),
+        _row("nowon", "노원구"),
+        _row("nowon-office", "노원구청"),
+        _row("nowon-hosted", "노원구청 주관"),
+        _row("nowon-en", "Nowon District Office"),
+        _row("yongin", "용인"),
+        _row("yongin-en", "Yongin"),
+        _row("yongin-qual", "용인 외"),
+        _row("namwon", "남원"),
+        _row("namwon-en", "Namwon"),
+        _row("myeongdong", "명동"),
+        _row("myeongdong-en", "Myeongdong"),
+        _row("yongin-hall", "용인시청"),
+        _row("namwon-museum", "남원시립김병종미술관"),
+        _row("white", "White Cube"),
+        _row("white-annex", "White Cube Annex", "p2"),
+        _row("white-lobby", "White Cube Lobby"),
+        _row("seoul-hall", "Seoul City Hall"),
+    ]
+    result = build(rows, write=False)
+    ann = result.annotations
+
+    def kind(activity_id: str) -> str:
+        return ann[activity_id]["venue_kind"]
+
+    def vid(activity_id: str) -> str:
+        return ann[activity_id]["venue_id"]
+
+    museum = vid("mmca")
+    assert vid("hall") == vid("store") == vid("annex") == museum
+    assert vid("cheongju-branch") != museum
+    assert vid("seoul-branch") != museum
+    assert vid("zkm-city") == vid("zkm-name")
+    acronym = vid("mmca-seoul-city")
+    assert vid("mmca-cheongju-city") == acronym
+    assert vid("mmca-seoul") != acronym
+    assert vid("mmca-cheongju") != acronym
+    assert kind("nowon") == "place_only" and vid("nowon") == ""
+    assert kind("nowon-office") == "institution"
+    assert vid("nowon-hosted") != vid("nowon")
+    assert kind("nowon-en") == "institution"
+    for activity_id in ("yongin", "yongin-en", "yongin-qual", "namwon", "namwon-en", "myeongdong", "myeongdong-en"):
+        assert kind(activity_id) == "place_only", activity_id
+        assert vid(activity_id) == ""
+    assert kind("yongin-hall") == "institution"
+    assert kind("namwon-museum") == "institution"
+    assert vid("yongin-hall") != ""
+    assert vid("white") == vid("white-annex") == vid("white-lobby")
+    assert kind("seoul-hall") == "institution"
+    names = {row["name"] for row in result.venues}
+    assert "용인" not in names and "Yongin" not in names and "노원구" not in names
+    joined = {(rule, left, right) for rule, left, right in result.merges}
+    assert ("V8", "국립현대미술관", "국립현대미술관청주관") not in joined
+    assert ("V8", "국립현대미술관", "국립현대미술관서울관") not in joined
+    assert ("V8", "mmca", "mmca seoul") not in joined
+    assert ("V8", "zkm", "zkm karlsruhe") in joined
+    assert not any("용인" in f"{left} {right}" or "yongin" in f"{left} {right}" for _rule, left, right in joined)
 
 
 def test_v5e_blocks_two_hangul_names_and_v5f_allows_one_artist() -> None:
