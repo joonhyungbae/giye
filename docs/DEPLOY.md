@@ -63,7 +63,7 @@ The home machine runs the weekly pipeline and publishes the snapshot (`crontab -
 0 4 * * 1   $GIYE_HOME/deploy/scheduled.sh weekly
 ```
 
-`deploy/scheduled.sh` backs up the ledger, runs `scripts/pipeline.sh weekly` (link checks, evidence capture, self-reports, CV pulls) and pushes `data/site` when the run succeeds. After that it commits the ledger to the private repository (when `./gitp` exists) and copies the data that cannot be rebuilt to the VPS (`deploy/backup.sh`). A lock file keeps two runs from writing the ledger at once; a run that finds the lock taken is skipped and logged. Logs are in `data/work/logs/`.
+`deploy/scheduled.sh` backs up the ledger, runs `scripts/pipeline.sh weekly` (every stage through the `giye` package with `deploy/giye.production.toml`: collect for programmes still publishing, extract as CV pull plus cache replay with no unattended model call, resolve, normalize, publish, explore; plus link checks, evidence capture and self-reports) and pushes `data/site` when the run succeeds. After that it commits the ledger to the private repository (when `./gitp` exists) and copies the data that cannot be rebuilt to the VPS (`deploy/backup.sh`). A lock file keeps two runs from writing the ledger at once; a run that finds the lock taken is skipped and logged. Logs are in `data/work/logs/`.
 
 New editions are not polled. The maintainer works in the field and collects a new edition's roster when it is published (`scripts/pipeline.sh editions`, or the programme's collector), then runs `deploy/push.sh --data-only`. Rosters of ended editions are collected once and not again.
 

@@ -7,10 +7,18 @@
 # scheduled run and a manual one never write the ledger at the same time. The site is pushed only
 # when the pipeline exits cleanly.
 #
+# What runs: the private scripts/pipeline.sh drives the giye package with deploy/giye.production.toml
+# for every stage (collect for programmes still publishing, extract = CV pull + cache replay with no
+# model call, resolve, normalize, publish, explore), plus the maintenance steps the package has no
+# command for yet (link check, evidence capture, self-report import).
+#
 # Usage: deploy/scheduled.sh weekly     (crontab line in docs/DEPLOY.md)
+#        deploy/scheduled.sh --offline weekly   (no network, no push: a dry run on kept pages)
 
 set -euo pipefail
-MODE="${1:?usage: deploy/scheduled.sh weekly}"
+OFFLINE=""
+if [[ "${1:-}" == "--offline" ]]; then OFFLINE="--offline"; shift; fi
+MODE="${1:?usage: deploy/scheduled.sh [--offline] weekly}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 mkdir -p data/work/logs
@@ -26,8 +34,12 @@ fi
   echo "# scheduled $MODE run $(date -Iseconds)"
   # Back up the ledger before the run (AGENTS.md: copy before writing).
   backup="data/work/backups/ledger-$(date +%Y%m%d-%H%M)-before-scheduled-${MODE}"
-  mkdir -p "$backup" && cp data/ledger/*.csv "$backup/"
-  ./scripts/pipeline.sh "$MODE"
+  mkdir -p "$backup" && cp data/ledger/*.csv data/frames.yml "$backup/"
+  ./scripts/pipeline.sh $OFFLINE "$MODE"
+  if [[ -n "$OFFLINE" ]]; then
+    echo "# offline run: nothing pushed $(date -Iseconds)"
+    exit 0
+  fi
   deploy/push.sh --data-only
   # Off-machine copy of the ledger: the private repository versions data/ledger/*.csv (AGENTS.md,
   # two git directories). The public checkout has no ./gitp, so this step is skipped there.

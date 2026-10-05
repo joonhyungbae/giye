@@ -1,5 +1,5 @@
 # Production config for giye.org. Paths are relative to this file.
-# data/ is the private ledger tree. The field file is the one shipped in the package.
+# data/ is the private ledger tree. The field file is a private copy of the shipped one (see [paths]).
 [archive]
 name = "기예 Giye"
 id_prefix = "GY"
@@ -9,7 +9,38 @@ languages = ["ko", "en"]
 [paths]
 data = "../data"
 frames = "../data/frames.yml"
-field = "../src/giye/fields/korean-media-art/field.toml"
+# The private copy of the packaged field file, plus the CV extraction prompt the replay cache is
+# keyed by (see the note at the end of that file). The pipeline checks the copy against the package.
+field = "../data/field/field.toml"
+
+# Stage 1. Roster collectors are private code (they name real programmes and parse their pages);
+# helper modules beside them are imported by these files and are not listed.
+[collect]
+user_agent = "GiyeArchiveBot/0.2 (+https://giye.org)"
+collector_modules = [
+  "../data/collectors/nemaf.py",
+  "../data/collectors/njp.py",
+  "../data/collectors/njpaward.py",
+  "../data/collectors/vhaward.py",
+  "../data/collectors/opencircuit.py",
+  "../data/collectors/nabi.py",
+  "../data/collectors/nca.py",
+  "../data/collectors/zer01ne.py",
+  "../data/collectors/unfoldx.py",
+  "../data/collectors/platforml.py",
+  "../data/collectors/paradise.py",
+  "../data/collectors/transcribed.py",
+  "../data/collectors/ape.py",
+]
+
+# Stage 2. The replay cache holds the reference CV readings (scripts/import_reference_extractions.py).
+# model is part of the cache key and names who read the CV: an agent run, not an API model id, so
+# this config never sends it to an API. No key is stored here; a live call needs ANTHROPIC_API_KEY
+# in the environment and an explicit --model.
+[extract]
+model = "claude-code/claude-opus-5.5 (agent, reference)"
+chunk_chars = 0
+cache = "../data/work/cv_cache"
 
 [normalize]
 reference = "../data/reference"
