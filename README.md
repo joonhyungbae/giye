@@ -86,8 +86,9 @@ The root dataset has `name`, `description`, and `datePublished`. The software en
 licensed AGPL-3.0-only. The dataset's `license` is the run's data licence when
 `[publish] data_license` or `[archive] data_license` is set (`data_licence` is the same
 key; `[publish]` wins). Otherwise that property is omitted and the description says why.
-A file entity's `@id` is a path inside the crate directory, or an absolute `file:` URL
-when the bytes stay outside it.
+A file entity's `@id` is a path inside the crate directory: files outside it are copied in
+(`data/<path under the data directory>`, `config/<config file>`), so the crate is
+self-contained and carries no local absolute path.
 
 `giye collect` on the demo config writes under `examples/demo/data/`. `giye demo` does not: it
 uses a separate output directory so the fixtures stay clean.

@@ -8,10 +8,15 @@ sha256 of the configuration file, each roster and CV URL as a ``CreativeWork``
 ``ruleId``. Extract, the ledger, and publish do not have F/E/P/V ids; their
 actions say so and carry an empty list (docs/RULES.md).
 
-A file's ``@id`` is a path relative to the crate directory when the bytes are
-inside that directory. Bytes that stay outside it (the default crate lives in
-``<data>/work/export/ro-crate/``) are named with an absolute ``file:`` URL.
-RO-Crate 1.1 forbids a relative id that climbs out of the crate with ``..``.
+Every file's ``@id`` is a path relative to the crate directory. A file that
+is already inside the crate keeps its place. A file outside it is copied in
+first: a file under the data directory to ``data/<path under data>``, the
+configuration file to ``config/<name>``, anything else to ``external/<name>``.
+Why: an absolute ``file:`` id leaks a local path and does not resolve on
+another machine, and RO-Crate 1.1 forbids a relative id that climbs out of
+the crate with ``..``. The crate is therefore self-contained: it can be moved
+or zipped and every id still names its bytes. A copy whose bytes already
+match is not written again.
 
 The software entity's licence is AGPL-3.0-only. The root dataset's ``license``
 is the data licence of the run when ``[publish]`` or ``[archive]`` sets
@@ -24,6 +29,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -129,15 +135,16 @@ def _graph(config: Config, crate: Path, toml: Path | None) -> list[dict]:
     works, snapshots = _inputs(config)
     files: list[dict] = []
     file_ids: dict[str, str] = {}
+    data = Path(config.data)
     if toml is not None:
-        _crate_file(files, file_ids, crate, toml, encoding="application/toml")
-    snapshot_ids = _crate_paths(files, file_ids, crate, snapshots)
-    cv_ids = _crate_paths(files, file_ids, crate, _files_under(config.raw / "cv"))
-    ledger_ids = _crate_paths(files, file_ids, crate, sorted(config.ledger.glob("*.csv")))
+        _crate_file(files, file_ids, crate, toml, encoding="application/toml", data=data, config_file=toml)
+    snapshot_ids = _crate_paths(files, file_ids, crate, snapshots, data=data)
+    cv_ids = _crate_paths(files, file_ids, crate, _files_under(config.raw / "cv"), data=data)
+    ledger_ids = _crate_paths(files, file_ids, crate, sorted(config.ledger.glob("*.csv")), data=data)
     resolve_names = {"review_queue.csv", "gy_retired.csv"}
     resolve_ids = [ident for ident in ledger_ids if Path(ident).name in resolve_names]
-    processed_ids = _crate_paths(files, file_ids, crate, _files_under(config.processed))
-    site_ids = _crate_paths(files, file_ids, crate, _files_under(config.site))
+    processed_ids = _crate_paths(files, file_ids, crate, _files_under(config.processed), data=data)
+    site_ids = _crate_paths(files, file_ids, crate, _files_under(config.site), data=data)
     work_entities, roster_ids, cv_work_ids = _work_entities(works)
     actions = _stage_actions(
         {
@@ -161,20 +168,29 @@ def _graph(config: Config, crate: Path, toml: Path | None) -> list[dict]:
 
 
 def _crate_file(
-    files: list[dict], file_ids: dict[str, str], crate: Path, path: Path, *, encoding: str = ""
+    files: list[dict],
+    file_ids: dict[str, str],
+    crate: Path,
+    path: Path,
+    *,
+    encoding: str = "",
+    data: Path | None = None,
+    config_file: Path | None = None,
 ) -> str | None:
     """Add a File entity once. Returns its ``@id``, or None when ``path`` is not a file."""
     if not path.is_file():
         return None
-    rel = _file_id(crate, path)
+    rel = _file_id(crate, path, data=data, config_file=config_file)
     if rel in file_ids:
         return file_ids[rel]
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    _place(path, crate / rel, digest)
     entity: dict = {
         "@id": rel,
         "@type": "File",
         "name": path.name,
         "contentSize": path.stat().st_size,
-        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "sha256": digest,
     }
     if encoding:
         entity["encodingFormat"] = encoding
@@ -183,11 +199,13 @@ def _crate_file(
     return rel
 
 
-def _crate_paths(files: list[dict], file_ids: dict[str, str], crate: Path, paths: list[Path]) -> list[str]:
+def _crate_paths(
+    files: list[dict], file_ids: dict[str, str], crate: Path, paths: list[Path], *, data: Path
+) -> list[str]:
     """File ``@id``s for ``paths``, in that order, skipping a path that is not a file."""
     ids = []
     for path in paths:
-        ident = _crate_file(files, file_ids, crate, path)
+        ident = _crate_file(files, file_ids, crate, path, data=data)
         if ident:
             ids.append(ident)
     return ids
@@ -488,15 +506,32 @@ def _licence_ref(value: str) -> tuple[dict, dict | None]:
     return {"@id": uri}, entity
 
 
-def _file_id(crate: Path, path: Path) -> str:
-    """Relative path inside the crate, or an absolute ``file:`` URL.
+def _file_id(crate: Path, path: Path, *, data: Path | None = None, config_file: Path | None = None) -> str:
+    """Relative path of ``path`` inside the crate (see the module docstring for where outside files go).
 
     ``Path.relative_to`` fails when ``path`` is outside ``crate``, which is
     also when a relative id would have contained ``..``.
     """
     resolved = path.resolve()
     try:
-        relative = resolved.relative_to(crate.resolve())
+        return resolved.relative_to(crate.resolve()).as_posix()
     except ValueError:
-        return resolved.as_uri()
-    return relative.as_posix()
+        pass
+    if config_file is not None and resolved == config_file.resolve():
+        return f"config/{resolved.name}"
+    if data is not None:
+        try:
+            return f"data/{resolved.relative_to(data.resolve()).as_posix()}"
+        except ValueError:
+            pass
+    return f"external/{resolved.name}"
+
+
+def _place(source: Path, target: Path, digest: str) -> None:
+    """Copy ``source`` to ``target`` inside the crate unless the bytes are already there."""
+    if source.resolve() == target.resolve():
+        return
+    if target.is_file() and hashlib.sha256(target.read_bytes()).hexdigest() == digest:
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, target)

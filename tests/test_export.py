@@ -11,7 +11,7 @@ import zipfile
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
 
 from warcio.archiveiterator import ArchiveIterator
 
@@ -85,11 +85,13 @@ def test_demo_exports_warc_wacz_and_ro_crate(tmp_path: Path):
     graph = {entity["@id"]: entity for entity in crate["@graph"]}
     assert root["license"] == {"@id": "#no-data-licence"}
     assert graph["#no-data-licence"]["description"] == NO_DATA_LICENCE_REASON
-    _assert_ids_inside_crate_or_absolute(meta_path.parent, crate)
+    _assert_ids_inside_crate(meta_path.parent, crate)
     _assert_rocrate_11(meta_path)
     config_entity = next(entity for entity in crate["@graph"] if entity.get("name") == "giye.toml")
     assert config_entity["sha256"] == hashlib.sha256(DEMO.read_bytes()).hexdigest()
-    assert _locate(meta_path.parent, config_entity["@id"]) == DEMO.resolve()
+    # Files are copied into the crate: the config sits at config/<name>, data under data/.
+    assert config_entity["@id"] == "config/giye.toml"
+    assert _locate(meta_path.parent, config_entity["@id"]).read_bytes() == DEMO.read_bytes()
 
     works = [entity for entity in crate["@graph"] if entity.get("@type") == "CreativeWork" and entity.get("url")]
     rosters = {entity["url"]: entity for entity in works if entity.get("name") == "roster"}
@@ -127,7 +129,7 @@ def test_demo_exports_warc_wacz_and_ro_crate(tmp_path: Path):
     assert licensed_graph["./"]["license"]["@id"] == "https://spdx.org/licenses/CC-BY-4.0.html"
     assert licensed_graph["#giye"]["license"]["@id"] == SOFTWARE_LICENCE
     assert NO_DATA_LICENCE_REASON not in licensed_graph["./"]["description"]
-    _assert_ids_inside_crate_or_absolute(licensed_meta.parent, licensed_crate)
+    _assert_ids_inside_crate(licensed_meta.parent, licensed_crate)
     _assert_rocrate_11(licensed_meta)
 
 
@@ -157,13 +159,12 @@ def test_demo_summary_does_not_depend_on_the_system_date(tmp_path: Path, monkeyp
 
 
 def _locate(crate: Path, entity_id: str) -> Path:
-    if entity_id.startswith("file:"):
-        return Path(unquote(urlparse(entity_id).path))
+    assert not entity_id.startswith("file:"), entity_id
     return (crate / entity_id).resolve()
 
 
-def _assert_ids_inside_crate_or_absolute(crate: Path, document: dict) -> None:
-    """Every hasPart and File id is inside the crate directory or an absolute URL."""
+def _assert_ids_inside_crate(crate: Path, document: dict) -> None:
+    """Every hasPart and File id is a relative path to a file inside the crate (no ``file:`` URL)."""
     graph = {entity["@id"]: entity for entity in document["@graph"]}
     root = graph["./"]
     ids = [part["@id"] for part in root.get("hasPart") or []]
@@ -174,10 +175,7 @@ def _assert_ids_inside_crate_or_absolute(crate: Path, document: dict) -> None:
             raise AssertionError(entity_id)
         if "://" in entity_id:
             parsed = urlparse(entity_id)
-            assert parsed.scheme in {"file", "http", "https"}
-            assert parsed.netloc or parsed.scheme == "file"
-            if parsed.scheme == "file":
-                assert Path(unquote(parsed.path)).is_file()
+            assert parsed.scheme in {"http", "https"} and parsed.netloc, entity_id
             continue
         resolved = (crate / entity_id).resolve()
         resolved.relative_to(root_resolved)
