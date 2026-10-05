@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Build the site snapshot (``<data>/site/*.json``) from the ledger.
 
-Ported from ``scripts/build_site_dataset.py``. The JSON objects keep the
-production keys. Two production side effects are not done here: rewriting
-``frames.yml`` (the counts live in ``frames.json`` and ``coverage.json``), and
-building the embedding flight file (stage 6, not ported). ``citations.json``
-is new: the production site built the same sentences in the browser.
+The JSON objects are what the site reads. Counts are written to ``frames.json``
+and ``coverage.json``; ``frames.yml`` is not rewritten. Embedding flight files
+are stage 6 and are not built here. ``citations.json`` holds the APA, Chicago,
+and BibTeX strings (see ``giye.publish.cite``). See docs/RULES.md (publication).
 
 Who is published: a ledger row that is in scope, has an http(s) source, is on a
 roster or has ``cv_link_ok=yes``, and whose status is empty, ``PUBLISHED``, or
@@ -22,8 +21,8 @@ survivor).
 
 F4 coverage is members recorded / roster size, printed as
 ``round(100 * included / roster, 1)``. ``roster`` is the greater of the declared
-``roster_count`` and the membership count. Production's comment says the declared
-size is used when it is set; the code uses the maximum, and this follows the code.
+``roster_count`` and the membership count, so a declared size smaller than the
+rows on file does not hide members.
 """
 
 from __future__ import annotations
@@ -36,7 +35,7 @@ from pathlib import Path
 
 import yaml
 
-from giye.collect.frames import is_admitted, load_frames, validate_transcribed_membership
+from giye.collect.frames import FrameRegistry, is_admitted, load_frames, validate_transcribed_membership
 from giye.config import Config, ConfigError
 from giye.extract.apply import PRIVATE_TITLE
 from giye.field import Field, edition_alias
@@ -83,6 +82,12 @@ SNAPSHOT_FILES = (
 
 @dataclass
 class PublishResult:
+    """Counts and paths written by :func:`publish`.
+
+    ``files`` lists every snapshot path touched, including JSON arrays left
+    empty when the archive has not authored them yet.
+    """
+
     site: Path
     artists: int
     activities: int
@@ -94,14 +99,15 @@ class PublishResult:
 
 
 def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
-    """Write the snapshot under ``config.site``. ``now`` defaults to the current UTC time."""
+    """Write the snapshot under ``config.site`` and return the counts and paths.
+
+    ``now`` defaults to the current UTC time and stamps generation, citation
+    access dates, and the version row. Who is a page, who is a stub, and F4
+    coverage follow docs/RULES.md (publication).
+    """
     from giye.config import checked_frames
 
-    if not (config.site_url or "").strip():
-        raise ConfigError(
-            "[publish] site_url is required. Set it to this archive's public origin "
-            "(the demo uses https://example.org). Citations use <site_url>/artist/<id> and <site_url>/data."
-        )
+    _require_site_url(config)
     registry = checked_frames(config)
     clock = _clock(now)
     stamp = clock.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -111,79 +117,24 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
     acts_in = ledger.read("activities")
     links_in = ledger.read("links")
     membership = ledger.read("frame_membership")
-    try:
-        validate_transcribed_membership(registry, membership)
-    except ValueError as exc:
-        raise ConfigError(str(exc)) from exc
+    _check_membership(registry, membership)
     prefix = config.id_prefix or "GY"
-
-    # A collector writes the frame code into the roster activity's origin, so this is the
-    # role each person had on that edition. A later row with the same origin replaces it.
-    roster_role = {
-        (row["ledger_id"], row["origin"]): row["role"]
-        for row in acts_in
-        if row.get("role") and row.get("origin") and not row["origin"].startswith("cv:")
-    }
-    frames_doc = _frames_document(config.frames)
-    frame_rows = list(frames_doc.get("frames") or [])
-    frame_codes = [str(row.get("code") or "") for row in frame_rows]
-    years_by_frame = {str(row.get("code") or ""): str(row.get("years_covered") or "") for row in frame_rows}
-
-    def edition_of(mem_code: str) -> tuple[str, str | None] | None:
-        return resolve_frame_edition(mem_code, frame_codes, years_by_frame, field=config.field_config)
-
-    decisions = {frame.code: frame.eligibility.decision for frame in registry.frames}
-
-    def admitted_membership(mem_code: str) -> bool:
-        """A code that does not resolve is not a recorded decision, so it stays."""
-        resolved = edition_of(mem_code)
-        if resolved is None:
-            return True
-        return is_admitted(decisions.get(resolved[0], ""))
-
-    # Coverage still lists every frame. Memberships of a frame that was not
-    # admitted are not part of the published roster.
-    public_membership = [row for row in membership if admitted_membership(row["frame_code"])]
-
-    mem_by_ledger: dict[str, list[str]] = {}
-    for row in public_membership:
-        mem_by_ledger.setdefault(row["ledger_id"], []).append(row["frame_code"])
-
-    scope = {row["ledger_id"] for row in ledger.read("scope") if row.get("scope") == "out"}
-    # A hidden person stays on the roster. That is not a row the pipeline forgot
-    # to publish: the tombstone is the page. Scope-out is the other exclusion.
-    hidden = {row["ledger_id"] for row in artists_in if row.get("status") == "HIDDEN_BY_REQUEST"}
-    frame_url = {str(row.get("code") or ""): row.get("source_url") or "" for row in frame_rows}
-    roster_url: dict[str, str] = {}
-    for row in public_membership:
-        edition = edition_of(row["frame_code"])
-        for url in (row.get("source_url") or "", frame_url.get(edition[0], "") if edition else ""):
-            if str(url).startswith("http"):
-                roster_url.setdefault(row["ledger_id"], str(url))
-                break
-    for artist in artists_in:
-        if not (artist.get("source_url") or "").startswith("http") and artist["ledger_id"] in roster_url:
-            artist["source_url"] = roster_url[artist["ledger_id"]]
-
-    publishable = [
-        artist
-        for artist in artists_in
-        if artist["ledger_id"] not in scope
-        and (artist.get("cv_link_ok") == "yes" or artist["ledger_id"] in mem_by_ledger)
-        and (artist.get("source_url") or "").startswith("http")
-        # A fact without its collection date is not published, like one without a source.
-        and (artist.get("collected_at") or "").strip()
-        and artist.get("status") in ("", "PUBLISHED", "STAGED")
-    ]
-    publishable.sort(key=lambda row: row.get("name_ko") or row.get("name_en") or "")
+    roster_role = _activity_roster_roles(acts_in)
+    frame_rows = list(_frames_document(config.frames).get("frames") or [])
+    edition_of = _edition_resolver(frame_rows, config.field_config)
+    public_membership = _admitted_rows(membership, registry, edition_of)
+    mem_by_ledger = _codes_by_ledger(public_membership)
+    scope = _scope_ids(ledger.read("scope"))
+    hidden = _hidden_ids(artists_in)
+    _fill_roster_sources(artists_in, _roster_urls(public_membership, frame_rows, edition_of))
+    publishable = _publishable_people(artists_in, scope, mem_by_ledger)
     ledger_to_gy = _assign_gy_ids(ledger, artists_in, publishable, prefix)
     _warn_gy_gaps(artists_in, ledger.read("gy_retired"), prefix)
-
     derived = _load_derived(config.processed / "artist_attributes.csv")
     flags = _load_activity_flags(config.processed / "activities.csv")
     cv_status = _cv_status(ledger.read("cv_sources"))
     same_name = _same_name(ledger.read("review_queue"), ledger_to_gy)
-
+    tags = config.field_config.resolved()
     artists_out = [
         _artist_record(
             artist,
@@ -195,28 +146,218 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
             cv_status=cv_status.get(artist["ledger_id"], "none"),
             same_name=same_name.get(artist["ledger_id"], []),
             stamp=stamp,
-            tags=config.field_config.resolved(),
+            tags=tags,
         )
         for artist in publishable
     ]
     published_ids = {row["id"] for row in artists_out}
-    stubs = {
-        artist["gy_id"]: "HIDDEN_BY_REQUEST" if artist.get("status") == "HIDDEN_BY_REQUEST" else "WITHDRAWN"
-        for artist in artists_in
-        if artist.get("gy_id") and artist["gy_id"] not in published_ids
-    }
+    stubs = _stubs(artists_in, published_ids)
     activities_out = _activities(acts_in, ledger_to_gy, flags, stamp)
     links_out = _links(links_in, ledger_to_gy, stamp)
     collaborations_out = _collaborations(ledger, ledger_to_gy)
     background_out = _background(acts_in, ledger_to_gy, clock.year)
     frames_out = _frames(frame_rows, public_membership, edition_of, ledger_to_gy, scope)
+    _refuse_unpublished_roster(mem_by_ledger, ledger_to_gy, scope, hidden)
+    active = _active_frame_count(frame_rows)
+    coverage = _coverage_document(stamp, artists_out, artists_in, frame_rows, config, active)
+    version = config.dataset_version or "0.2"
+    versions = [_version_record(version, today, stamp, active, len(artists_out))]
+    citations = _citations(config, artists_out, version, today, clock.year)
+    redirects = _redirects(artists_in, ledger.read("gy_retired"))
+    payloads = {
+        "artists.json": artists_out,
+        "activities.json": activities_out,
+        "links.json": links_out,
+        "collaborations.json": collaborations_out,
+        "background.json": background_out,
+        "frames.json": frames_out,
+        "dataset_versions.json": versions,
+        "coverage.json": coverage,
+        "artist_stubs.json": stubs,
+        "gy_redirects.json": redirects,
+        "citations.json": citations,
+    }
+    files = _write_snapshot(config.site, payloads)
+    print(
+        f"site artists={len(artists_out)} activities={len(activities_out)} "
+        f"links={len(links_out)} frames={len(frames_out)}"
+    )
+    return PublishResult(
+        site=config.site,
+        artists=len(artists_out),
+        activities=len(activities_out),
+        links=len(links_out),
+        frames=len(frames_out),
+        stubs=len(stubs),
+        redirects=len(redirects),
+        files=files,
+    )
+
+
+def _require_site_url(config: Config) -> None:
+    """Citations need a public origin. An empty ``site_url`` stops the build."""
+    if not (config.site_url or "").strip():
+        raise ConfigError(
+            "[publish] site_url is required. Set it to this archive's public origin "
+            "(the demo uses https://example.org). Citations use <site_url>/artist/<id> and <site_url>/data."
+        )
+
+
+def _check_membership(registry: FrameRegistry, membership: list[dict[str, str]]) -> None:
+    """A transcribed-membership failure is a config error, the same as a bad frame file."""
+    try:
+        validate_transcribed_membership(registry, membership)
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from exc
+
+
+def _activity_roster_roles(acts_in: list[dict]) -> dict[tuple[str, str], str]:
+    """Role each person had on a roster edition. A later row with the same origin replaces it.
+
+    A collector writes the frame code into the roster activity's origin. A CV origin is not a roster role.
+    """
+    return {
+        (row["ledger_id"], row["origin"]): row["role"]
+        for row in acts_in
+        if row.get("role") and row.get("origin") and not row["origin"].startswith("cv:")
+    }
+
+
+def _edition_resolver(frame_rows: list, field: Field):
+    """Membership code → (frame, edition), using this archive's field file."""
+    frame_codes = [str(row.get("code") or "") for row in frame_rows]
+    years_by_frame = {str(row.get("code") or ""): str(row.get("years_covered") or "") for row in frame_rows}
+
+    def edition_of(mem_code: str) -> tuple[str, str | None] | None:
+        return resolve_frame_edition(mem_code, frame_codes, years_by_frame, field=field)
+
+    return edition_of
+
+
+def _admitted_rows(membership: list[dict], registry: FrameRegistry, edition_of) -> list[dict]:
+    """Memberships of admitted frames (included or adjacent).
+
+    A code that does not resolve is not a recorded decision, so it stays.
+    Frames that were not admitted stay on the coverage files; their memberships
+    are not part of the published roster.
+    """
+    decisions = {frame.code: frame.eligibility.decision for frame in registry.frames}
+
+    def admitted(mem_code: str) -> bool:
+        resolved = edition_of(mem_code)
+        if resolved is None:
+            return True
+        return is_admitted(decisions.get(resolved[0], ""))
+
+    return [row for row in membership if admitted(row["frame_code"])]
+
+
+def _codes_by_ledger(public_membership: list[dict]) -> dict[str, list[str]]:
+    """Person → membership codes, in file order."""
+    mem_by_ledger: dict[str, list[str]] = {}
+    for row in public_membership:
+        mem_by_ledger.setdefault(row["ledger_id"], []).append(row["frame_code"])
+    return mem_by_ledger
+
+
+def _scope_ids(scope_rows: list[dict]) -> set[str]:
+    """Ledger ids whose scope row says ``out``."""
+    return {row["ledger_id"] for row in scope_rows if row.get("scope") == "out"}
+
+
+def _hidden_ids(artists_in: list[dict]) -> set[str]:
+    """People hidden by request. They stay on the roster; the tombstone is the page."""
+    return {row["ledger_id"] for row in artists_in if row.get("status") == "HIDDEN_BY_REQUEST"}
+
+
+def _roster_urls(public_membership: list[dict], frame_rows: list, edition_of) -> dict[str, str]:
+    """First http(s) URL for a person: the membership row, else the frame page."""
+    frame_url = {str(row.get("code") or ""): row.get("source_url") or "" for row in frame_rows}
+    roster_url: dict[str, str] = {}
+    for row in public_membership:
+        edition = edition_of(row["frame_code"])
+        for url in (row.get("source_url") or "", frame_url.get(edition[0], "") if edition else ""):
+            if str(url).startswith("http"):
+                roster_url.setdefault(row["ledger_id"], str(url))
+                break
+    return roster_url
+
+
+def _fill_roster_sources(artists_in: list[dict], roster_url: dict[str, str]) -> None:
+    """Copy a roster URL onto a person who has no http(s) source of their own."""
+    for artist in artists_in:
+        if not (artist.get("source_url") or "").startswith("http") and artist["ledger_id"] in roster_url:
+            artist["source_url"] = roster_url[artist["ledger_id"]]
+
+
+def _publishable_people(artists_in: list[dict], scope: set[str], mem_by_ledger: dict[str, list[str]]) -> list[dict]:
+    """Rows that become pages, in name order so a batch of new ids follows it.
+
+    In scope, on a roster or ``cv_link_ok=yes``, an http(s) source, a collection
+    date, status empty / ``PUBLISHED`` / ``STAGED``. A fact without its
+    collection date is not published.
+    """
+    publishable = [
+        artist
+        for artist in artists_in
+        if artist["ledger_id"] not in scope
+        and (artist.get("cv_link_ok") == "yes" or artist["ledger_id"] in mem_by_ledger)
+        and (artist.get("source_url") or "").startswith("http")
+        and (artist.get("collected_at") or "").strip()
+        and artist.get("status") in ("", "PUBLISHED", "STAGED")
+    ]
+    publishable.sort(key=lambda row: row.get("name_ko") or row.get("name_en") or "")
+    return publishable
+
+
+def _stubs(artists_in: list[dict], published_ids: set[str]) -> dict[str, str]:
+    """A ``gy_id`` that is not a page: hidden by request, otherwise withdrawn.
+
+    The URL stays. The page has no name and no records.
+    """
+    return {
+        artist["gy_id"]: "HIDDEN_BY_REQUEST" if artist.get("status") == "HIDDEN_BY_REQUEST" else "WITHDRAWN"
+        for artist in artists_in
+        if artist.get("gy_id") and artist["gy_id"] not in published_ids
+    }
+
+
+def _refuse_unpublished_roster(
+    mem_by_ledger: dict[str, list[str]],
+    ledger_to_gy: dict[str, str],
+    scope: set[str],
+    hidden: set[str],
+) -> None:
+    """Every admitted roster member is published, out of scope, or hidden.
+
+    A member who is none of those stops the build: a roster row is evidence of
+    participation and has to reach the site.
+    """
     unpublished = sorted(set(mem_by_ledger) - set(ledger_to_gy) - scope - hidden)
     if unpublished:
         raise SystemExit(
             f"{len(unpublished)} roster members are not published (e.g. {unpublished[:5]}); "
             "every roster row must reach the site"
         )
-    active = sum(1 for row in frame_rows if row.get("status") == "active")
+
+
+def _active_frame_count(frame_rows: list) -> int:
+    """How many frames have status ``active``."""
+    return sum(1 for row in frame_rows if row.get("status") == "active")
+
+
+def _coverage_document(
+    stamp: str,
+    artists_out: list[dict],
+    artists_in: list[dict],
+    frame_rows: list,
+    config: Config,
+    active: int,
+) -> dict:
+    """F4 coverage. ``roster`` was already set to the greater of the declared size and the membership count.
+
+    Only a schedule the archive declares is stated publicly. Nothing is claimed by default.
+    """
     coverage = {
         "generated_at": stamp,
         "published_artists": len(artists_out),
@@ -235,42 +376,33 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
             for row in frame_rows
         ],
     }
-    # Only a schedule the archive declares is stated publicly. The package runs
-    # no link check on its own, so nothing is claimed by default.
     if config.cadence:
         coverage["cadence"] = dict(config.cadence)
-    version = config.dataset_version or "0.2"
-    versions = [
-        {
-            "id": mint_id(f"site-version\x1f{version}"),
-            "version": version,
-            "released_at": today,
-            "doi": None,
-            "notes": (
-                f"Ledger snapshot · frames active={active} · "
-                f"published={len(artists_out)} · generated {stamp}"
-            ),
-            "artist_count": len(artists_out),
-        }
-    ]
-    citations = _citations(config, artists_out, version, today, clock.year)
-    redirects = _redirects(artists_in, ledger.read("gy_retired"))
+    return coverage
 
-    site = config.site
-    site.mkdir(parents=True, exist_ok=True)
-    payloads = {
-        "artists.json": artists_out,
-        "activities.json": activities_out,
-        "links.json": links_out,
-        "collaborations.json": collaborations_out,
-        "background.json": background_out,
-        "frames.json": frames_out,
-        "dataset_versions.json": versions,
-        "coverage.json": coverage,
-        "artist_stubs.json": stubs,
-        "gy_redirects.json": redirects,
-        "citations.json": citations,
+
+def _version_record(version: str, today: str, stamp: str, active: int, n_artists: int) -> dict:
+    """One dataset-version row. The id is stable for this version string."""
+    return {
+        "id": mint_id(f"site-version\x1f{version}"),
+        "version": version,
+        "released_at": today,
+        "doi": None,
+        "notes": (
+            f"Ledger snapshot · frames active={active} · "
+            f"published={n_artists} · generated {stamp}"
+        ),
+        "artist_count": n_artists,
     }
+
+
+def _write_snapshot(site: Path, payloads: dict) -> list[Path]:
+    """Write each payload. A missing optional file is created once, as an empty list.
+
+    Optional files are vocabularies, content pages, revisions, and research.
+    An existing file is left as the archive wrote it.
+    """
+    site.mkdir(parents=True, exist_ok=True)
     files: list[Path] = []
     for name, payload in payloads.items():
         path = site / name
@@ -281,20 +413,7 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
         if not path.exists():
             _dump(path, [])
         files.append(path)
-    print(
-        f"site artists={len(artists_out)} activities={len(activities_out)} "
-        f"links={len(links_out)} frames={len(frames_out)}"
-    )
-    return PublishResult(
-        site=site,
-        artists=len(artists_out),
-        activities=len(activities_out),
-        links=len(links_out),
-        frames=len(frames_out),
-        stubs=len(stubs),
-        redirects=len(redirects),
-        files=files,
-    )
+    return files
 
 
 def resolve_frame_edition(
@@ -368,7 +487,11 @@ def guess_medium(field_name: str, category: str, *, field: Field | None = None) 
 
 
 def parse_year(value: object) -> int | None:
-    """First 19xx or 20xx in ``value``, or None. Same as production ``parse_year``."""
+    """First 19xx or 20xx in ``value``, or None.
+
+    A year outside that window is not a publication year. Activities, background,
+    and collaborations all use this reading.
+    """
     if value is None or value == "":
         return None
     match = re.search(r"(19|20)\d{2}", str(value))
@@ -376,6 +499,7 @@ def parse_year(value: object) -> int | None:
 
 
 def _clock(now: datetime | None) -> datetime:
+    """UTC clock for snapshot stamps. A naive datetime is taken as UTC."""
     if now is None:
         return datetime.now(timezone.utc)
     if now.tzinfo is None:
@@ -384,6 +508,7 @@ def _clock(now: datetime | None) -> datetime:
 
 
 def _dump(path: Path, payload: object) -> None:
+    """Write JSON the site reads: UTF-8, non-ASCII kept, two-space indent, trailing newline."""
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
@@ -407,8 +532,9 @@ def _assign_gy_ids(
 
     The next number is one past the highest ever issued, retired ids included.
     ``publishable`` is already in name order, so a batch of new ids follows that
-    order. An id already on the row is kept. The collector in this package
-    usually issued the id at insert; production issued it here.
+    order. An id already on the row is kept. The collector usually issued the
+    id at insert; a row that reaches publish without one is numbered here and
+    the ledger is written, because the id is permanent.
     """
     retired = ledger.read("gy_retired")
     issued = [gy_number(row.get("gy_id", ""), prefix=prefix) for row in artists_in]
@@ -453,7 +579,7 @@ def _load_derived(path: Path) -> dict[str, dict[str, dict]]:
         fields = out.setdefault(row["ledger_id"], {})
         if row["field"] == "record_depth":
             # P6 feeds the depth queue. Copying it into artist.derived would add
-            # a key on every published person. Production's loader skips it.
+            # a key on every published person, so the snapshot omits it.
             continue
         if row["field"] == "medium":
             bucket = fields.setdefault("medium", {**row, "values": []})
@@ -464,11 +590,13 @@ def _load_derived(path: Path) -> dict[str, dict[str, dict]]:
 
 
 def _derived_value(derived: dict, name: str, cast=str):
+    """Cast one derived value, or None when the field is missing or blank."""
     value = derived.get(name, {}).get("value")
     return cast(value) if value not in (None, "") else None
 
 
 def _load_activity_flags(path: Path) -> dict[str, list[str]]:
+    """Flags a reader is shown. Only ``year_from_title`` (P1) is copied onto the row."""
     from giye.ledger.io import read_csv
 
     out: dict[str, list[str]] = {}
@@ -480,6 +608,7 @@ def _load_activity_flags(path: Path) -> dict[str, list[str]]:
 
 
 def _cv_status(sources: list[dict]) -> dict[str, str]:
+    """CV state per person: ``found`` once a snapshot exists, else ``pending``. Inactive rows are ignored."""
     out: dict[str, str] = {}
     for row in sources:
         if row.get("active", "true") != "true":
@@ -491,6 +620,7 @@ def _cv_status(sources: list[dict]) -> dict[str, str]:
 
 
 def _same_name(review: list[dict], ledger_to_gy: dict[str, str]) -> dict[str, list[str]]:
+    """Open same-name reviews as other published ids. They are notes, not merges."""
     pairs: dict[str, set[str]] = {}
     for row in review:
         if row.get("reason") != "possible_same_person" or row.get("status") != "open":
@@ -567,6 +697,7 @@ def _artist_record(
 
 
 def _row_activity_id(row: dict) -> str:
+    """Keep an id already on the row. Otherwise mint one from the row's identity fields."""
     existing = (row.get("activity_id") or "").strip()
     if existing:
         return existing
@@ -688,6 +819,7 @@ def _collaborations(ledger: Ledger, ledger_to_gy: dict[str, str]) -> list[dict]:
 
 
 def _background(rows: list[dict], ledger_to_gy: dict[str, str], year_now: int) -> list[dict]:
+    """CV education, employment, teaching, and press. Scholarship-like titles and a future upcoming year stay off."""
     out = []
     seen: set[tuple] = set()
     for row in rows:
@@ -779,6 +911,7 @@ def _frames(frame_rows, membership, edition_of, ledger_to_gy, scope) -> list[dic
 
 
 def _matches(edition_of, frame_code: str, mem_code: str) -> bool:
+    """True when the membership code resolves to this frame."""
     edition = edition_of(mem_code)
     return bool(edition) and edition[0] == frame_code
 

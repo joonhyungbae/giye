@@ -84,6 +84,7 @@ def _pack(paragraphs: list[list[str]], max_chars: int) -> list[list[list[str]]]:
     current: list[list[str]] = []
 
     def flush() -> None:
+        """Close the open piece so the next paragraph starts a new chunk."""
         nonlocal current
         if current:
             chunks.append(current)

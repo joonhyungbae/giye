@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """CV URL kinds, text extraction, and the whitespace-free content hash.
 
-Ported from ``scripts/pull_cv_sources.py``. The hash ignores whitespace so a
-re-wrapped page is not a new CV. HWP (OLE) text and Playwright column layout
-are not ported; a ``.hwp`` body yields no text and the pull is recorded as a
-failure. HTML is read with the standard library parser rather than
-BeautifulSoup.
+The hash ignores whitespace so a re-wrapped page is not a new CV. HWP (OLE)
+text is not read, and a column layout is not reconstructed in a browser: a
+``.hwp`` body yields no text and the pull is recorded as a failure. HTML is
+read with the standard library parser.
 """
 
 from __future__ import annotations
@@ -26,7 +25,7 @@ _BREAK_TAGS = {"p", "div", "h1", "h2", "h3", "h4", "li", "br", "tr", "section", 
 
 
 def detect_kind(url: str) -> str:
-    """Classify a CV URL the way production ``detect_kind`` does.
+    """Classify a CV URL from the host and the path.
 
     ``web_layout`` is not inferred from the URL; a caller sets it when the
     years sit in a separate column. This release fetches that kind as ordinary
@@ -52,7 +51,7 @@ def detect_kind(url: str) -> str:
 def fetch_target(kind: str, url: str) -> str:
     """The URL to download. Share links are rewritten to the file export.
 
-    Production checks robots.txt on this rewritten URL, not on the share link,
+    robots.txt is checked on this rewritten URL, not on the share link,
     because that is the request that is sent.
     """
     if kind == "gdrive_file":
@@ -106,9 +105,8 @@ def bundle_fingerprint(documents: list[tuple[str, str]]) -> str:
 def looks_garbled(text: str) -> bool:
     """True when extracted text is too short or too little of it is letters.
 
-    Production sends the PDF itself in that case. This release still extracts
-    from text (the provider protocol is a string) and records the flag on the
-    pull error when a PDF yields nothing readable.
+    The provider accepts a string, so the PDF is still reduced to text. The
+    pull records this flag when that text is nothing readable.
     """
     body = re.sub(r"\s+", "", text)
     if len(body) < 200:
@@ -126,23 +124,27 @@ class _HTMLText(HTMLParser):
         self._skip = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        """Skip script and style; break the line at a block tag."""
         if tag in _SKIP_TAGS:
             self._skip += 1
         elif tag in _BREAK_TAGS and not self._skip:
             self.parts.append("\n")
 
     def handle_endtag(self, tag: str) -> None:
+        """Leave a skipped region, or break the line when a block tag ends."""
         if tag in _SKIP_TAGS and self._skip:
             self._skip -= 1
         elif tag in _BREAK_TAGS and not self._skip:
             self.parts.append("\n")
 
     def handle_data(self, data: str) -> None:
+        """Keep visible text. Script and style contents are dropped."""
         if not self._skip:
             self.parts.append(data)
 
 
 def html_text(body: bytes | str) -> str:
+    """Visible text of an HTML CV, with a newline where a block tag was."""
     raw = body.decode("utf-8", errors="replace") if isinstance(body, bytes) else body
     parser = _HTMLText()
     parser.feed(raw)
@@ -158,7 +160,7 @@ def extract_text(body: bytes, ext: str) -> str:
     if ext == "docx":
         return _docx_text(body)
     if ext == "hwp":
-        # HWP 5 needs an OLE reader (production uses olefile). It is not a dependency here.
+        # HWP 5 is an OLE document. It is not read here, so the body stays empty.
         return ""
     if ext in ("txt", "md", "csv"):
         return body.decode("utf-8", errors="replace")
@@ -186,7 +188,7 @@ def extension_for(content: bytes, content_type: str, kind: str) -> str:
 
 
 def _pdf_text(body: bytes) -> str:
-    """``pdftotext -layout``, as production. A missing binary raises ``FileNotFoundError``."""
+    """``pdftotext -layout`` keeps the visual line breaks a CV uses. A missing binary raises ``FileNotFoundError``."""
     with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
         tmp.write(body)
         tmp.flush()

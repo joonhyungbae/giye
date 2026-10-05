@@ -81,7 +81,8 @@ class VenueWords:
     latin_admin_offices: tuple[str, ...] = ()
 
 
-# Korean–English venue words. The lists are the production rules' words, in their order.
+# Korean–English words for V7b–d and V8 (docs/RULES.md). Tuple order is
+# alternation order: the first pattern that matches is the one the rule strips.
 KO_EN_VENUE_WORDS = VenueWords(
     script="가-힣",
     # 외 / 등 ("and others"), 일대 / 일원 ("around"), and their English forms.
@@ -175,15 +176,18 @@ class KoreanEnglish:
     venue_words = KO_EN_VENUE_WORDS
 
     def __init__(self, glossary: dict[str, tuple[tuple[str, ...], ...]], gazetteer: Gazetteer) -> None:
+        """Glossary readings and the place index this module serves."""
         self._glossary = glossary
         self._gazetteer = gazetteer
 
     @property
     def glossary(self) -> dict[str, tuple[tuple[str, ...], ...]]:
+        """Generic institution words → readings in the other script."""
         return self._glossary
 
     @property
     def gazetteer(self) -> Gazetteer:
+        """Place names loaded for this module."""
         return self._gazetteer
 
     def personal_name(self, name: str) -> bool:
@@ -231,8 +235,9 @@ class KoreanEnglish:
     ) -> KoreanEnglish:
         """Load the packaged tables, or the files ``glossary`` / ``cities`` / ``reference`` name.
 
-        ``reference``, when set, is a directory with the production layout
-        (``geonames/``, ``countries/``) and replaces the compact city table.
+        ``reference``, when set, is a directory of GeoNames dumps (``geonames/``)
+        and country tables (``countries/``). It replaces the compact city table
+        so a place that table omits can still resolve.
         """
         data = packaged_dir()
         glossary_path = glossary or (data / "glossary.yaml")
@@ -250,6 +255,7 @@ class KoreanEnglish:
 
 @cache
 def _cached(spec: str, glossary: Path | None, cities: Path | None, reference: Path | None) -> LanguageModule:
+    """One loaded module per ``(spec, glossary, cities, reference)`` for the process."""
     return load_language(spec, glossary=glossary, cities=cities, reference=reference)
 
 

@@ -68,6 +68,7 @@ KINDS = tuple(COLUMNS)
 
 
 def columns_for(kind: str) -> list[str]:
+    """Column names for an audit sheet of ``kind`` (``cv``, ``people``, or ``venues``)."""
     try:
         return list(COLUMNS[kind])
     except KeyError:

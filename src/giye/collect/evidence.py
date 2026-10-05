@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Keep an original copy of every URL the archive cites.
 
-Ported from ``scripts/archive_evidence.py``. For each cited URL:
+For each cited URL (docs/RULES.md, collection policy):
 
 1. Social platforms whose terms forbid collection (Instagram, Facebook, LinkedIn,
    X, Threads, TikTok) are refused by ``Fetcher`` before robots.txt. Status
@@ -14,7 +14,8 @@ Ported from ``scripts/archive_evidence.py``. For each cited URL:
    timestamp. The lookup is the availability API plus the ``id_`` raw URL.
    Giye never calls Save Page Now and never asks the Archive to create a capture.
 4. Other direct failures (HTTP 5xx, an empty or oversized body) also fall through
-   to that existing-capture lookup, as production did.
+   to that existing-capture lookup: the live body was not kept, and an older
+   capture is the only original bytes left.
 5. When robots.txt disallows the URL, record the existing capture's URL and
    timestamp (``archive_link_only``, ``direct_failure=robots``) and do not
    download, keep, or serve the bytes. The availability API is the only Archive
@@ -231,13 +232,14 @@ def _existing_capture(url: str, fetcher: Fetcher) -> tuple[bytes, str, Page] | N
 def cited_urls(config: object) -> dict[str, set[str]]:
     """Map each cited URL to the ledger tables or files that name it.
 
-    Walks the same kinds of places as production ``cited()``: ledger CSV URL columns,
-    URLs written into reviewer notes, and ``source_url`` / ``url`` fields in YAML and
-    JSON under the archive data directory (snapshot bodies and status files excluded).
+    Ledger CSV URL columns, URLs written into reviewer notes, and ``source_url`` /
+    ``url`` fields in YAML and JSON under the archive data directory. Snapshot
+    bodies and status files are excluded: those are captures, not citations.
     """
     where: dict[str, set[str]] = {}
 
     def add(url: str, source: str) -> None:
+        """Record one http citation under ``source``. A fragment is not part of the citation."""
         url = (url or "").strip().split("#")[0]
         if url.startswith("http"):
             where.setdefault(url, set()).add(source)
@@ -294,8 +296,9 @@ def archive_cited(
 ) -> dict[str, dict]:
     """Settle cited URLs and write ``data/work/evidence/status.json``.
 
-    URLs already settled in that file are left as they are (production's resumable
-    run).     ``unavailable`` is retried only when ``retry_unavailable`` is set.
+    URLs already settled in that file are left as they are, so a second run
+    resumes instead of fetching again. ``unavailable`` is retried only when
+    ``retry_unavailable`` is set.
     ``archive_link_only`` and ``robots_disallowed`` are settled: a later run does
     not fetch the disallowed host again.
     """

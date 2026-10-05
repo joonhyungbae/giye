@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Sampling-frame registry (``frames.yml``) and eligibility F1–F5.
 
-Production records one judgement per programme in ``data/frames.yml`` and publishes
-it on the sampling-frame page. The five criteria were fixed before any candidate
+One judgement per programme is recorded in ``frames.yml`` and published on the
+sampling-frame page. The five criteria were fixed before any candidate
 programme was examined (adopted 2026-09-20), so inclusion is not a decision made
 after seeing who was selected.
 
 The software checks that a judgement is complete. It does not re-decide F1–F5:
-the text in the file is the record, as in production. Collection and publication
+the text in the file is the record (docs/RULES.md). Collection and publication
 then admit only ``included`` and ``adjacent``. An ``adjacent`` frame is published
 as an adjacent strand. ``excluded``, ``planned``, ``no_public_roster``, and any
 other decision are not collected, and their memberships are not published. The
@@ -22,17 +22,17 @@ F2 cohort. Participants are fixed by an open call, jury, selection, award, or
 residency. A curated or rented exhibition does not qualify.
 
 F3 territory. The programme is held in the archive's configured territory.
-Production stored this sentence under ``f3_korea`` because that archive's
-territory is Korea. This loader accepts ``f3_territory`` and, as an alias,
-``f3_korea``.
+An archive whose territory is Korea stored the sentence under ``f3_korea``.
+This loader accepts ``f3_territory`` and, as an alias, ``f3_korea``
+(docs/RULES.md, F3).
 
 F4 roster. The participant list is verifiable in a public record (official page,
 catalogue, or press release).
 
 F5 period. The programme has editions since 2010 and recurs at least twice. A
 single edition counts only when it represents the field that year. The year
-bound is the production census rule and is stored in the frame's own sentence;
-it is not hard-coded here.
+bound is the census rule and is stored in the frame's own sentence; it is
+not hard-coded here (docs/RULES.md, F5).
 
 Coverage is members recorded / roster size (the ratio the site prints as a
 percentage). ``None`` when the roster size is unknown or zero.
@@ -46,7 +46,8 @@ from pathlib import Path
 
 import yaml
 
-# Production also publishes ``planned`` and ``no_public_roster`` (see the sampling-frame page).
+# ``planned`` and ``no_public_roster`` are recorded verdicts, not collection
+# decisions (docs/RULES.md). The sampling-frame page still lists them.
 DECISIONS = frozenset({"included", "excluded", "adjacent", "planned", "no_public_roster"})
 
 # Collected and published. ``adjacent`` stays a public strand. Every other
@@ -71,6 +72,8 @@ class Eligibility:
 
 @dataclass(frozen=True)
 class Frame:
+    """One programme in ``frames.yml``: names, source, and the recorded F1–F5 judgement."""
+
     code: str
     name_en: str
     source_url: str
@@ -88,9 +91,8 @@ class Frame:
         """Members recorded / roster size. Defaults to ``included_count`` when set.
 
         At this stage ``included_count`` is the number of roster rows collected.
-        Production's site builder uses the same ratio (membership size / roster size).
-        An earlier collector path counted only rows with a CV link; the site builder
-        overwrote that, and this ratio follows the site builder.
+        Coverage is membership size / roster size (F4). Counting only rows that
+        have a CV link would understate the roster.
         """
         recorded = self.included_count if members_recorded is None else members_recorded
         if recorded is None or not self.roster_count:
@@ -100,12 +102,15 @@ class Frame:
 
 @dataclass(frozen=True)
 class FrameRegistry:
+    """The frames file and the programmes it lists."""
+
     path: Path
     frames: tuple[Frame, ...]
     version: int = 1
     updated_at: str = ""
 
     def by_code(self, code: str) -> Frame | None:
+        """The frame with this code, or None when the file does not list it."""
         for frame in self.frames:
             if frame.code == code:
                 return frame
@@ -125,8 +130,8 @@ def coverage(members_recorded: int, roster_size: int) -> float | None:
     """F4 coverage: members recorded / roster size.
 
     Returns ``None`` when ``roster_size`` is zero or negative (nothing to divide by).
-    Production displayed ``round(100 * included / roster, 1)`` and an em dash when
-    the roster size was zero.
+    The site prints this ratio as a percentage, and a dash when the roster size
+    is zero.
     """
     if roster_size <= 0:
         return None

@@ -29,6 +29,7 @@ import re
 import unicodedata
 import uuid
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -74,10 +75,12 @@ def pinned_apart(left: list[str], right: list[str]) -> bool:
 
 
 def _identity_namespace(keys: list[str]) -> dict[str, str]:
+    """Collector prefix of each identity key, so two keys from one collector can be compared."""
     return {item.split(":", 1)[0]: item for item in keys}
 
 
 def display_name(row: dict) -> str:
+    """``name_ko`` when set, otherwise ``name_en``."""
     return (row.get("name_ko") or row.get("name_en") or "").strip()
 
 
@@ -176,6 +179,7 @@ def x1_candidates(artists: list[dict], language: LanguageModule | None = None) -
 
 
 def review_id_set(item: dict) -> set[str]:
+    """Ledger ids a queue item names: its own id and every id written in the detail."""
     return {item.get("ledger_id") or "", *_LEDGER_ID.findall(item.get("detail") or "")} - {""}
 
 
@@ -192,6 +196,7 @@ def absorption_map(artists: list[dict]) -> dict[str, str]:
             parent[item] = survivor
 
     def canon(item: str) -> str:
+        """Follow ``merged`` links to the living id. A cycle stops at the id already seen."""
         seen: set[str] = set()
         while item in parent and item not in seen:
             seen.add(item)
@@ -202,6 +207,7 @@ def absorption_map(artists: list[dict]) -> dict[str, str]:
 
 
 def _canon(item: str, absorbed: dict[str, str]) -> str:
+    """Living ledger id at the end of a merge chain, or ``item`` when nothing absorbed it."""
     return absorbed.get(item, item) if item else ""
 
 
@@ -359,10 +365,12 @@ def new_queue_item(ledger_id: str, detail: str, *, now: str | None = None) -> di
 
 
 def same_script_detail(left: str, right: str) -> str:
+    """Queue detail for an exact same-script name that no evidence rule accepted."""
     return f"{left} shares a name with {right} (rule=same_script_exact)"
 
 
 def x1_detail(ko_row: dict, en_row: dict) -> str:
+    """Queue detail for an X1 romanisation pair that E1–E4 did not merge."""
     return f"romanization match: {display_name(ko_row)} ~ {display_name(en_row)} ({en_row['ledger_id']})"
 
 
@@ -431,7 +439,7 @@ def undecided_same_script(
     review: list[dict],
     frames: dict[str, set[str]],
     identities: dict[str, list[str]],
-    evidence_of,
+    evidence_of: Callable[[str, str], str | None],
     *,
     words: re.Pattern[str] | None = None,
     language: LanguageModule | None = None,

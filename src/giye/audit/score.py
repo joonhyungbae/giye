@@ -35,6 +35,7 @@ def score_sheet(path: Path, kind: str) -> dict:
 
 
 def score_rows(rows: list[dict[str, str]], kind: str) -> dict:
+    """Precision and Wilson bounds for ``rows``, overall and by stratum. ``kind`` is recorded on the result."""
     by_stratum: dict[str, list[dict[str, str]]] = {}
     for row in rows:
         by_stratum.setdefault(row.get("stratum") or "", []).append(row)
@@ -114,6 +115,7 @@ def _summarise(rows: list[dict[str, str]]) -> dict:
 
 
 def _cell(value: object) -> str:
+    """One table cell: blank for a missing bound, six digits for a float."""
     if value is None or value == "":
         return ""
     if isinstance(value, float):
@@ -122,6 +124,7 @@ def _cell(value: object) -> str:
 
 
 def _line(name: str, block: dict) -> str:
+    """One tab-separated score row, in the column order ``format_score`` prints."""
     cells = [
         name,
         block["correct"],

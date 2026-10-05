@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Plain HTML pages, one per published person, from a site snapshot.
 
-The production site is a TanStack application. This renderer is the demo's
-stand-in: it does not rank anyone, and every fact keeps the source link that
-the snapshot stored. A hidden id gets a tombstone with no name. A retired id
-gets a page that points at the survivor.
+The website itself is the TanStack application under ``web/``. This renderer
+is the archive demo: it does not rank anyone, and every fact keeps the source
+link the snapshot stored. A hidden id gets a tombstone with no name. A retired
+id gets a page that points at the survivor.
 """
 
 from __future__ import annotations
@@ -17,7 +17,11 @@ from giye.config import Config
 
 
 def render(config: Config) -> list[Path]:
-    """Write ``<site>/html/index.html`` and one page per id. Returns the paths."""
+    """Write ``<site>/html/index.html`` and one page per id.
+
+    Returns the paths, sorted. Hidden ids get a tombstone and retired ids get
+    a redirect. Nobody is ranked, and each fact keeps its source link.
+    """
     from giye.config import checked_frames
 
     # The pages come from the snapshot. The frames file is still checked here
@@ -96,13 +100,15 @@ def render(config: Config) -> list[Path]:
     return written
 
 
-def _read(path: Path):
+def _read(path: Path) -> object:
+    """Load one snapshot JSON file. A missing file means publish has not been run."""
     if not path.is_file():
         raise FileNotFoundError(f"{path} is missing; run giye publish first")
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _page(title: str, archive: str, body: str) -> str:
+    """HTML document shell shared by every page."""
     return (
         "<!DOCTYPE html>\n"
         '<html lang="en">\n'
@@ -120,10 +126,51 @@ def _page(title: str, archive: str, body: str) -> str:
 
 
 def _source(url: str | None, collected: str | None) -> str:
+    """A source link and the collection date, or empty when the row has no URL."""
     if not url:
         return ""
     when = f" (collected {html.escape(str(collected))})" if collected else ""
     return f' <a href="{html.escape(str(url), quote=True)}">source</a>{when}'
+
+
+def _roster_parts(artist: dict, frames: dict) -> list[str]:
+    """Roster heading and the edition list. An empty roster says so."""
+    editions = []
+    for edition in artist.get("frame_editions") or []:
+        code = edition.get("frame") or ""
+        frame = frames.get(code) or {}
+        label = frame.get("name_ko") or frame.get("name_en") or code
+        year = edition.get("edition") or ""
+        role = edition.get("role") or ""
+        text = " ".join(part for part in (str(label), str(year), str(role)) if part)
+        editions.append("<li>" + html.escape(text) + _source(frame.get("source_url"), None) + "</li>")
+    body = "<ul>\n" + "\n".join(editions) + "\n</ul>" if editions else "<p>No roster edition.</p>"
+    return ["<h2>Roster</h2>", body]
+
+
+def _collaboration_parts(collaborations: list) -> list[str]:
+    """Collaboration heading and rows. Empty input adds nothing."""
+    if not collaborations:
+        return []
+    rows = []
+    for row in collaborations:
+        who = row.get("name_ko") or row.get("name_en") or ""
+        text = " ".join(part for part in (str(row.get("year") or ""), str(who), str(row.get("topic") or "")) if part)
+        rows.append("<li>" + html.escape(text) + _source(row.get("source_url"), row.get("collected_at")) + "</li>")
+    return ["<h2>Collaborations</h2>", "<ul>\n" + "\n".join(rows) + "\n</ul>"]
+
+
+def _link_parts(links: list) -> list[str]:
+    """Link heading and anchors. Empty input adds nothing."""
+    if not links:
+        return []
+    parts = ["<h2>Links</h2><ul>"]
+    for row in links:
+        url = str(row.get("url") or "")
+        label = str(row.get("label") or url)
+        parts.append(f'<li><a href="{html.escape(url, quote=True)}">{html.escape(label)}</a></li>')
+    parts.append("</ul>")
+    return parts
 
 
 def _person_page(
@@ -137,6 +184,7 @@ def _person_page(
     citation: dict | None,
     archive: str,
 ) -> str:
+    """One person's page: name, roster, activities, and the optional sections."""
     gy = str(artist.get("id") or "")
     name = str(artist.get("name_ko") or gy)
     parts = [f"<h1>{html.escape(name)}</h1>", f"<p>{html.escape(gy)}</p>"]
@@ -146,37 +194,14 @@ def _person_page(
     if aliases:
         parts.append("<p>" + html.escape(", ".join(str(item) for item in aliases)) + "</p>")
     parts.append("<p>Record" + _source(artist.get("source_url"), artist.get("collected_at")) + "</p>")
-    editions = []
-    for edition in artist.get("frame_editions") or []:
-        code = edition.get("frame") or ""
-        frame = frames.get(code) or {}
-        label = frame.get("name_ko") or frame.get("name_en") or code
-        year = edition.get("edition") or ""
-        role = edition.get("role") or ""
-        text = " ".join(part for part in (str(label), str(year), str(role)) if part)
-        editions.append("<li>" + html.escape(text) + _source(frame.get("source_url"), None) + "</li>")
-    parts.append("<h2>Roster</h2>")
-    parts.append("<ul>\n" + "\n".join(editions) + "\n</ul>" if editions else "<p>No roster edition.</p>")
+    parts.extend(_roster_parts(artist, frames))
     parts.append("<h2>Activities</h2>")
     parts.append(_facts(activities))
     if background:
         parts.append("<h2>Background</h2>")
         parts.append(_facts(background))
-    if collaborations:
-        parts.append("<h2>Collaborations</h2>")
-        rows = []
-        for row in collaborations:
-            who = row.get("name_ko") or row.get("name_en") or ""
-            text = " ".join(part for part in (str(row.get("year") or ""), str(who), str(row.get("topic") or "")) if part)
-            rows.append("<li>" + html.escape(text) + _source(row.get("source_url"), row.get("collected_at")) + "</li>")
-        parts.append("<ul>\n" + "\n".join(rows) + "\n</ul>")
-    if links:
-        parts.append("<h2>Links</h2><ul>")
-        for row in links:
-            url = str(row.get("url") or "")
-            label = str(row.get("label") or url)
-            parts.append(f'<li><a href="{html.escape(url, quote=True)}">{html.escape(label)}</a></li>')
-        parts.append("</ul>")
+    parts.extend(_collaboration_parts(collaborations))
+    parts.extend(_link_parts(links))
     same = artist.get("same_name") or []
     if same:
         joined = ", ".join(html.escape(str(item)) for item in same)
@@ -188,6 +213,7 @@ def _person_page(
 
 
 def _facts(rows: list) -> str:
+    """A list of dated facts, each with its source link. Empty says ``None.``"""
     if not rows:
         return "<p>None.</p>"
     items = []
@@ -205,12 +231,16 @@ def _facts(rows: list) -> str:
 
 
 def _tombstone(gy: str, state: str, *, archive: str) -> str:
-    # A hidden record keeps its URL and does not keep its name (production artist_stubs.json).
-    body = f"<h1>{html.escape(gy)}</h1>\n<p>This permanent id is {html.escape(state)}. No name and no records are published.</p>"
+    """A hidden id keeps its URL and drops the name. The stub records the state."""
+    body = (
+        f"<h1>{html.escape(gy)}</h1>\n"
+        f"<p>This permanent id is {html.escape(state)}. No name and no records are published.</p>"
+    )
     return _page(gy, archive, body)
 
 
 def _redirect(old: str, new: str, *, archive: str) -> str:
+    """A retired id points at the survivor's current page."""
     href = html.escape(new, quote=True)
     body = (
         f"<h1>{html.escape(old)}</h1>\n"
@@ -220,6 +250,7 @@ def _redirect(old: str, new: str, *, archive: str) -> str:
 
 
 def _index(archive: str, items: list[str], dataset: dict | None, stubs: int) -> str:
+    """Index of published people, plus the archive citation when the snapshot has one."""
     body = ["<h1>People</h1>", "<ul>", *items, "</ul>"]
     if stubs:
         body.append(f"<p>{stubs} permanent id(s) are withheld or withdrawn. Their pages carry no name.</p>")

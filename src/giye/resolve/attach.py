@@ -170,6 +170,82 @@ def _member_list(artist: dict, language: LanguageModule | None = None) -> bool:
     return sum(1 for alias in split_pipe(artist.get("aliases") or "") if person_like(alias, language)) >= 2
 
 
+def _alias_keys(artist: dict) -> set[str]:
+    """Name keys of each stored alias. A roster spelling can meet an alias the row does not use as its name."""
+    return {key for alias in split_pipe(artist.get("aliases") or "") for key in name_keys(alias, alias, "")}
+
+
+def _same_key_rows(
+    artists: list[dict],
+    name_ko: str,
+    name_en: str,
+    language: LanguageModule | None,
+) -> list[dict]:
+    """Rows that share a name key, or the single row whose alias is the only hit.
+
+    A group whose aliases name two or more people is not an alias hit: those
+    names are members, not the group's own spelling.
+    """
+    primary = name_keys(name_ko, name_en, "")
+    candidates = [
+        artist
+        for artist in artists
+        if primary & name_keys(artist.get("name_ko") or "", artist.get("name_en") or "", "")
+    ]
+    if candidates or not primary:
+        return candidates
+    alias_hits = [
+        artist["ledger_id"]
+        for artist in artists
+        if primary & _alias_keys(artist) and not _member_list(artist, language)
+    ]
+    if len(set(alias_hits)) == 1:
+        return [artist for artist in artists if artist["ledger_id"] == alias_hits[0]]
+    return []
+
+
+def _a2_ledger_id(
+    candidates: list[dict],
+    name_en: str,
+    incoming_latin: bool,
+    language: LanguageModule | None,
+    words: re.Pattern[str],
+) -> str | None:
+    """A2. First row whose Latin tokens agree, unless both sides are Latin-only personal names.
+
+    Two Latin-only personal names are not the same person because the Latin
+    string agrees (author decision 2026-10-05). A stored Latin-only row keeps
+    that string in ``name_ko`` as well, so ``name_ko`` is one of the spellings.
+    """
+    incoming = set(latin_tokens(name_en))
+    if len(incoming) < 2:
+        return None
+    for artist in candidates:
+        spellings = [artist.get("name_en") or ""] + split_pipe(artist.get("aliases") or "")
+        spellings.append(artist.get("name_ko") or "")
+        if not any(incoming == set(latin_tokens(text)) for text in spellings):
+            continue
+        other_latin = _latin_only_personal(
+            artist.get("name_ko") or "",
+            artist.get("name_en") or "",
+            language,
+            words,
+            artist,
+        )
+        if incoming_latin and other_latin:
+            continue
+        return artist["ledger_id"]
+    return None
+
+
+def _a4_ledger_id(candidates: list[dict], families_by_lid: dict[str, set[str]]) -> str | None:
+    """A4. First same-key row that has no roster membership yet."""
+    for artist in candidates:
+        if not families_by_lid.get(artist["ledger_id"]):
+            return artist["ledger_id"]
+    return None
+
+
 def match_artist(
     artists: list[dict],
     families_by_lid: dict[str, set[str]],
@@ -180,58 +256,27 @@ def match_artist(
     field: Field,
     language: LanguageModule | None = None,
 ) -> Attachment:
-    """A1–A4. ``rule`` is None when nothing attaches; ``ambiguous`` is the near-miss."""
-    primary = name_keys(name_ko, name_en, "")
-    candidates = [
-        artist
-        for artist in artists
-        if primary & name_keys(artist.get("name_ko") or "", artist.get("name_en") or "", "")
-    ]
-    if not candidates:
-        alias_hits = [
-            artist["ledger_id"]
-            for artist in artists
-            if primary
-            & {key for alias in split_pipe(artist.get("aliases") or "") for key in name_keys(alias, alias, "")}
-            and not _member_list(artist, language)
-        ]
-        if len(set(alias_hits)) == 1:
-            candidates = [artist for artist in artists if artist["ledger_id"] == alias_hits[0]]
+    """A1–A4 (see docs/RULES.md). ``rule`` is None when nothing attaches; ``ambiguous`` is the near-miss."""
+    candidates = _same_key_rows(artists, name_ko, name_en, language)
     if not candidates:
         return Attachment(None, None, ())
     words = field.compiled_team_words()
     incoming_latin = _latin_only_personal(name_ko, name_en, language, words)
     family = frame_family(frame_code, field)
-    incoming = set(latin_tokens(name_en))
     for artist in candidates:
         if family in families_by_lid.get(artist["ledger_id"], set()):
             return Attachment(artist["ledger_id"], "A1", ())
-    for artist in candidates:
-        spellings = [artist.get("name_en") or ""] + split_pipe(artist.get("aliases") or "")
-        # A stored Latin-only row keeps the Latin string in name_ko as well.
-        spellings.append(artist.get("name_ko") or "")
-        if len(incoming) >= 2 and any(incoming == set(latin_tokens(text)) for text in spellings):
-            other_latin = _latin_only_personal(
-                artist.get("name_ko") or "",
-                artist.get("name_en") or "",
-                language,
-                words,
-                artist,
-            )
-            # Author decision 2026-10-05: two Latin-only personal names are not
-            # the same person because the Latin string agrees.
-            if incoming_latin and other_latin:
-                continue
-            return Attachment(artist["ledger_id"], "A2", ())
+    agreed = _a2_ledger_id(candidates, name_en, incoming_latin, language, words)
+    if agreed:
+        return Attachment(agreed, "A2", ())
     if not _bare_personal(name_ko, name_en, language, words):
         return Attachment(candidates[0]["ledger_id"], "A3", ())
-    # A4 stays the Korean path. A Latin personal name used to fall through to
-    # A3; it now stays unattached rather than joining the first roster-less row
-    # on the name alone.
+    # A4 stays the Korean path. A Latin personal name stays unattached rather
+    # than joining the first roster-less row on the name alone.
     if hangul_compact(name_ko) and person_like(name_ko or "", language):
-        for artist in candidates:
-            if not families_by_lid.get(artist["ledger_id"]):
-                return Attachment(artist["ledger_id"], "A4", ())
+        rosterless = _a4_ledger_id(candidates, families_by_lid)
+        if rosterless:
+            return Attachment(rosterless, "A4", ())
     miss = "latin name only" if incoming_latin else ""
     return Attachment(None, None, tuple(artist["ledger_id"] for artist in candidates), miss)
 
@@ -251,7 +296,11 @@ def attach_row(
     team_lid: str = "",
     language: LanguageModule | None = None,
 ) -> Attachment:
-    """A5, then A1–A4, then A6. The same order as production ``upsert_people``."""
+    """A5, then A1–A4, then A6 (see docs/RULES.md).
+
+    Identity is checked first so two people the roster pinned apart stay apart.
+    The website (A6) is used only when the name rules did not choose a row.
+    """
     if identity:
         marker = f"identity={identity}"
         found = next((artist["ledger_id"] for artist in artists if marker in (artist.get("reviewer_note") or "")), None)

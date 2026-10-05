@@ -79,6 +79,7 @@ def export_warc(config: Config, dest: Path | None = None, *, wacz: bool = False)
 
 
 def _entries(root: Path) -> list[tuple[dict, Path, bytes]]:
+    """Servable snapshot rows with their bytes, in manifest order."""
     found: list[tuple[dict, Path, bytes]] = []
     if not root.is_dir():
         return found

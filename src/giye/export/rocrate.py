@@ -4,9 +4,9 @@
 The crate is ``ro-crate-metadata.json``. It records the software version, the
 sha256 of the configuration file, each roster and CV URL as a ``CreativeWork``
 (sha256 of the kept bytes, and ``dateCreated``), the snapshot files, and one
-``CreateAction`` per stage. Stages that have production rule ids list them in
+``CreateAction`` per stage. Stages that have rule ids list them in
 ``ruleId``. Extract, the ledger, and publish do not have F/E/P/V ids; their
-actions say so and carry an empty list.
+actions say so and carry an empty list (docs/RULES.md).
 
 A file's ``@id`` is a path relative to the crate directory when the bytes are
 inside that directory. Bytes that stay outside it (the default crate lives in
@@ -34,7 +34,8 @@ from giye.collect.snapshot import servable_rows
 from giye.config import Config
 from giye.extract.paths import resolve_stored
 
-# Rule ids the stage applies. Empty means the stage has no production letter id.
+# Rule ids the stage applies. Empty means the stage has no F/E/P/V letter id
+# (docs/RULES.md). The action description then uses ``_STAGE_NOTE``.
 STAGE_RULES: dict[str, tuple[str, ...]] = {
     "collect": ("F1", "F2", "F3", "F4", "F5", "A1", "A2", "A3", "A4", "A5", "A6"),
     "extract": (),
@@ -80,7 +81,7 @@ _LICENCE_SECTIONS = ("publish", "archive")
 _LICENCE_KEYS = ("data_license", "data_licence")
 
 _STAGE_NOTE = {
-    "extract": "CV extraction has no production F/E/P/V id. The schema and the apply decisions are in docs/RULES.md.",
+    "extract": "CV extraction has no rule id of its own. The schema and the apply decisions are in docs/RULES.md.",
     "ledger": "The ledger invariants are not F/E/P/V ids. They are listed in docs/RULES.md.",
     "publish": "Publish writes the site snapshot. It does not apply a sampling or identity rule.",
 }
@@ -115,6 +116,7 @@ def export_ro_crate(config: Config, dest: Path | None = None, *, config_path: Pa
 
 
 def _config_file(config: Config, config_path: Path | None) -> Path | None:
+    """The config file to hash into the crate, or None when it is not on disk."""
     if config_path is not None:
         path = Path(config_path)
         return path if path.is_file() else None
@@ -123,43 +125,76 @@ def _config_file(config: Config, config_path: Path | None) -> Path | None:
 
 
 def _graph(config: Config, crate: Path, toml: Path | None) -> list[dict]:
+    """RO-Crate ``@graph`` for one run: descriptor, dataset, software, works, files, actions."""
     works, snapshots = _inputs(config)
     files: list[dict] = []
     file_ids: dict[str, str] = {}
-
-    def add_file(path: Path, *, encoding: str = "") -> str | None:
-        if not path.is_file():
-            return None
-        rel = _file_id(crate, path)
-        if rel in file_ids:
-            return file_ids[rel]
-        entity: dict = {
-            "@id": rel,
-            "@type": "File",
-            "name": path.name,
-            "contentSize": path.stat().st_size,
-            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-        }
-        if encoding:
-            entity["encodingFormat"] = encoding
-        files.append(entity)
-        file_ids[rel] = rel
-        return rel
-
     if toml is not None:
-        add_file(toml, encoding="application/toml")
-    snapshot_ids = []
-    for path in snapshots:
-        ident = add_file(path)
-        if ident:
-            snapshot_ids.append(ident)
-    cv_ids = [ident for path in _files_under(config.raw / "cv") if (ident := add_file(path))]
-    ledger_ids = [ident for path in sorted((config.ledger).glob("*.csv")) if (ident := add_file(path))]
+        _crate_file(files, file_ids, crate, toml, encoding="application/toml")
+    snapshot_ids = _crate_paths(files, file_ids, crate, snapshots)
+    cv_ids = _crate_paths(files, file_ids, crate, _files_under(config.raw / "cv"))
+    ledger_ids = _crate_paths(files, file_ids, crate, sorted(config.ledger.glob("*.csv")))
     resolve_names = {"review_queue.csv", "gy_retired.csv"}
     resolve_ids = [ident for ident in ledger_ids if Path(ident).name in resolve_names]
-    processed_ids = [ident for path in _files_under(config.processed) if (ident := add_file(path))]
-    site_ids = [ident for path in _files_under(config.site) if (ident := add_file(path))]
+    processed_ids = _crate_paths(files, file_ids, crate, _files_under(config.processed))
+    site_ids = _crate_paths(files, file_ids, crate, _files_under(config.site))
+    work_entities, roster_ids, cv_work_ids = _work_entities(works)
+    actions = _stage_actions(
+        {
+            "collect": roster_ids,
+            "extract": cv_work_ids,
+            "ledger": roster_ids,
+            "resolve": roster_ids + cv_work_ids,
+            "normalize": ledger_ids,
+            "publish": processed_ids or ledger_ids,
+        },
+        {
+            "collect": snapshot_ids,
+            "extract": cv_ids,
+            "ledger": ledger_ids,
+            "resolve": resolve_ids or ledger_ids,
+            "normalize": processed_ids,
+            "publish": site_ids,
+        },
+    )
+    return _assemble_graph(config, toml, files, work_entities, actions)
 
+
+def _crate_file(
+    files: list[dict], file_ids: dict[str, str], crate: Path, path: Path, *, encoding: str = ""
+) -> str | None:
+    """Add a File entity once. Returns its ``@id``, or None when ``path`` is not a file."""
+    if not path.is_file():
+        return None
+    rel = _file_id(crate, path)
+    if rel in file_ids:
+        return file_ids[rel]
+    entity: dict = {
+        "@id": rel,
+        "@type": "File",
+        "name": path.name,
+        "contentSize": path.stat().st_size,
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+    }
+    if encoding:
+        entity["encodingFormat"] = encoding
+    files.append(entity)
+    file_ids[rel] = rel
+    return rel
+
+
+def _crate_paths(files: list[dict], file_ids: dict[str, str], crate: Path, paths: list[Path]) -> list[str]:
+    """File ``@id``s for ``paths``, in that order, skipping a path that is not a file."""
+    ids = []
+    for path in paths:
+        ident = _crate_file(files, file_ids, crate, path)
+        if ident:
+            ids.append(ident)
+    return ids
+
+
+def _work_entities(works: list[dict]) -> tuple[list[dict], list[str], list[str]]:
+    """CreativeWork entities, plus the roster URLs and the CV URLs in work order."""
     work_entities = []
     roster_ids = []
     cv_work_ids = []
@@ -179,23 +214,11 @@ def _graph(config: Config, crate: Path, toml: Path | None) -> list[dict]:
             cv_work_ids.append(work["url"])
         else:
             roster_ids.append(work["url"])
+    return work_entities, roster_ids, cv_work_ids
 
-    results = {
-        "collect": snapshot_ids,
-        "extract": cv_ids,
-        "ledger": ledger_ids,
-        "resolve": resolve_ids or ledger_ids,
-        "normalize": processed_ids,
-        "publish": site_ids,
-    }
-    objects = {
-        "collect": roster_ids,
-        "extract": cv_work_ids,
-        "ledger": roster_ids,
-        "resolve": roster_ids + cv_work_ids,
-        "normalize": ledger_ids,
-        "publish": processed_ids or ledger_ids,
-    }
+
+def _stage_actions(objects: dict[str, list[str]], results: dict[str, list[str]]) -> list[dict]:
+    """One CreateAction per stage. A stage with rule ids names them; the others use ``_STAGE_NOTE``."""
     actions = []
     for stage, rules in STAGE_RULES.items():
         action = {
@@ -212,7 +235,13 @@ def _graph(config: Config, crate: Path, toml: Path | None) -> list[dict]:
         elif stage in _STAGE_NOTE:
             action["description"] = _STAGE_NOTE[stage]
         actions.append(action)
+    return actions
 
+
+def _assemble_graph(
+    config: Config, toml: Path | None, files: list[dict], work_entities: list[dict], actions: list[dict]
+) -> list[dict]:
+    """Root dataset, software, licences, then the works, files, and actions already built."""
     parts = [{"@id": entity["@id"]} for entity in files]
     data_licence = _data_licence(config, toml)
     description = f"One Giye run, software giye/{__version__}."

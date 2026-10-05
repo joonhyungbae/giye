@@ -5,9 +5,9 @@ A programme collector is a short subclass. It yields editions; this class fetche
 each page (robots.txt, snapshot) and turns the people into roster rows that carry
 ``source_url`` and ``collected_at``. ``run()`` writes those rows into the ledger
 (people with permanent ``gy_id``s, frame membership, one activity per appearance)
-and keeps a copy under the configured work directory. Production did the upsert
-in ``scripts/collectors/base.py`` (``upsert_people``). A roster row joins an
-existing person only under A1–A6. Merging two existing records is E1–E4 and X1.
+and keeps a copy under the configured work directory. A roster row joins an
+existing person only under A1–A6 (docs/RULES.md). Merging two existing records
+is E1–E4 and X1.
 
     class ExampleResidency(RosterCollector):
         frame = "EXAMPLE-RESIDENCY"
@@ -134,8 +134,8 @@ class RosterCollector:
     def fetch(self, url: str) -> Page:
         """Fetch ``url`` and snapshot a successful body. A snapshot error does not stop the run.
 
-        Production ``SnapshotSession`` swallows archive errors so a disk problem cannot
-        abort a monthly collection. The same decision is kept here.
+        A disk problem must not abort a collection that can still write the roster
+        rows, so a snapshot error is logged and the page is still returned.
         """
         page = self.fetcher.get(url)
         if page.ok and page.content and len(page.content) <= MAX_BYTES:
@@ -165,9 +165,8 @@ class RosterCollector:
         """Return roster rows, upsert them into the ledger, and write ``<work>/rosters/<frame>.csv``.
 
         Each row has ``source_url`` and ``collected_at``. ``collected_at`` is the UTC
-        calendar date. Production used the machine-local date (``date.today()``); UTC
-        keeps a row from depending on the operator's timezone. The snapshot manifest
-        stores a full UTC timestamp.
+        calendar date, so a row does not depend on the operator's timezone. The
+        snapshot manifest stores a full UTC timestamp.
 
         The ledger is the source of truth: a new person gets a ``gy_id``, the frame
         gains a membership, and each appearance is an activity. The CSV is the
@@ -224,9 +223,11 @@ class RosterCollector:
         return rows
 
     def csv_path(self) -> Path:
+        """Collection report for this frame: ``<work>/rosters/<frame>.csv``."""
         return Path(self.config.work) / "rosters" / f"{self.frame}.csv"  # type: ignore[attr-defined]
 
     def write_csv(self, rows: list[dict[str, str]]) -> Path:
+        """Write the collection report and return its path. The ledger write is ``run``."""
         path = self.csv_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8", newline="") as handle:

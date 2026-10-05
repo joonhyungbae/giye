@@ -1,16 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """CV source registry.
 
-Production ``pull_cv_sources.register`` appends one row per location. The same
-URL for the same person is not added twice (two members of a duo may still
-share a page: the match is per ``ledger_id``, not global). The id is
-``CV-<ledger_id>-<lang>``, with ``-2``, ``-3``, … when that id is taken.
+One row is appended per location. The same URL for the same person is not
+added twice (two members of a duo may still share a page: the match is per
+``ledger_id``, not global). The id is ``CV-<ledger_id>-<lang>``, with ``-2``,
+``-3``, … when that id is taken.
 
-Live discovery (crawling sites for a CV link) is not ported. Registering a
-row is the part that writes ``cv_sources.csv``. A team row is refused here
-unless ``allow_team`` is set: production's discovery ``apply`` skipped those
-rows because a member's personal CV had been attached to a team record.
-``team=`` on a person is not a team row (rule T1, ``giye.resolve.teams``).
+Crawling sites for a CV link is out of scope. Registering a row is what writes
+``cv_sources.csv``. A team row is refused here unless ``allow_team`` is set,
+because a member's personal CV must not be stored as the team's (rule T1,
+``giye.resolve.teams``). ``team=`` on a person is not a team row.
 """
 
 from __future__ import annotations
@@ -41,8 +40,8 @@ def register(
 
     ``source_id`` overrides the generated id. The demo cache names its sources
     in advance (``CV-DEMO-…``) because a ledger id issued at collect time is
-    random and could not be written into a hand-made response. Production
-    always generates the id; leave ``source_id`` empty for that.
+    random and could not be written into a hand-made response. Leave
+    ``source_id`` empty to generate ``CV-<ledger_id>-<lang>``.
     """
     if lang not in ("ko", "en", "mixed"):
         raise ValueError(f"lang must be ko, en, or mixed (got {lang!r})")

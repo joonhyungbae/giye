@@ -111,6 +111,7 @@ ACRONYM_SPELLING_RE = re.compile(r"(?=.{2,8}$)(?=.*[A-Z])[A-Z0-9.&]+")
 
 
 def mostly_hangul(text: str) -> bool:
+    """True when more than half the letters are Hangul. Used by V5e, V5f, and V9."""
     letters = [char for char in text if char.isalpha()]
     return bool(letters) and sum(bool(HANGUL_RE.fullmatch(char)) for char in letters) > len(letters) / 2
 
@@ -120,6 +121,7 @@ def _patterns(words: VenueWords) -> SimpleNamespace:
     """V7b–d and V8 expressions built from one language's venue words."""
 
     def either(parts: tuple[str, ...]) -> str:
+        """Regex alternation. The first alternative that matches is the one the rule strips."""
         return "|".join(parts)
 
     script = re.compile(f"[{words.script}]") if words.script else None
@@ -140,6 +142,7 @@ def _patterns(words: VenueWords) -> SimpleNamespace:
 
 
 def _words(lang: LanguageModule | None) -> SimpleNamespace:
+    """Compiled V7/V8 patterns for ``lang``, or the default Korean–English module."""
     return _patterns((lang or default_language()).venue_words)
 
 
@@ -174,6 +177,7 @@ def normalize_key(key: str, lang: LanguageModule | None = None) -> str:
 
 
 def _latin_word(word: str) -> str:
+    """Bag spelling: centre/center, and a trailing s only on a generic word."""
     word = SYN.get(word, word)
     if word.endswith("s") and word[:-1] in GENERIC:  # plural only for generic words: "Cais" is not "Cai"
         word = word[:-1]
@@ -209,6 +213,7 @@ def skeleton(token: str) -> str:
 
 
 def _canon(tokens: list[str], lang: LanguageModule, cross_script: bool) -> tuple[str, ...] | None:
+    """Word bag for V7e or V9. ``None`` when every kept token is generic."""
     kept = [token for token in tokens if token and token not in STOP and not (cross_script and token in DROP)]
     if not any(token not in GENERIC for token in kept):
         return None  # generic words only: a bag of them names no particular place

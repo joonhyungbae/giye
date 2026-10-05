@@ -6,8 +6,8 @@ ids that a merge has retired. It is not the row index: sorting the file does
 not renumber anyone, and a retired number is never given to someone else.
 
 Activity ids are uuid5 of a fixed namespace so the same fact hashes to the
-same id in every process, including the production archive. Do not change
-``ACTIVITY_NAMESPACE`` or the key order.
+same id in every process. Do not change ``ACTIVITY_NAMESPACE`` or the key
+order: either change would change every activity id (docs/RULES.md).
 """
 
 from __future__ import annotations
@@ -113,8 +113,9 @@ def mint_id(key: str) -> str:
 def gy_number(gy: str, *, prefix: str = "GY") -> int:
     """The integer in ``PREFIX-000123``, or 0 when ``gy`` is not that shape.
 
-    Production parsed only ``GY``. The prefix comes from ``archive.id_prefix``
-    so another field can use another code. The width stays six digits.
+    The prefix comes from ``archive.id_prefix`` (default ``GY``) so another
+    field can use another code. The width stays six digits. A string that is
+    not that shape is 0, so it is not a gap to fill.
     """
     match = re.fullmatch(rf"{re.escape(prefix)}-(\d{{6}})", gy or "")
     return int(match.group(1)) if match else 0

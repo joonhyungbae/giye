@@ -1,17 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Content-addressed copies of bytes a collector or the evidence pass fetched.
 
-Ported from ``scripts/collectors/snapshot.py``. Production stored
-``data/raw/<frame>/snapshots/<url-stem>__<sha256 prefix><ext>`` and appended one
-``manifest.jsonl`` line per fetch, even when the bytes were already on disk.
-Identical content is written once; a later fetch only adds a manifest line
-(``new`` is false and ``path`` points at the existing object).
+Each fetch appends one ``manifest.jsonl`` line, even when the bytes were
+already on disk. Identical content is written once; a later fetch only adds a
+manifest line (``new`` is false and ``path`` points at the existing object).
 
 The public path is the SHA-256 itself (``<frame>/snapshots/sha256/<sha[:2]>/<sha><ext>``)
 so the file name does not depend on the URL. Lookup does not use that name. A later
-fetch of the same bytes is found by the full sha256 on an existing manifest line
-(production stopped trusting the 10-character prefix in the filename, because two
-objects can share it). A file that only shares that prefix is not reused.
+fetch of the same bytes is found by the full sha256 on an existing manifest line.
+A short prefix is not an identity: two objects can share the first characters.
+A file that only shares that prefix is not reused.
 
 New lines always record ``status``, ``final_url``, ``content_type``, and ``robots``
 (``allowed``, ``unavailable_allowed``, ``disallowed``, ``unreachable_disallowed``,
@@ -32,7 +30,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Production SnapshotSession and archive_evidence both skip bodies above 40 MB.
+# Empty bodies and bodies above 40 MB are not a page capture. The snapshot
+# store and the evidence pass both skip them.
 MAX_BYTES = 40 * 1024 * 1024
 
 # Version 1 has no original response headers. See the module docstring.
@@ -46,6 +45,7 @@ HEADERS_NOT_KEPT = (
 
 
 def utc_now() -> str:
+    """UTC timestamp ``YYYY-MM-DDTHH:MM:SSZ`` for a manifest line."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
@@ -115,7 +115,8 @@ class SnapshotStore:
         """Store ``content`` if it is new, and always append a manifest line.
 
         Returns ``None`` without writing when the body is empty or larger than
-        ``MAX_BYTES`` (production did not archive those responses).
+        ``MAX_BYTES``. An empty body is not a capture, and a body over the limit
+        is not stored.
         """
         if isinstance(content, str):
             content = content.encode("utf-8")

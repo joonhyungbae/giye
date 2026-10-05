@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Archive configuration (``giye.toml``).
 
-Why: the production archive fixed its paths and field-specific choices in code. Here every
-archive declares them in one file, so the same software builds an archive of another field or
-country. Paths are resolved relative to the configuration file.
+Why: paths and field-specific choices belong in one file, so the same software
+builds an archive of another field or country. Paths are resolved relative to
+the configuration file.
 
 Example (see examples/demo/giye.toml)::
 
@@ -50,8 +50,8 @@ Example (see examples/demo/giye.toml)::
 
     # CV extraction. provider defaults to anthropic, so a file that omits it
     # keeps the hosted call. openai_compatible posts to base_url (Ollama's
-    # OpenAI endpoint unless set otherwise). model defaults to the production
-    # id. temperature is omitted unless set. cache defaults to <data>/work/cv_cache.
+    # OpenAI endpoint unless set otherwise). model defaults to claude-opus-5.
+    # temperature is omitted unless set. cache defaults to <data>/work/cv_cache.
     # api_key_env names the variable whose value is sent as a Bearer token
     # when it is set. A local server does not need one. The default name is
     # GIYE_LLM_API_KEY. chunk_chars splits a long CV before the call. 0 is
@@ -89,6 +89,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from giye.collect.frames import FrameRegistry
 
 
 class GiyeError(Exception):
@@ -113,9 +117,9 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10
 class ExtractSource:
     """One CV location declared in ``[[extract.sources]]``.
 
-    ``source_id`` is optional. Empty means ``CV-<ledger_id>-<lang>``, the
-    production id. The demo sets it so a hand-written replay response can name
-    the source before a ledger id exists.
+    ``source_id`` is optional. Empty means ``CV-<ledger_id>-<lang>``. The demo
+    sets it so a hand-written replay response can name the source before a
+    ledger id exists.
     """
 
     url: str
@@ -131,6 +135,11 @@ class ExtractSource:
 
 @dataclass(frozen=True)
 class Config:
+    """One archive's ``giye.toml``: paths, field file, collectors, extraction, and publish.
+
+    Relative paths are resolved from the file's directory. ``load`` builds this.
+    """
+
     root: Path
     name: str
     id_prefix: str = "GY"
@@ -153,7 +162,8 @@ class Config:
     # Extra E2 event patterns (frame-code prefix → regex). Merged after the field
     # file; a key here replaces that prefix's pattern.
     event_patterns: tuple[tuple[str, str], ...] = ()
-    # Local HTML CVs, read by name. Production reads data/work/cv_extract/<id>.json.
+    # Local HTML CVs, read by name. Extracted JSON at data/work/cv_extract/<id>.json
+    # is preferred when that file exists (see giye.resolve.cv).
     cv_dir: Path | None = None
     # Optional GeoNames tree (geonames/ + countries/). Unset uses the packaged gazetteer.
     normalize_reference: Path | None = None
@@ -165,9 +175,9 @@ class Config:
     # CV extraction. The provider defaults to Anthropic so existing configs and
     # the demo keep the hosted call. openai_compatible calls a local server
     # without a key unless the named environment variable is set, in which
-    # case that value is sent as a Bearer token. The model id is the production
-    # default. Temperature is sent only when the file sets it; production
-    # omitted the parameter.
+    # case that value is sent as a Bearer token. The model id defaults to
+    # claude-opus-5. Temperature is sent only when the file sets it, so an
+    # omitted key does not invent a sampling temperature.
     extract_provider: str = "anthropic"
     extract_base_url: str = "http://localhost:11434/v1"
     extract_model: str = "claude-opus-5"
@@ -189,12 +199,13 @@ class Config:
     # and ``<site_url>/data``. Empty until the file sets it. Publish refuses to run
     # without one, so a config cannot silently cite someone else's site.
     site_url: str = ""
-    # Production ``dataset_versions.json`` is version 0.2. The artist page in the
-    # web app hard-codes 1.0; the snapshot uses this value for both.
+    # 0.2 is the published dataset version written into the site snapshot. The
+    # artist page in the web app hard-codes 1.0; the snapshot uses this value
+    # for both.
     dataset_version: str = "0.2"
-    # Empty means the archive name. Production's data page uses a longer title.
+    # Empty means the archive name. The data page can use a longer title.
     dataset_title: str = ""
-    # Production CiteDialog always writes this author string.
+    # The citation dialog writes this author string.
     citation_author: str = "기예 Giye"
     # Maintenance schedule written to coverage.json, label → what runs. Empty
     # means no cadence is published: the package itself schedules nothing.
@@ -203,18 +214,22 @@ class Config:
 
     @property
     def ledger(self) -> Path:
+        """``<data>/ledger``, the CSV source of truth."""
         return self.data / "ledger"
 
     @property
     def raw(self) -> Path:
+        """``<data>/raw``, original bytes of cited URLs."""
         return self.data / "raw"
 
     @property
     def processed(self) -> Path:
+        """``<data>/processed``, derived tables that do not edit the ledger."""
         return self.data / "processed"
 
     @property
     def site(self) -> Path:
+        """``<data>/site``, the file snapshot the website reads."""
         return self.data / "site"
 
     @property
@@ -246,7 +261,7 @@ def _collector_modules(collect: dict) -> tuple[str, ...]:
     return tuple(modules)
 
 
-def checked_frames(config: Config):
+def checked_frames(config: Config) -> FrameRegistry:
     """Load ``frames.yml`` before a stage uses it.
 
     A file that is not a mapping with a ``frames`` list used to pass ``giye
@@ -361,6 +376,7 @@ def _site_url(value: object) -> str:
 
 
 def _plain(value: object, default: str, label: str) -> str:
+    """A config string, or ``default`` when the key was omitted."""
     if value is None:
         return default
     if not isinstance(value, str):
@@ -462,7 +478,7 @@ def _extract_reasoning_effort(extract: dict) -> str | None:
 
 
 def _extract_temperature(extract: dict) -> float | None:
-    """None when the key is absent, so the live call omits temperature as production did."""
+    """None when the key is absent, so the live call omits temperature and leaves the model's own default."""
     if "temperature" not in extract or extract["temperature"] is None:
         return None
     return float(extract["temperature"])

@@ -68,6 +68,7 @@ def sample_sheet(config: Config, kind: str, n: int, seed: int, out: Path) -> lis
 
 
 def load_config(path: str | Path) -> Config:
+    """Load a Giye config. The sampler reads the ledger that file names."""
     return load(path)
 
 
@@ -106,6 +107,7 @@ def parse_markers(note: str) -> list[tuple[str, str, str]]:
     found: list[tuple[str, str, str]] = []
 
     def flush() -> None:
+        """Close the current merge group into the parsed list."""
         nonlocal dropped, evidence, rule
         for item in dropped:
             found.append((item, evidence, rule))
@@ -279,6 +281,7 @@ def _excerpt(text: str, title: str, year: str) -> str:
     year_text = str(year or "").strip()
 
     def hits(require_year: bool) -> list[int]:
+        """Line indexes that contain the title. With ``require_year``, the year must be on that line."""
         found = []
         for index, line in enumerate(lines):
             if require_year and year_text and year_text not in line:

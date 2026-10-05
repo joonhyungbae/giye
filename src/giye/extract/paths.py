@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Map a stored ``data/...`` path onto the configured data directory.
 
-Production stores ``snapshot_path`` as ``data/raw/cv/...`` (no file suffix) and
-resolves it against the data root. ``giye.normalize`` reads ``<snapshot>.txt``
-the same way. An absolute path is kept.
+A stored ``snapshot_path`` looks like ``data/raw/cv/...`` (no file suffix) and
+is resolved against the data root, so the ledger can move with ``[paths] data``.
+``giye.normalize`` reads ``<snapshot>.txt`` the same way. An absolute path is kept.
 """
 
 from __future__ import annotations

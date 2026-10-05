@@ -61,6 +61,8 @@ NAME_RULES = frozenset({"V7", "V8", "V9"})
 
 @dataclass(frozen=True)
 class Place:
+    """A resolved place: canonical city, ISO country, and Korean region (empty outside Korea)."""
+
     city: str
     country: str
     kr_region: str
@@ -68,6 +70,8 @@ class Place:
 
 @dataclass(frozen=True)
 class Fragment:
+    """One V2 piece of a venue string after V3 classification."""
+
     text: str
     kind: str
     place: Place | None = None
@@ -75,6 +79,8 @@ class Fragment:
 
 @dataclass
 class ParsedVenue:
+    """One activity row after the V2 split and V3 classification."""
+
     activity_id: str
     ledger_id: str
     raw: str
@@ -85,6 +91,8 @@ class ParsedVenue:
 
 @dataclass
 class BuildResult:
+    """Entities, per-activity annotations, and the merges ``build`` recorded."""
+
     annotations: dict[str, dict[str, str]]
     venues: list[dict]
     stats: dict
@@ -95,20 +103,28 @@ class BuildResult:
 
 
 class UnionFind:
+    """Disjoint sets of institution keys.
+
+    The lexicographically smaller root is kept so the same pair always joins
+    the same way, independent of insertion order.
+    """
+
     def __init__(self, values: set[str]) -> None:
+        """One component per starting key."""
         self.parent = {value: value for value in values}
 
     def find(self, value: str) -> str:
+        """Root of ``value``, with path compression."""
         parent = self.parent[value]
         if parent != value:
             self.parent[value] = self.find(parent)
         return self.parent[value]
 
     def union(self, left: str, right: str) -> bool:
+        """Join ``left`` and ``right``. True when they were in different components."""
         left_root, right_root = self.find(left), self.find(right)
         if left_root == right_root:
             return False
-        # The lexicographically smaller root is kept. Same choice as production.
         if right_root < left_root:
             left_root, right_root = right_root, left_root
         self.parent[right_root] = left_root
@@ -318,6 +334,7 @@ def institution_key(text: str, lang: LanguageModule | None = None) -> str:
 
 
 def parse_venue(row: dict, lang: LanguageModule) -> ParsedVenue:
+    """V2 split and V3 classification of one activity row's venue."""
     venue_norm = norm_text(row.get("venue"))
     pieces, alias_pairs = split_venue(venue_norm)
     return ParsedVenue(
@@ -331,45 +348,54 @@ def parse_venue(row: dict, lang: LanguageModule) -> ParsedVenue:
 
 
 def _spelling_sort(item: tuple[str, set[str]]) -> tuple[int, int, str]:
+    """Most-used spelling first, then a Hangul spelling, then the text."""
     spelling, row_ids = item
     return -len(row_ids), 0 if HANGUL_RE.search(spelling) else 1, spelling
 
 
 def _write_csv(path: Path, rows: list[dict]) -> None:
+    """Write ``venues.csv`` with ``VENUE_FIELDS`` and a newline after every row."""
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=VENUE_FIELDS, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 
 
-def _audit_text(
+def _audit_clean(value: str) -> str:
+    """Markdown-safe venue text. A backtick would break the audit's code spans."""
+    return norm_text(value).replace("`", "ˋ") or "(blank)"
+
+
+def _audit_fragment_line(
+    fragment: Fragment,
+    root_for_key: dict[str, str],
+    entity_by_root: dict[str, dict],
+    lang: LanguageModule,
+) -> str:
+    """One fragment as the audit prints it: a place, an entity id, or a bare kind."""
+    if fragment.kind == "place" and fragment.place:
+        place = fragment.place
+        detail = ", ".join(value for value in (place.city, place.country, place.kr_region) if value)
+        return f"`{_audit_clean(fragment.text)}` → place ({detail})"
+    if fragment.kind in {"institution", "funder"}:
+        root = root_for_key[institution_key(fragment.text, lang)]
+        entity = entity_by_root[root]
+        return (
+            f"`{_audit_clean(fragment.text)}` → {fragment.kind} → "
+            f"{entity['venue_id']} ({_audit_clean(entity['name'])})"
+        )
+    return f"`{_audit_clean(fragment.text)}` → {fragment.kind}"
+
+
+def _audit_sample_lines(
     parsed: list[ParsedVenue],
     annotations: dict[str, dict[str, str]],
     entity_by_root: dict[str, dict],
     root_for_key: dict[str, str],
-    alias_roots: set[str],
-    blocked_components: list[dict],
-    merges: list[tuple[str, str, str]],
-    spell_rows: dict,
     lang: LanguageModule,
-) -> str:
-    """Audit. Section 7 lists every merge, not a sample, each with its rule id."""
+) -> list[str]:
+    """Section 1. A fixed seed so the same rows are the sample every run."""
     by_id = {entity["venue_id"]: entity for entity in entity_by_root.values()}
-
-    def clean(value: str) -> str:
-        return norm_text(value).replace("`", "ˋ") or "(blank)"
-
-    def fragment_line(fragment: Fragment) -> str:
-        if fragment.kind == "place" and fragment.place:
-            place = fragment.place
-            detail = ", ".join(value for value in (place.city, place.country, place.kr_region) if value)
-            return f"`{clean(fragment.text)}` → place ({detail})"
-        if fragment.kind in {"institution", "funder"}:
-            root = root_for_key[institution_key(fragment.text, lang)]
-            entity = entity_by_root[root]
-            return f"`{clean(fragment.text)}` → {fragment.kind} → {entity['venue_id']} ({clean(entity['name'])})"
-        return f"`{clean(fragment.text)}` → {fragment.kind}"
-
     rng = random.Random(20260925)
     sample = rng.sample(parsed, min(60, len(parsed)))
     lines = [
@@ -389,45 +415,78 @@ def _audit_text(
             [
                 f"### {index}. {row.activity_id}",
                 "",
-                f"- Raw venue: `{clean(row.raw)}`",
-                f"- Fragments: {'; '.join(fragment_line(fragment) for fragment in row.fragments) or '(none)'}",
+                f"- Raw venue: `{_audit_clean(row.raw)}`",
+                "- Fragments: "
+                + (
+                    "; ".join(
+                        _audit_fragment_line(fragment, root_for_key, entity_by_root, lang)
+                        for fragment in row.fragments
+                    )
+                    or "(none)"
+                ),
                 f"- venue_kind: {annotation['venue_kind']}",
-                f"- venue_id: {annotation['venue_id']}" + (f" ({clean(venue['name'])})" if venue else ""),
-                f"- funder_id: {annotation['funder_id']}" + (f" ({clean(funder['name'])})" if funder else ""),
+                f"- venue_id: {annotation['venue_id']}" + (f" ({_audit_clean(venue['name'])})" if venue else ""),
+                f"- funder_id: {annotation['funder_id']}" + (f" ({_audit_clean(funder['name'])})" if funder else ""),
                 "",
             ]
         )
+    return lines
 
+
+def _audit_alias_lines(entity_by_root: dict[str, dict], alias_roots: set[str]) -> list[str]:
+    """Section 2. The thirty alias-merged entities with the most rows."""
     alias_entities = sorted(
         (entity_by_root[root] for root in alias_roots),
         key=lambda entity: (-entity["n_rows"], entity["name"]),
     )[:30]
-    lines.extend(["## 2. Top 30 entities merged by alias", ""])
+    lines = ["## 2. Top 30 entities merged by alias", ""]
     if not alias_entities:
         lines.append("- none")
     for entity in alias_entities:
         spellings = [entity["name"], *entity["_aliases"]]
         lines.append(
-            f"- {entity['venue_id']} · {clean(entity['name'])} · {entity['n_rows']} rows: "
-            + " · ".join(clean(value) for value in spellings)
+            f"- {entity['venue_id']} · {_audit_clean(entity['name'])} · {entity['n_rows']} rows: "
+            + " · ".join(_audit_clean(value) for value in spellings)
         )
+    return lines
 
-    lines.extend(["", "## 3. Top 40 entities by row count", ""])
+
+def _audit_largest_lines(entity_by_root: dict[str, dict]) -> list[str]:
+    """Section 3. The forty entities with the most rows."""
+    lines = ["", "## 3. Top 40 entities by row count", ""]
     for entity in sorted(entity_by_root.values(), key=lambda item: (-item["n_rows"], item["name"]))[:40]:
         lines.append(
-            f"- {entity['venue_id']} · {clean(entity['name'])} · {entity['kind']} · "
+            f"- {entity['venue_id']} · {_audit_clean(entity['name'])} · {entity['kind']} · "
             f"{entity['n_rows']} rows · {entity['n_artists']} artists"
         )
+    return lines
 
-    lines.extend(["", "## 4. Top 30 funders", ""])
+
+def _audit_funder_lines(entity_by_root: dict[str, dict]) -> list[str]:
+    """Section 4. The thirty funders with the most rows."""
+    lines = ["", "## 4. Top 30 funders", ""]
     funders = [entity for entity in entity_by_root.values() if entity["kind"] == "funder"]
     if not funders:
         lines.append("- none")
     for entity in sorted(funders, key=lambda item: (-item["n_rows"], item["name"]))[:30]:
         lines.append(
-            f"- {entity['venue_id']} · {clean(entity['name'])} · {entity['n_rows']} rows · {entity['n_artists']} artists"
+            f"- {entity['venue_id']} · {_audit_clean(entity['name'])} · "
+            f"{entity['n_rows']} rows · {entity['n_artists']} artists"
         )
+    return lines
 
+
+def _audit_code_like_lines(
+    parsed: list[ParsedVenue],
+    entity_by_root: dict[str, dict],
+    root_for_key: dict[str, str],
+    lang: LanguageModule,
+) -> list[str]:
+    """Section 5. Institution fragments that are only a country code or an admin1 name.
+
+    They stayed institutions because the fragment was not a whole place name.
+    The list is a check that G1 and admin1 lookup did not miss them.
+    """
     suspicious: dict[str, dict[str, set[str] | Counter]] = defaultdict(
         lambda: {"rows": set(), "artists": set(), "spellings": Counter()}
     )
@@ -451,14 +510,11 @@ def _audit_text(
                 rows.add(row.activity_id)
                 artists.add(row.ledger_id)
                 seen_keys.add(key)
-
-    lines.extend(
-        [
-            "",
-            "## 5. Top 30 fragments left as institution that look like a country code or a state name",
-            "",
-        ]
-    )
+    lines = [
+        "",
+        "## 5. Top 30 fragments left as institution that look like a country code or a state name",
+        "",
+    ]
     ordered_suspicious = sorted(
         suspicious.items(),
         key=lambda item: (-len(item[1]["rows"]), institution_key(item[0], lang)),
@@ -473,144 +529,224 @@ def _audit_text(
         assert isinstance(rows, set) and isinstance(artists, set)
         spelling = min(spellings.items(), key=lambda value: (-value[1], value[0]))[0]
         entity = entity_by_root[root_for_key[key]]
-        lines.append(f"- {entity['venue_id']} · `{clean(spelling)}` · {len(rows)} rows · {len(artists)} artists")
+        lines.append(
+            f"- {entity['venue_id']} · `{_audit_clean(spelling)}` · {len(rows)} rows · {len(artists)} artists"
+        )
+    return lines
 
-    lines.extend(
-        [
-            "",
-            "## 6. Components left unmerged",
-            "",
-            (
-                "V5e: if a candidate pair's connected component contains two or more distinct Hangul name keys, "
-                "the whole component is left unmerged."
-            ),
-            "",
-            f"- Component count: {len(blocked_components)}",
-        ]
-    )
+
+def _audit_unmerged_lines(blocked_components: list[dict]) -> list[str]:
+    """Section 6. Components V5e left unmerged because they hold two Hangul names."""
+    lines = [
+        "",
+        "## 6. Components left unmerged",
+        "",
+        (
+            "V5e: if a candidate pair's connected component contains two or more distinct Hangul name keys, "
+            "the whole component is left unmerged."
+        ),
+        "",
+        f"- Component count: {len(blocked_components)}",
+    ]
     for index, component in enumerate(blocked_components, 1):
         lines.append(
             f"- {index}. {component['n_rows']} rows · {component['n_artists']} artists · "
-            + " · ".join(f"`{clean(name)}`" for name in component["names"])
+            + " · ".join(f"`{_audit_clean(name)}`" for name in component["names"])
         )
+    return lines
 
-    def spelled(key: str) -> tuple[str, int]:
-        spellings = spell_rows.get(key, {})
-        rows = set().union(*spellings.values()) if spellings else set()
-        best = min(spellings.items(), key=_spelling_sort)[0] if spellings else key
-        return clean(best), len(rows)
 
-    lines.extend(
-        [
-            "",
-            "## 7. Merges (every join, with its rule)",
-            "",
-            (
-                "V5a cross-script parenthetical pair written by two or more artists · "
-                "V5d acronym and Latin initials, two or more artists · "
-                "V5f one artist, Hangul and Latin, both names specific, after V5e · "
-                "V7e Latin word-bag · V8 part of a known entity · "
-                "V9 Hangul reading equals the Latin bag, one reading per component."
-            ),
-            "Format: rule · kept spelling (row count) ← joined spelling (row count).",
-        ]
-    )
+def _audit_spelling(key: str, spell_rows: dict) -> tuple[str, int]:
+    """Most-used spelling of a key, and how many rows use any spelling of it."""
+    spellings = spell_rows.get(key, {})
+    rows = set().union(*spellings.values()) if spellings else set()
+    best = min(spellings.items(), key=_spelling_sort)[0] if spellings else key
+    return _audit_clean(best), len(rows)
+
+
+def _audit_merge_lines(merges: list[tuple[str, str, str]], spell_rows: dict) -> list[str]:
+    """Section 7. Every join, with the rule that made it, not a sample."""
+    lines = [
+        "",
+        "## 7. Merges (every join, with its rule)",
+        "",
+        (
+            "V5a cross-script parenthetical pair written by two or more artists · "
+            "V5d acronym and Latin initials, two or more artists · "
+            "V5f one artist, Hangul and Latin, both names specific, after V5e · "
+            "V7e Latin word-bag · V8 part of a known entity · "
+            "V9 Hangul reading equals the Latin bag, one reading per component."
+        ),
+        "Format: rule · kept spelling (row count) ← joined spelling (row count).",
+    ]
     for rule in ("V5a", "V5d", "V5f", "V9", "V8", "V7e"):
-        items = [(spelled(left), spelled(right)) for found, left, right in merges if found == rule]
+        items = [
+            (_audit_spelling(left, spell_rows), _audit_spelling(right, spell_rows))
+            for found, left, right in merges
+            if found == rule
+        ]
         items.sort(key=lambda item: (-(item[0][1] + item[1][1]), item[0][0]))
         lines.extend(["", f"### {rule} — {len(items)} cases", ""])
         if not items:
             lines.append("- none")
-        lines.extend(f"- {rule} · `{left}`({n_left}) ← `{right}`({n_right})" for (left, n_left), (right, n_right) in items)
+        lines.extend(
+            f"- {rule} · `{left}`({n_left}) ← `{right}`({n_right})" for (left, n_left), (right, n_right) in items
+        )
+    return lines
+
+
+def _audit_text(
+    parsed: list[ParsedVenue],
+    annotations: dict[str, dict[str, str]],
+    entity_by_root: dict[str, dict],
+    root_for_key: dict[str, str],
+    alias_roots: set[str],
+    blocked_components: list[dict],
+    merges: list[tuple[str, str, str]],
+    spell_rows: dict,
+    lang: LanguageModule,
+) -> str:
+    """Audit markdown. Section 7 lists every merge, not a sample, each with its rule id."""
+    lines = _audit_sample_lines(parsed, annotations, entity_by_root, root_for_key, lang)
+    lines.extend(_audit_alias_lines(entity_by_root, alias_roots))
+    lines.extend(_audit_largest_lines(entity_by_root))
+    lines.extend(_audit_funder_lines(entity_by_root))
+    lines.extend(_audit_code_like_lines(parsed, entity_by_root, root_for_key, lang))
+    lines.extend(_audit_unmerged_lines(blocked_components))
+    lines.extend(_audit_merge_lines(merges, spell_rows))
     return "\n".join(lines) + "\n"
 
 
-def _name_rule_merges(
+def _join_unless_office(
+    union_find: UnionFind,
+    lang: LanguageModule,
+    merges: list[tuple[str, str, str]],
+    rule: str,
+    left: str,
+    right: str,
+) -> None:
+    """Join unless V8b says one key is the office of the other's place."""
+    if venue_names.forbids_place_office_merge(left, right, lang):
+        return
+    if union_find.union(left, right):
+        merges.append((rule, left, right))
+
+
+def _merge_v7e(
+    union_find: UnionFind,
+    keys: set[str],
+    lang: LanguageModule,
+    merges: list[tuple[str, str, str]],
+) -> None:
+    """V7e: Latin keys with one word-bag join the lexicographically first key."""
+    by_bag: dict[tuple, list[str]] = defaultdict(list)
+    for key in keys:
+        bag = venue_names.latin_bag(key, lang)
+        if bag:
+            by_bag[bag].append(key)
+    for _bag, members in sorted(by_bag.items()):
+        members.sort()
+        for key in members[1:]:
+            _join_unless_office(union_find, lang, merges, "V7e", members[0], key)
+
+
+def _v8_sites(
+    keys: set[str],
+    spell_rows: dict,
+    parsed: list[ParsedVenue],
+    lang: LanguageModule,
+) -> tuple[dict[str, Counter], dict[str, set[str]], dict[str, set[str]], set[str]]:
+    """Cities beside each key, acronym sites, Hangul branch sites, and known acronyms.
+
+    A site is the spelling itself (acronym + place), not a place fragment next
+    to a bare acronym. A row that names no city says nothing. A Hangul
+    <place>관 is a site of its parent. ``key_cities`` is a city written in the
+    same row as the acronym (ZKM, Karlsruhe).
+    """
+    key_cities: dict[str, Counter] = defaultdict(Counter)
+    for row in parsed:
+        cities = [
+            fragment.place.city.lower()
+            for fragment in row.fragments
+            if fragment.kind == "place" and fragment.place and fragment.place.city
+        ]
+        for fragment in row.fragments:
+            if fragment.kind == "institution" and cities:
+                key_cities[institution_key(fragment.text, lang)][cities[0]] += 1
+    acronym_sites: dict[str, set[str]] = defaultdict(set)
+    branch_sites: dict[str, set[str]] = defaultdict(set)
+    acronyms = venue_names.known_acronyms(spell_rows)
+    for key in keys:
+        acronym, place = venue_names.acronym_place_parent(key, list(spell_rows[key]), lang, acronyms)
+        if acronym:
+            acronym_sites[acronym].add(venue_names.city_name(place, lang))
+        branch_parent, branch_place = venue_names.hangul_branch_site(key, lang)
+        if branch_parent and branch_place and branch_parent in keys:
+            branch_sites[branch_parent].add(branch_place)
+    return key_cities, acronym_sites, branch_sites, acronyms
+
+
+def _join_v8_key(
+    key: str,
+    keys: set[str],
+    spell_rows: dict,
+    lang: LanguageModule,
+    union_find: UnionFind,
+    merges: list[tuple[str, str, str]],
+    key_cities: dict[str, Counter],
+    acronym_sites: dict[str, set[str]],
+    branch_sites: dict[str, set[str]],
+    acronyms: set[str],
+) -> None:
+    """V8: a room joins its parent; an acronym plus its only city joins the acronym."""
+    parent = venue_names.hangul_part_parent(key, lang) or venue_names.latin_part_parent(key, lang)
+    if parent and parent in keys and venue_names.part_parent_ok(parent, lang):
+        _join_unless_office(union_find, lang, merges, "V8", parent, key)
+        return
+    acronym, place = venue_names.acronym_place_parent(key, list(spell_rows[key]), lang, acronyms)
+    if acronym in keys and venue_names.specific(acronym, lang):
+        city = venue_names.city_name(place, lang)
+        sites = set(acronym_sites[acronym])
+        root = union_find.find(acronym)
+        for hangul_parent, places in branch_sites.items():
+            if union_find.find(hangul_parent) == root:
+                sites |= places
+        # One city: the city names the only site (ZKM Karlsruhe). A
+        # different city, or a Hangul branch of the same institution,
+        # means the acronym plus a city is itself a branch.
+        # Both must hold. The bare acronym's own rows sit mostly in that city
+        # (so the acronym is that site, not a word such as City or Digital
+        # that happens to precede a place), and no spelling names a second
+        # site of it (so it has no branches).
+        seen = key_cities.get(acronym)
+        own_city = bool(seen) and seen.most_common(1)[0][0] == city.lower()
+        if own_city and sites and all(other == city for other in sites):
+            _join_unless_office(union_find, lang, merges, "V8", acronym, key)
+
+
+def _merge_v8(
     union_find: UnionFind,
     keys: set[str],
     spell_rows: dict,
     parsed: list[ParsedVenue],
     lang: LanguageModule,
-    rules: frozenset[str] = NAME_RULES,
-) -> list[tuple[str, str, str]]:
-    """V7e, then V8, then V9. A rule absent from ``rules`` is not applied.
+    merges: list[tuple[str, str, str]],
+) -> None:
+    """V8, keys in sorted order so the same pairs join the same way every run."""
+    key_cities, acronym_sites, branch_sites, acronyms = _v8_sites(keys, spell_rows, parsed, lang)
+    for key in sorted(keys):
+        _join_v8_key(
+            key, keys, spell_rows, lang, union_find, merges, key_cities, acronym_sites, branch_sites, acronyms
+        )
 
-    Returns ``(rule, left key, right key)`` for each new join. V9 joins only when
-    every Hangul–Latin link in a connected component carries the same reading.
-    """
-    merges: list[tuple[str, str, str]] = []
 
-    def join(rule: str, left: str, right: str) -> None:
-        # V8b: an office is never the same entity as the place it administers.
-        if venue_names.forbids_place_office_merge(left, right, lang):
-            return
-        if union_find.union(left, right):
-            merges.append((rule, left, right))
-
-    if "V7" in rules:
-        by_bag: dict[tuple, list[str]] = defaultdict(list)
-        for key in keys:
-            bag = venue_names.latin_bag(key, lang)
-            if bag:
-                by_bag[bag].append(key)
-        for _bag, members in sorted(by_bag.items()):
-            members.sort()
-            for key in members[1:]:
-                join("V7e", members[0], key)
-
-    if "V8" in rules:
-        # Sites named by the spelling itself (acronym + place), not by a place
-        # fragment sitting next to a bare acronym. A row that names no city
-        # says nothing. A Hangul <place>관 is a site of its parent institution.
-        # Cities written next to the bare acronym in the same row (ZKM, Karlsruhe).
-        key_cities: dict[str, Counter] = defaultdict(Counter)
-        for row in parsed:
-            cities = [
-                fragment.place.city.lower()
-                for fragment in row.fragments
-                if fragment.kind == "place" and fragment.place and fragment.place.city
-            ]
-            for fragment in row.fragments:
-                if fragment.kind == "institution" and cities:
-                    key_cities[institution_key(fragment.text, lang)][cities[0]] += 1
-        acronym_sites: dict[str, set[str]] = defaultdict(set)
-        branch_sites: dict[str, set[str]] = defaultdict(set)
-        acronyms = venue_names.known_acronyms(spell_rows)
-        for key in keys:
-            acronym, place = venue_names.acronym_place_parent(key, list(spell_rows[key]), lang, acronyms)
-            if acronym:
-                acronym_sites[acronym].add(venue_names.city_name(place, lang))
-            branch_parent, branch_place = venue_names.hangul_branch_site(key, lang)
-            if branch_parent and branch_place and branch_parent in keys:
-                branch_sites[branch_parent].add(branch_place)
-        for key in sorted(keys):
-            parent = venue_names.hangul_part_parent(key, lang) or venue_names.latin_part_parent(key, lang)
-            if parent and parent in keys and venue_names.part_parent_ok(parent, lang):
-                join("V8", parent, key)
-                continue
-            acronym, place = venue_names.acronym_place_parent(key, list(spell_rows[key]), lang, acronyms)
-            if acronym in keys and venue_names.specific(acronym, lang):
-                city = venue_names.city_name(place, lang)
-                sites = set(acronym_sites[acronym])
-                root = union_find.find(acronym)
-                for hangul_parent, places in branch_sites.items():
-                    if union_find.find(hangul_parent) == root:
-                        sites |= places
-                # One city: the city names the only site (ZKM Karlsruhe). A
-                # different city, or a Hangul branch of the same institution,
-                # means the acronym plus a city is itself a branch.
-                # Both must hold. The bare acronym's own rows sit mostly in that city
-                # (so the acronym is that site, not a word such as City or Digital
-                # that happens to precede a place), and no spelling names a second
-                # site of it (so it has no branches).
-                seen = key_cities.get(acronym)
-                own_city = bool(seen) and seen.most_common(1)[0][0] == city.lower()
-                if own_city and sites and all(other == city for other in sites):
-                    join("V8", acronym, key)
-
-    if "V9" not in rules:
-        return merges
-
+def _merge_v9(
+    union_find: UnionFind,
+    keys: set[str],
+    lang: LanguageModule,
+    merges: list[tuple[str, str, str]],
+) -> None:
+    """V9: join a Hangul reading to Latin bags only when the component has one reading."""
     latin_roots: dict[tuple, set[str]] = defaultdict(set)
     for key in keys:
         bag = venue_names.latin_bag(key, lang, cross_script=True)
@@ -633,7 +769,30 @@ def _name_rule_merges(
         bags_of[component.find(f"h:{hangul}")].add(bag)
     for hangul, latin, bag in edges:
         if len(bags_of[component.find(f"h:{hangul}")]) == 1:
-            join("V9", hangul, latin)
+            _join_unless_office(union_find, lang, merges, "V9", hangul, latin)
+
+
+def _name_rule_merges(
+    union_find: UnionFind,
+    keys: set[str],
+    spell_rows: dict,
+    parsed: list[ParsedVenue],
+    lang: LanguageModule,
+    rules: frozenset[str] = NAME_RULES,
+) -> list[tuple[str, str, str]]:
+    """V7e, then V8, then V9. A rule absent from ``rules`` is not applied.
+
+    Returns ``(rule, left key, right key)`` for each new join. V9 joins only when
+    every Hangul–Latin link in a connected component carries the same reading.
+    """
+    merges: list[tuple[str, str, str]] = []
+    if "V7" in rules:
+        _merge_v7e(union_find, keys, lang, merges)
+    if "V8" in rules:
+        _merge_v8(union_find, keys, spell_rows, parsed, lang, merges)
+    if "V9" not in rules:
+        return merges
+    _merge_v9(union_find, keys, lang, merges)
     return merges
 
 
@@ -665,18 +824,12 @@ def build(
         _V7_SPELLING.reset(token)
 
 
-def _resolve(
-    activity_rows: list[dict],
-    out_dir: Path | None,
-    rules: frozenset[str],
-    write: bool,
-    lang: LanguageModule,
-) -> BuildResult:
-    """V2–V6, then whichever of V7e/V8/V9 are in ``rules``. The caller sets V7 spelling."""
-    parsed = [parse_venue(row, lang) for row in activity_rows]
+def _index_named_fragments(
+    parsed: list[ParsedVenue], lang: LanguageModule
+) -> tuple[dict[str, set[str]], dict[str, dict[str, set[str]]]]:
+    """Institution and funder keys, and the activity rows of each spelling."""
     key_kinds: dict[str, set[str]] = defaultdict(set)
     spell_rows: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
-
     for row in parsed:
         seen: set[tuple[str, str]] = set()
         for fragment in row.fragments:
@@ -688,7 +841,13 @@ def _resolve(
             if marker not in seen:
                 spell_rows[key][fragment.text].add(row.activity_id)
                 seen.add(marker)
+    return key_kinds, spell_rows
 
+
+def _alias_candidates(
+    parsed: list[ParsedVenue], lang: LanguageModule, key_kinds: dict[str, set[str]]
+) -> dict[tuple[str, str], set[str]]:
+    """V5a/V5d pairs that are both institutions, mapped to the artists who wrote them."""
     candidate_artists: dict[tuple[str, str], set[str]] = defaultdict(set)
     for row in parsed:
         for left, right in row.alias_pairs:
@@ -701,10 +860,17 @@ def _resolve(
             if left_key == right_key or left_key not in key_kinds or right_key not in key_kinds:
                 continue
             candidate_artists[tuple(sorted((left_key, right_key)))].add(row.ledger_id)
+    return candidate_artists
 
-    # V5f: one artist suffices for a Hangul↔Latin pair when both names are specific.
-    # Weaker than two artists, so it is applied only after V5e, and never into a
-    # group that would then hold two different Hangul names.
+
+def _alias_pair_tiers(
+    candidate_artists: dict[tuple[str, str], set[str]], lang: LanguageModule
+) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """Two-artist pairs, then one-artist V5f pairs of specific Hangul and Latin names.
+
+    V5f is weaker than two artists, so the caller applies it only after V5e, and
+    never into a group that would then hold two different Hangul names.
+    """
     repeated_pairs = [pair for pair, artists in candidate_artists.items() if len(artists) >= 2]
     single_pairs = sorted(
         pair
@@ -714,8 +880,20 @@ def _resolve(
         and venue_names.specific(pair[0], lang)
         and venue_names.specific(pair[1], lang)
     )
+    return repeated_pairs, single_pairs
 
-    # V5e: if a connected component contains two distinct mostly-Hangul keys, every key in it stays separate.
+
+def _v5e_components(
+    key_kinds: dict[str, set[str]],
+    repeated_pairs: list[tuple[str, str]],
+    spell_rows: dict[str, dict[str, set[str]]],
+    parsed: list[ParsedVenue],
+    lang: LanguageModule,
+) -> tuple[UnionFind, set[str], list[dict]]:
+    """V5e: a component with two distinct mostly-Hangul keys stays unmerged.
+
+    Returns the candidate graph, the blocked roots, and the audit records.
+    """
     candidate_graph = UnionFind(set(key_kinds))
     for left, right in repeated_pairs:
         candidate_graph.union(left, right)
@@ -739,8 +917,21 @@ def _resolve(
             }
         )
     blocked_components.sort(key=lambda component: (-component["n_rows"], -component["n_artists"], component["names"]))
+    return candidate_graph, blocked_roots, blocked_components
 
-    qualified_pairs = [(left, right) for left, right in repeated_pairs if candidate_graph.find(left) not in blocked_roots]
+
+def _apply_v5(
+    key_kinds: dict[str, set[str]],
+    repeated_pairs: list[tuple[str, str]],
+    single_pairs: list[tuple[str, str]],
+    blocked_roots: set[str],
+    candidate_graph: UnionFind,
+    lang: LanguageModule,
+) -> tuple[UnionFind, int, int, list[tuple[str, str, str]], list[tuple[str, str]]]:
+    """V5a/V5d outside a V5e block, then V5f. V5f never creates a second Hangul name."""
+    qualified_pairs = [
+        (left, right) for left, right in repeated_pairs if candidate_graph.find(left) not in blocked_roots
+    ]
     union_find = UnionFind(set(key_kinds))
     alias_merges = 0
     v5_merges: list[tuple[str, str, str]] = []
@@ -766,17 +957,19 @@ def _resolve(
         hangul_in[root] = hangul_in.pop(left_root, set()) | hangul_in.pop(right_root, set())
         single_merges += 1
         v5_merges.append(("V5f", left, right))
+    return union_find, alias_merges, single_merges, v5_merges, qualified_pairs
 
-    root_before_name_rules = {key: union_find.find(key) for key in key_kinds}
-    rule_merges = _name_rule_merges(union_find, set(key_kinds), spell_rows, parsed, lang, rules)
-    all_merges = v5_merges + rule_merges
 
-    root_for_key = {key: union_find.find(key) for key in key_kinds}
-    grouped_keys: dict[str, set[str]] = defaultdict(set)
-    for key, root in root_for_key.items():
-        grouped_keys[root].add(key)
-    alias_roots = {union_find.find(left) for left, right in qualified_pairs if union_find.find(left) == union_find.find(right)}
-
+def _collect_entity_use(
+    parsed: list[ParsedVenue], lang: LanguageModule, root_for_key: dict[str, str]
+) -> tuple[
+    dict[str, set[str]],
+    dict[str, set[str]],
+    dict[str, Counter],
+    dict[str, list[tuple[str, str]]],
+    dict[str, str],
+]:
+    """Rows, artists, and places of each entity, plus the institution key of each activity."""
     entity_rows: dict[str, set[str]] = defaultdict(set)
     entity_artists: dict[str, set[str]] = defaultdict(set)
     entity_places: dict[str, Counter] = defaultdict(Counter)
@@ -804,7 +997,24 @@ def _resolve(
             seen_roots.add(root)
         institution_key_by_activity[row.activity_id] = chosen_institution or ""
         row_roots[row.activity_id] = roots
+    return entity_rows, entity_artists, entity_places, row_roots, institution_key_by_activity
 
+
+def _name_entities(
+    grouped_keys: dict[str, set[str]],
+    key_kinds: dict[str, set[str]],
+    spell_rows: dict[str, dict[str, set[str]]],
+    entity_rows: dict[str, set[str]],
+    entity_artists: dict[str, set[str]],
+    entity_places: dict[str, Counter],
+    lang: LanguageModule,
+) -> dict[str, dict]:
+    """Display name, aliases, kind, and place of each entity root.
+
+    The name is the key with the most rows among keys V7a/b did not have to
+    trim, then that key's most used spelling. A place is kept when at least
+    half the entity's rows name it.
+    """
     entity_by_root: dict[str, dict] = {}
     for root, keys in grouped_keys.items():
         spellings: dict[str, set[str]] = defaultdict(set)
@@ -813,13 +1023,12 @@ def _resolve(
             kinds.update(key_kinds[key])
             for spelling, row_ids in spell_rows[key].items():
                 spellings[spelling].update(row_ids)
-        # Display name: the key with the most rows among keys V7a/b did not have to trim,
-        # then that key's most used spelling.
         by_key: dict[str, dict[str, set[str]]] = defaultdict(dict)
         for spelling, row_ids in spellings.items():
             by_key[institution_key(spelling, lang)][spelling] = row_ids
 
         def key_rank(item: tuple[str, dict[str, set[str]]]) -> tuple:
+            """Untrimmed key first, then more rows, then Hangul, then the spelling."""
             _key, group = item
             was_trimmed = all(venue_names.trimmed(spelling, lang) for spelling in group)
             rows = set().union(*group.values())
@@ -828,7 +1037,9 @@ def _resolve(
         ordered_spellings = [
             spelling
             for _key, group in sorted(by_key.items(), key=key_rank)
-            for spelling, _ids in sorted(group.items(), key=lambda item: (venue_names.trimmed(item[0], lang), *_spelling_sort(item)))
+            for spelling, _ids in sorted(
+                group.items(), key=lambda item: (venue_names.trimmed(item[0], lang), *_spelling_sort(item))
+            )
         ]
         n_rows = len(entity_rows[root])
         city = country = kr_region = ""
@@ -846,11 +1057,16 @@ def _resolve(
             "n_rows": n_rows,
             "n_artists": len(entity_artists[root]),
         }
+    return entity_by_root
 
+
+def _annotate_rows(
+    parsed: list[ParsedVenue], entity_by_root: dict[str, dict], row_roots: dict[str, list[tuple[str, str]]]
+) -> tuple[dict[str, dict[str, str]], Counter, list[dict]]:
+    """Number entities ``VEN-`` by row count, and the venue_kind of each activity."""
     ordered_entities = sorted(entity_by_root.items(), key=lambda item: (-item[1]["n_rows"], item[1]["name"]))
     for index, (_, entity) in enumerate(ordered_entities, 1):
         entity["venue_id"] = f"VEN-{index:06d}"
-
     annotations: dict[str, dict[str, str]] = {}
     venue_kind_counts: Counter = Counter()
     for row in parsed:
@@ -876,7 +1092,6 @@ def _resolve(
         }
         annotations[row.activity_id] = annotation
         venue_kind_counts[venue_kind] += 1
-
     venue_rows = [
         {
             "venue_id": entity["venue_id"],
@@ -891,6 +1106,46 @@ def _resolve(
         }
         for _, entity in ordered_entities
     ]
+    return annotations, venue_kind_counts, venue_rows
+
+
+def _resolve(
+    activity_rows: list[dict],
+    out_dir: Path | None,
+    rules: frozenset[str],
+    write: bool,
+    lang: LanguageModule,
+) -> BuildResult:
+    """V2–V6, then whichever of V7e/V8/V9 are in ``rules``. The caller sets V7 spelling."""
+    parsed = [parse_venue(row, lang) for row in activity_rows]
+    key_kinds, spell_rows = _index_named_fragments(parsed, lang)
+    candidate_artists = _alias_candidates(parsed, lang, key_kinds)
+    repeated_pairs, single_pairs = _alias_pair_tiers(candidate_artists, lang)
+    candidate_graph, blocked_roots, blocked_components = _v5e_components(
+        key_kinds, repeated_pairs, spell_rows, parsed, lang
+    )
+    union_find, alias_merges, single_merges, v5_merges, qualified_pairs = _apply_v5(
+        key_kinds, repeated_pairs, single_pairs, blocked_roots, candidate_graph, lang
+    )
+    root_before_name_rules = {key: union_find.find(key) for key in key_kinds}
+    rule_merges = _name_rule_merges(union_find, set(key_kinds), spell_rows, parsed, lang, rules)
+    all_merges = v5_merges + rule_merges
+    root_for_key = {key: union_find.find(key) for key in key_kinds}
+    grouped_keys: dict[str, set[str]] = defaultdict(set)
+    for key, root in root_for_key.items():
+        grouped_keys[root].add(key)
+    alias_roots = {
+        union_find.find(left)
+        for left, right in qualified_pairs
+        if union_find.find(left) == union_find.find(right)
+    }
+    entity_rows, entity_artists, entity_places, row_roots, institution_key_by_activity = _collect_entity_use(
+        parsed, lang, root_for_key
+    )
+    entity_by_root = _name_entities(
+        grouped_keys, key_kinds, spell_rows, entity_rows, entity_artists, entity_places, lang
+    )
+    annotations, venue_kind_counts, venue_rows = _annotate_rows(parsed, entity_by_root, row_roots)
     if write:
         assert out_dir is not None
         _write_csv(out_dir / "venues.csv", venue_rows)
@@ -908,7 +1163,6 @@ def _resolve(
             ),
             encoding="utf-8",
         )
-
     stats = {
         "entities": len(venue_rows),
         "shared_entities": sum(entity["n_artists"] >= 2 for entity in venue_rows),

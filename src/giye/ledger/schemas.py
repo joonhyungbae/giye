@@ -6,8 +6,8 @@ People live in ``artists.csv``. ``ledger_id`` is the internal key (``LED-…``).
 row's position in the file. A merge removes the dropped row and records its
 ``gy_id`` in ``gy_retired.csv``.
 
-Column order matches the production ledger so a file written here is readable
-there. Pipe-separated cells (``aliases``) use ``split_pipe`` / ``join_pipe``.
+Column order is part of the file format: a reader expects these names in this
+order. Pipe-separated cells (``aliases``) use ``split_pipe`` / ``join_pipe``.
 """
 
 from __future__ import annotations

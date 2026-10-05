@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """CV activities the same-person rules read.
 
-Production stores one JSON file per person at ``data/work/cv_extract/<ledger_id>.json``
-with an ``activities`` list (``title``, ``venue``, ``year``). That file wins when
-it exists. A configured directory of HTML CVs fills in people who have no file
-yet, matched by ``data-name-ko`` and ``data-name-en``. The match has to be
-unique. Stages 3–7 do not fetch the network; these are local files.
+One JSON file per person lives at ``data/work/cv_extract/<ledger_id>.json``
+with an ``activities`` list (``title``, ``venue``, ``year``). That file wins
+when it exists, because it is the extracted reading of the CV. A configured
+directory of HTML CVs fills in people who have no file yet, matched by
+``data-name-ko`` and ``data-name-en``. The match has to be unique so two
+people are not given the same page. Resolution reads only these local files.
 """
 
 from __future__ import annotations
@@ -19,6 +20,8 @@ from giye.ledger.ledger import Ledger
 
 
 class _CvParser(HTMLParser):
+    """One ``<article>`` per person and one ``<li>`` per activity, from a local HTML CV."""
+
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.people: list[dict] = []
@@ -29,6 +32,7 @@ class _CvParser(HTMLParser):
         self._buf: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        """Open a person on ``article`` or an activity line on ``li``."""
         values = {key: value or "" for key, value in attrs}
         if tag == "article":
             self._person = {
@@ -44,6 +48,7 @@ class _CvParser(HTMLParser):
             self._li_venue = values.get("data-venue", "")
 
     def handle_endtag(self, tag: str) -> None:
+        """Close an activity line or the person article."""
         if tag == "li" and self._in_li and self._person is not None:
             title = " ".join("".join(self._buf).split())
             if title or self._li_year:
@@ -55,6 +60,7 @@ class _CvParser(HTMLParser):
             self._person = None
 
     def handle_data(self, data: str) -> None:
+        """Keep text that sits inside the current activity line."""
         if self._in_li:
             self._buf.append(data)
 
@@ -144,6 +150,7 @@ def fold_merged_cvs(ledger: Ledger) -> None:
 
 
 def _match(artists: list[dict], person: dict) -> str | None:
+    """The one ledger id whose Korean and English names both match. Shared or missing names match nobody."""
     ko = (person.get("name_ko") or "").strip()
     en = (person.get("name_en") or "").strip()
     if not ko and not en:

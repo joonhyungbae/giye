@@ -29,7 +29,10 @@ def serve_sheet(path: Path, port: int) -> _Server:
     lock = threading.Lock()
 
     class Handler(BaseHTTPRequestHandler):
+        """Judging page for this sheet. ``GET /`` renders it; ``POST /label`` writes one row."""
+
         def do_GET(self) -> None:
+            """Send the judging page, or 404 for any path other than ``/``."""
             if self.path.split("?", 1)[0] != "/":
                 self.send_error(404)
                 return
@@ -43,6 +46,7 @@ def serve_sheet(path: Path, port: int) -> _Server:
             self.wfile.write(body)
 
         def do_POST(self) -> None:
+            """Write one label from ``POST /label`` and answer with JSON."""
             if self.path.split("?", 1)[0] != "/label":
                 self.send_error(404)
                 return
@@ -85,7 +89,8 @@ def serve_sheet(path: Path, port: int) -> _Server:
             self.end_headers()
             self.wfile.write(body)
 
-        def log_message(self, fmt: str, *args: object) -> None:
+        def log_message(self, *_args: object) -> None:
+            """Drop the default access log. Labels are written into the sheet, not stdout."""
             return
 
     server = _Server(("127.0.0.1", port), Handler)

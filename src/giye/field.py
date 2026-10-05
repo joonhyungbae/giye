@@ -63,7 +63,7 @@ class Field:
     source: Path | None = None
     # E2. Frame-code prefix → regex. Order is first-match order.
     event_patterns: tuple[tuple[str, str], ...] = ()
-    # E4 and the ring's team credit. Production writes ``팀: <name>``.
+    # E4 and the ring's team credit. The usual spelling is ``팀: <name>``.
     team_prefix: str = "팀:"
     # T1. Empty means the shipped Korean media-art list, unless inherit_tags is false.
     team_words: str = ""

@@ -29,7 +29,7 @@ from pathlib import Path
 
 from giye.normalize.gazetteer import Gazetteer
 
-# Production uses the machine's local calendar year. UTC would move the bound on New Year's Eve.
+# The bound is the machine's local calendar year. UTC would move it across New Year's Eve.
 THIS_YEAR = date.today().year  # noqa: DTZ011
 PRACTICE_TYPES = {
     "solo_exhibition",
@@ -73,8 +73,8 @@ def lang_of(text: str | None) -> str:
 
 # ── P1 checks (flags, never deletions) ───────────────────────────────────────────────────────────
 
-# Y0 year_missing, Y1 year_range, Y2 year_from_title. The flag strings are the
-# long names; the Y-ids are the production names of the same three checks.
+# Y0 year_missing, Y1 year_range, Y2 year_from_title (docs/RULES.md). The stored
+# flag is the long name; the Y-id names the same check.
 PERIOD_IN_TITLE = r"(?:after|since|nach|seit|depuis|dopo|desde)\s+{y}\b|{y}\s*년\s*이후"
 
 
@@ -229,16 +229,19 @@ def venue_place(venue: str, gazetteer: Gazetteer) -> tuple[str, str]:
     return (got[1], got[2]) if got else ("", "")
 
 
-def event_links(rows: list[dict], memberships: list[str], event_pattern) -> dict[str, str]:
+def event_links(
+    rows: list[dict],
+    memberships: list[str],
+    event_pattern: Callable[[str], str | None],
+) -> dict[str, str]:
     """P4: activity_id → frame edition it is an account of.
 
     A roster row (origin = a frame code) is its edition. A CV row is linked to
     an edition of a frame the artist is on when its title or venue names that
-    frame's event in that edition's year. Rows stay as they are.
-
-    The production docstring calls this check E1. That id is also the
-    same-person website rule. The string is kept; see the questions in the
-    port report. The link itself stores the frame code, not the id.
+    frame's event in that edition's year. Rows stay as they are. The stored
+    value is the frame code. This is not identity rule E1 (docs/RULES.md): E1
+    joins two people who share a website, and reusing that id here would make
+    the two rules indistinguishable.
     """
     out: dict[str, str] = {}
     editions = []
@@ -368,6 +371,7 @@ def load_snippet_classes(path: Path, gy_to_ledger: dict[str, str] | None = None)
 
 
 def _snippet_ledger_id(obj: dict, gy_to_ledger: dict[str, str], path: Path, lineno: int) -> str:
+    """Ledger id of one snippet. A gy_id that points at a different row is an error."""
     ledger_id = (obj.get("ledger_id") or "").strip()
     gy_id = (obj.get("gy_id") or "").strip()
     if ledger_id and gy_id:
@@ -386,6 +390,7 @@ def _snippet_ledger_id(obj: dict, gy_to_ledger: dict[str, str], path: Path, line
 
 
 def _snippet_classes(obj: dict) -> set[str]:
+    """Practice classes on one snippet object. Title-only and nothing are not practice."""
     found: set[str] = set()
     for name in PRACTICE_CLASSES:
         if obj.get(name) in (True, "true", "yes", 1):

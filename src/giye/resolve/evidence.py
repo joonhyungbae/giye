@@ -2,8 +2,8 @@
 """Same-person evidence (rules E1–E4).
 
 Two rows are merged only when one of these holds. A shared name, a romanized
-spelling, or a report is not evidence. Thresholds and patterns are the
-production ones.
+spelling, or a report is not evidence. Thresholds and patterns are fixed here
+and in the field file (see docs/RULES.md), so two runs of the same ledger agree.
 
 E1. The same personal website. The key is the host, or host plus path on a
 shared platform, so two accounts on one host stay apart.
@@ -19,7 +19,7 @@ same year give or take one year. The normalised title is at least 3 characters.
 The event name itself is E2's business, so an unbracketed title does not count.
 
 E4. Both roster rows credit the same team in the role, written with the field
-file's team prefix (production: ``팀: <name>``). The normalised team name is
+file's team prefix (default ``팀: <name>``). The normalised team name is
 at least 2 characters.
 """
 
@@ -209,8 +209,8 @@ def cv_lists_work(cv_rows: list[dict], works: set[tuple[str, int]]) -> str | Non
 def teams(rows: list[dict], *, prefix: str = "팀:") -> set[str]:
     """Normalised team names credited with ``prefix`` on roster roles (E4).
 
-    ``prefix`` is the field file's marker. The default is the production
-    spelling so a caller that has not loaded a field still reads those credits.
+    ``prefix`` is the field file's marker. The default ``팀:`` is the usual E4
+    spelling, so a caller that has not loaded a field still reads those credits.
     """
     found: set[str] = set()
     pattern = re.escape(prefix) + r" ?([^|;]+)"
@@ -234,8 +234,8 @@ def evidence_e2_e4(
 ) -> str | None:
     """First of E2, E3, E4 that holds, checked in that order, either direction.
 
-    The loop shape matches production: a hit stops the search, E2 is tried
-    before E3, and E4 runs only when neither of those fired.
+    A hit stops the search, so the first rule that holds is the one recorded.
+    E2 is tried before E3, and E4 runs only when neither of those fired.
     """
     evidence = None
     for this, other in ((left, right), (right, left)):

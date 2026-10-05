@@ -20,13 +20,15 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
 from giye.config import Config
+from giye.field import Field
 from giye.ledger.io import read_csv, write_csv
-from giye.normalize.language import language_for, packaged_dir
+from giye.normalize.language import LanguageModule, language_for, packaged_dir
 from giye.normalize.rules import (
     HEAD_CHARS,
     active_since,
@@ -43,7 +45,7 @@ from giye.normalize.rules import (
     venue_place,
     year_flags,
 )
-from giye.normalize.venues import NAME_RULES, build
+from giye.normalize.venues import NAME_RULES, BuildResult, build
 from giye.resolve.evidence import event_pattern, pattern_table
 from giye.resolve.teams import team_like
 
@@ -73,11 +75,16 @@ ATTR_FIELDS = ["ledger_id", "field", "value", "rule", "evidence", "evidence_url"
 
 @dataclass
 class NormalizeResult:
+    """What one normalisation run wrote: the processed directory, the report, and row counts.
+
+    ``venue_merges`` maps a rule id (V5a–V5f, V7–V9) to how many institution
+    spellings that rule joined.
+    """
+
     processed: Path
     report: str
     activities: int
     attributes: int
-    # Rule id → how many institution spellings that rule joined (V5a–V5f, V7–V9).
     venue_merges: dict[str, int] = field(default_factory=dict)
 
 
@@ -98,10 +105,12 @@ def parse_name_rules(raw: str | None) -> frozenset[str] | None:
 
 
 def resolve_stored(config: Config, stored: str) -> Path:
-    """Map a ``data/...`` snapshot path onto the configured data directory.
+    """Map a stored snapshot path onto the configured data directory.
 
-    Production stores ``data/raw/cv/...`` and resolves it against the data root.
-    An absolute path is kept. Anything else is relative to the data directory.
+    Ledger paths are written as ``data/...`` from the archive root. The
+    configured data directory is that ``data/``, so a leading ``data`` segment
+    is dropped. An absolute path is kept. Anything else is relative to the
+    data directory.
     """
     path = Path(stored)
     if path.is_absolute():
@@ -113,13 +122,15 @@ def resolve_stored(config: Config, stored: str) -> Path:
 
 
 def _sha256(path: Path) -> str:
+    """Hex digest of a file's bytes, for the manifest."""
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _cv_texts(config: Config, sources: list[dict]) -> list[tuple[str, str]]:
     """(text, url) of the latest snapshot of each active CV source.
 
-    The stored path has no ``.txt`` suffix; production appends it.
+    The ledger stores the snapshot stem without ``.txt``; the extracted text
+    is that stem plus ``.txt``.
     """
     found: list[tuple[str, str]] = []
     for source in sources:
@@ -132,6 +143,7 @@ def _cv_texts(config: Config, sources: list[dict]) -> list[tuple[str, str]]:
 
 
 def _table(config: Config, filename: str) -> list[dict[str, str]]:
+    """One ledger CSV as row dicts. A missing file is an empty table."""
     return read_csv(config.ledger / filename)
 
 
@@ -150,64 +162,89 @@ def _frame_rows(config: Config) -> list[dict[str, str]]:
     ]
 
 
-def _edition_of(config: Config, frames: list[dict[str, str]]):
+def _edition_of(
+    config: Config, frames: list[dict[str, str]]
+) -> Callable[[str], tuple[str, str | None] | None]:
     """Membership code → (registry frame, edition year), including field-file aliases."""
     from giye.publish.snapshot import resolve_frame_edition
 
     codes = [row["code"] for row in frames if row.get("code")]
     years = {row["code"]: row.get("years_covered") or "" for row in frames if row.get("code")}
 
-    def edition(mem_code: str):
+    def edition(mem_code: str) -> tuple[str, str | None] | None:
         return resolve_frame_edition(mem_code, codes, years, field=config.field_config)
 
     return edition
 
 
-def normalize(config: Config, *, venue_name_rules: str | None = None) -> NormalizeResult:
-    """Write the processed layer for ``config``. Does not change the ledger.
+@dataclass
+class _Inputs:
+    """Ledger tables read once, in file order, at the start of a run."""
 
-    ``venue_name_rules`` overrides ``[normalize] venue_name_rules`` when it is
-    not ``None``. An empty config value applies V7, V8 and V9.
-    """
-    raw_rules = venue_name_rules if venue_name_rules is not None else config.venue_name_rules
-    name_rules = parse_name_rules(raw_rules if raw_rules else None)
-    language = language_for(config)
-    out = config.processed
-    out.mkdir(parents=True, exist_ok=True)
+    artists: list[dict[str, str]]
+    activities: list[dict[str, str]]
+    by_artist: dict[str, list[dict[str, str]]]
+    sources: dict[str, list[dict[str, str]]]
+    frames_of: dict[str, list[str]]
+    membership_rows: list[dict[str, str]]
+    link_of: dict[str, list[dict[str, str]]]
+    scope_rows: list[dict[str, str]]
+    frame_rows: list[dict[str, str]]
 
+
+def _read_inputs(config: Config) -> _Inputs:
+    """Ledger tables a normalisation run reads, in that order."""
     artists = _table(config, "artists.csv")
     activities = _table(config, "activities.csv")
-    by_artist: dict[str, list[dict]] = defaultdict(list)
+    by_artist: dict[str, list[dict[str, str]]] = defaultdict(list)
     for row in activities:
         by_artist[row["ledger_id"]].append(row)
-    sources: dict[str, list[dict]] = defaultdict(list)
+    sources: dict[str, list[dict[str, str]]] = defaultdict(list)
     for source in read_csv(config.ledger / "cv_sources.csv"):
         sources[source.get("ledger_id") or ""].append(source)
     frames_of: dict[str, list[str]] = defaultdict(list)
     membership_rows = read_csv(config.ledger / "frame_membership.csv")
     for membership in membership_rows:
         frames_of[membership.get("ledger_id") or ""].append(membership.get("frame_code") or "")
-    link_of: dict[str, list[dict]] = defaultdict(list)
+    link_of: dict[str, list[dict[str, str]]] = defaultdict(list)
     for link in read_csv(config.ledger / "links.csv"):
         link_of[link.get("ledger_id") or ""].append(link)
     scope_rows = read_csv(config.ledger / "scope.csv")
-    frame_rows = _frame_rows(config)
-    published = published_ids(artists, membership_rows, scope_rows, frame_rows, _edition_of(config, frame_rows))
-    # T1 writes this beside the ledger. Absent → level 2 is the M1 rows of this run only.
-    snippet_path = config.work / "tendency" / "snippets.jsonl"
-    gy_to_ledger = {
+    return _Inputs(
+        artists=artists,
+        activities=activities,
+        by_artist=by_artist,
+        sources=sources,
+        frames_of=frames_of,
+        membership_rows=membership_rows,
+        link_of=link_of,
+        scope_rows=scope_rows,
+        frame_rows=_frame_rows(config),
+    )
+
+
+def _gy_to_ledger(config: Config, artists: list[dict[str, str]]) -> dict[str, str]:
+    """gy_id → ledger_id, including a retired id redirected to the record that absorbed it.
+
+    Evidence filed under a retired id belongs to the surviving record, the same
+    way the site's redirects do.
+    """
+    mapped = {
         artist["gy_id"]: artist["ledger_id"] for artist in artists if artist.get("gy_id") and artist.get("ledger_id")
     }
-    # A retired gy_id redirects to the record that absorbed it (gy_retired.csv), so evidence
-    # filed under it belongs to that record, as the site's redirects do.
     for row in read_csv(config.ledger / "gy_retired.csv"):
         retired, survivor = row.get("gy_id") or "", row.get("merged_into_ledger_id") or ""
-        if retired and survivor and retired not in gy_to_ledger:
-            gy_to_ledger[retired] = survivor
-    snippets = load_snippet_classes(snippet_path, gy_to_ledger)
+        if retired and survivor and retired not in mapped:
+            mapped[retired] = survivor
+    return mapped
 
-    patterns = pattern_table(config.field_config.event_patterns, config.event_patterns)
-    tags = config.field_config.resolved()
+
+def _flags_and_links(
+    by_artist: dict[str, list[dict[str, str]]],
+    frames_of: dict[str, list[str]],
+    patterns: dict[str, str],
+) -> tuple[dict[str, list[str]], dict[str, str]]:
+    """P1 year flags and P4 edition links, one pass per artist."""
 
     def pattern_for(code: str) -> str | None:
         return event_pattern(code, patterns)
@@ -217,13 +254,30 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
     for ledger_id, rows in by_artist.items():
         flags.update(year_flags(rows))  # P1
         links.update(event_links(rows, frames_of.get(ledger_id, []), pattern_for))  # P4
+    return flags, links
+
+
+def _places_by_venue(
+    activities: list[dict[str, str]], language: LanguageModule
+) -> dict[str, tuple[str, str]]:
+    """V1: normalised venue string → (country, Korean region), once per distinct string."""
     venue_places: dict[str, tuple[str, str]] = {}
     for row in activities:
         venue = norm_text(row.get("venue"))
         if venue not in venue_places:
             venue_places[venue] = venue_place(venue, language.gazetteer)  # V1
-    venue_result = build(activities, out, name_rules=name_rules, lang=language)
-    activity_out = []
+    return venue_places
+
+
+def _activity_rows(
+    activities: list[dict[str, str]],
+    venue_places: dict[str, tuple[str, str]],
+    venue_result: BuildResult,
+    links: dict[str, str],
+    flags: dict[str, list[str]],
+) -> list[dict[str, str]]:
+    """One processed activity row per ledger row: P2 text, V1 place, entity ids, P4, P1."""
+    activity_out: list[dict[str, str]] = []
     for row in activities:
         venue = norm_text(row.get("venue"))
         country, region = venue_places.get(venue, ("", ""))
@@ -241,17 +295,36 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
                 "lang": lang_of(row.get("title")),
                 "venue_country": country,
                 "venue_region": region,
-                **venue_result.annotations.get(row.get("activity_id", ""), {"venue_id": "", "funder_id": "", "venue_kind": ""}),
+                **venue_result.annotations.get(
+                    row.get("activity_id", ""), {"venue_id": "", "funder_id": "", "venue_kind": ""}
+                ),
                 "event_link": links.get(row.get("activity_id", ""), ""),
                 "flags": "|".join(flags.get(row.get("activity_id", ""), [])),
             }
         )
+    return activity_out
 
+
+def _derive_attributes(
+    config: Config,
+    artists: list[dict[str, str]],
+    by_artist: dict[str, list[dict[str, str]]],
+    sources: dict[str, list[dict[str, str]]],
+    language: LanguageModule,
+    flags: dict[str, list[str]],
+    link_of: dict[str, list[dict[str, str]]],
+    frames_of: dict[str, list[str]],
+    published: set[str],
+    snippets: dict[str, list[str]],
+    tags: Field,
+) -> tuple[list[dict], Counter[str], Counter[str]]:
+    """P5 and P6 rows. A value already on the artist row is left as it is (P5)."""
     attributes: list[dict] = []
-    filled: Counter = Counter()
-    depth_counts: Counter = Counter()
+    filled: Counter[str] = Counter()
+    depth_counts: Counter[str] = Counter()
 
-    def put(ledger_id: str, field_name: str, value, rule: str, evidence: str = "", url: str = "") -> None:
+    def put(ledger_id: str, field_name: str, value: str | int, rule: str, evidence: str = "", url: str = "") -> None:
+        """Append one derived row and count it. Does not edit the ledger."""
         attributes.append(
             {
                 "ledger_id": ledger_id,
@@ -279,9 +352,7 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
         if not (artist.get("country") or artist.get("region")):
             places, phrase = based_in([text for text, _url in texts], language.gazetteer)
             if places:
-                url = next(
-                    url for text, url in texts if phrase[:30] in norm_text(text[:HEAD_CHARS])
-                )
+                url = next(url for text, url in texts if phrase[:30] in norm_text(text[:HEAD_CHARS]))
                 countries = "|".join(dict.fromkeys(country for country, _region in places))
                 put(ledger_id, "country", countries, "L1 base phrase in own CV", phrase, url)
                 regions = [region for country, region in places if country == "KR" and region]
@@ -316,15 +387,17 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
             )
             put(ledger_id, "record_depth", value, "P6 record depth", evidence)
             depth_counts[value] += 1
+    return attributes, filled, depth_counts
 
-    if sum(depth_counts.values()) != len(published):
-        raise ValueError(
-            f"P6 wrote {sum(depth_counts.values())} record_depth rows for {len(published)} published people"
-        )
 
-    write_csv(path=out / "activities.csv", fields=ACT_FIELDS, rows=activity_out)
-    write_csv(path=out / "artist_attributes.csv", fields=ATTR_FIELDS, rows=attributes)
+def _input_digests(
+    config: Config, language: LanguageModule, snippet_path: Path
+) -> tuple[dict[str, str], str]:
+    """SHA-256 of ledger CSVs, gazetteer files, the glossary, and the snippets file.
 
+    The second value is ``present`` or ``absent``. Absent means level 2 is the
+    M1 rows of this run only.
+    """
     inputs: dict[str, str] = {}
     ledger = config.ledger
     if ledger.is_dir():
@@ -336,26 +409,42 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
     glossary_file = config.normalize_glossary or (packaged_dir() / "glossary.yaml")
     if glossary_file.is_file():
         inputs[glossary_file.name] = _sha256(glossary_file)
-
     snippet_state = "absent"
     if snippet_path.is_file():
         inputs["work/tendency/snippets.jsonl"] = _sha256(snippet_path)
         snippet_state = "present"
-    flag_counts = Counter(flag for group in flags.values() for flag in group)
-    depth_by_level = {level: depth_counts[level] for level in ("1", "2", "3", "4")}
-    manifest = {
+    return inputs, snippet_state
+
+
+def _manifest(
+    *,
+    name_rules: frozenset[str] | None,
+    language_name: str,
+    inputs: dict[str, str],
+    artists: int,
+    activities: int,
+    flag_counts: Counter[str],
+    filled: Counter[str],
+    depth_by_level: dict[str, int],
+    published: int,
+    snippet_state: str,
+    activity_out: list[dict[str, str]],
+    venue_result: BuildResult,
+) -> dict:
+    """Input hashes, rule version, and counts. ``generated_at`` is UTC, set here."""
+    return {
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "rules_version": RULES_VERSION,
         "venue_name_rules": sorted(NAME_RULES if name_rules is None else name_rules),
-        "language": language.name,
+        "language": language_name,
         "inputs_sha256": inputs,
         "counts": {
-            "artists": len(artists),
-            "activities": len(activities),
+            "artists": artists,
+            "activities": activities,
             "flags": dict(flag_counts),
             "attributes": dict(filled),
             "record_depth": depth_by_level,
-            "record_depth_published": len(published),
+            "record_depth_published": published,
             "record_depth_snippets": snippet_state,
             "venue_country": sum(1 for row in activity_out if row["venue_country"]),
             "venue_entities": venue_result.stats["entities"],
@@ -365,17 +454,32 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
             "event_link_roster": sum(
                 1 for row in activity_out if row["event_link"] and not str(row["origin"]).startswith("cv:")
             ),
-            "event_link_cv": sum(1 for row in activity_out if row["event_link"] and str(row["origin"]).startswith("cv:")),
+            "event_link_cv": sum(
+                1 for row in activity_out if row["event_link"] and str(row["origin"]).startswith("cv:")
+            ),
         },
     }
-    (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    medium_artists = len({row["ledger_id"] for row in attributes if row["field"] == "medium"})
+
+def _report_text(
+    manifest: dict,
+    artists: int,
+    activities: int,
+    flag_counts: Counter[str],
+    venue_result: BuildResult,
+    filled: Counter[str],
+    tags: Field,
+    depth_by_level: dict[str, int],
+    published: int,
+    snippet_state: str,
+    medium_artists: int,
+) -> str:
+    """``report.md``: what each rule filled and flagged. Nothing here edits the ledger."""
     applied = ", ".join(manifest["venue_name_rules"]) or "(none)"
     lines = [
         f"# Preprocess report ({manifest['generated_at']}, rules {RULES_VERSION})",
         "",
-        f"Artists {len(artists)} · activities {len(activities)}",
+        f"Artists {artists} · activities {activities}",
         f"Venue name rules: {applied}",
         "",
         "## P1 checks (flag only; nothing is deleted)",
@@ -385,7 +489,7 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
         "## P3 places and institutions · P4 same event",
         "",
         (
-            f"- Activities whose venue yielded a country: {manifest['counts']['venue_country']} / {len(activities)}"
+            f"- Activities whose venue yielded a country: {manifest['counts']['venue_country']} / {activities}"
             " (V1, G1–G6, every place-name fragment split on a delimiter)"
         ),
         f"- Institution entities: {venue_result.stats['entities']} (V2–V6, then V7–V9)",
@@ -431,7 +535,7 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
         (
             "A person is published by the same test as the site build: not scope=out, on a roster or "
             "cv_link_ok=yes, with a source URL, status empty / PUBLISHED / STAGED. "
-            f"Published {len(published)} of {len(artists)}. One `record_depth` row each. "
+            f"Published {published} of {artists}. One `record_depth` row each. "
             "The value is not copied into the site snapshot."
         ),
         "",
@@ -456,13 +560,98 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
             "When it is absent, level 2 is the M1 rows only. A later run of this script reads the file if it is there."
         ),
     ]
-    report = "\n".join(lines) + "\n"
+    return "\n".join(lines) + "\n"
+
+
+def normalize(config: Config, *, venue_name_rules: str | None = None) -> NormalizeResult:
+    """Write the processed layer for ``config``. Does not change the ledger.
+
+    ``venue_name_rules`` overrides ``[normalize] venue_name_rules`` when it is
+    not ``None``. An empty config value applies V7, V8 and V9.
+    """
+    raw_rules = venue_name_rules if venue_name_rules is not None else config.venue_name_rules
+    name_rules = parse_name_rules(raw_rules if raw_rules else None)
+    language = language_for(config)
+    out = config.processed
+    out.mkdir(parents=True, exist_ok=True)
+
+    loaded = _read_inputs(config)
+    published = published_ids(
+        loaded.artists,
+        loaded.membership_rows,
+        loaded.scope_rows,
+        loaded.frame_rows,
+        _edition_of(config, loaded.frame_rows),
+    )
+    # T1 writes this beside the ledger. Absent → level 2 is the M1 rows of this run only.
+    snippet_path = config.work / "tendency" / "snippets.jsonl"
+    snippets = load_snippet_classes(snippet_path, _gy_to_ledger(config, loaded.artists))
+
+    patterns = pattern_table(config.field_config.event_patterns, config.event_patterns)
+    tags = config.field_config.resolved()
+    flags, links = _flags_and_links(loaded.by_artist, loaded.frames_of, patterns)
+    venue_places = _places_by_venue(loaded.activities, language)
+    venue_result = build(loaded.activities, out, name_rules=name_rules, lang=language)
+    activity_out = _activity_rows(loaded.activities, venue_places, venue_result, links, flags)
+    attributes, filled, depth_counts = _derive_attributes(
+        config,
+        loaded.artists,
+        loaded.by_artist,
+        loaded.sources,
+        language,
+        flags,
+        loaded.link_of,
+        loaded.frames_of,
+        published,
+        snippets,
+        tags,
+    )
+    if sum(depth_counts.values()) != len(published):
+        raise ValueError(
+            f"P6 wrote {sum(depth_counts.values())} record_depth rows for {len(published)} published people"
+        )
+
+    write_csv(path=out / "activities.csv", fields=ACT_FIELDS, rows=activity_out)
+    write_csv(path=out / "artist_attributes.csv", fields=ATTR_FIELDS, rows=attributes)
+
+    inputs, snippet_state = _input_digests(config, language, snippet_path)
+    flag_counts: Counter[str] = Counter(flag for group in flags.values() for flag in group)
+    depth_by_level = {level: depth_counts[level] for level in ("1", "2", "3", "4")}
+    manifest = _manifest(
+        name_rules=name_rules,
+        language_name=language.name,
+        inputs=inputs,
+        artists=len(loaded.artists),
+        activities=len(loaded.activities),
+        flag_counts=flag_counts,
+        filled=filled,
+        depth_by_level=depth_by_level,
+        published=len(published),
+        snippet_state=snippet_state,
+        activity_out=activity_out,
+        venue_result=venue_result,
+    )
+    (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    medium_artists = len({row["ledger_id"] for row in attributes if row["field"] == "medium"})
+    report = _report_text(
+        manifest,
+        len(loaded.artists),
+        len(loaded.activities),
+        flag_counts,
+        venue_result,
+        filled,
+        tags,
+        depth_by_level,
+        len(published),
+        snippet_state,
+        medium_artists,
+    )
     (out / "report.md").write_text(report, encoding="utf-8")
     venue_merges = dict(sorted(Counter(rule for rule, _left, _right in venue_result.merges).items()))
     return NormalizeResult(
         processed=out,
         report=report,
-        activities=len(activities),
+        activities=len(loaded.activities),
         attributes=len(attributes),
         venue_merges=venue_merges,
     )

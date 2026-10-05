@@ -33,7 +33,7 @@ DEMO = ROOT / "examples" / "demo"
 FIXTURE = ROOT / "tests" / "fixtures" / "ledger" / "artists.csv"
 UA = "GiyeTest/0.1 (+https://example.org/contact)"
 
-# Locked to the production namespace string. A change here changes every activity id.
+# Locked to ACTIVITY_NAMESPACE. A change here changes every activity id.
 _FROZEN_KEY = {
     "ledger_id": "LED-abc",
     "source": "https://example.org/a",

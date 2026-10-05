@@ -1,12 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Entry-generation order for the home-page ring (``rim_order.json``).
 
-Ported from ``scripts/build_rim_order.py`` (author decision 2026-10-05). That
-script reads the site snapshot. This one reads the ledger, because the ledger
-is the source of truth, and writes the same JSON the page already reads.
-
-The rules below keep the letters R1–R7 so a paper can cite them. The production
-script states the same rules in its docstring and does not letter them.
+The ledger is the source of truth, so the order is read from ledger rows and
+written as the JSON the page already reads. The letters R1–R7 name the rules
+below so a paper can cite them. See docs/RULES.md and docs/EXPLORE.md.
 
 R1. Entry year. The earliest four-digit year on a roster membership code that
     ends in ``-YYYY``. A staff role on that code is not an entry: running or
@@ -35,7 +32,7 @@ R4. Inside an arc. Entry year, then each team followed by its members, then
     (``edition`` is the four-digit string, or ``""`` when undated). The page
     leaves a gap wherever ``year|edition`` changes, so the gap falls between
     entry years. A team is the activity role ``<team prefix> X`` (the field
-    file's prefix; production writes ``팀:``); the row whose name is
+    file's prefix; the default is ``팀:``); the row whose name is
     the team name comes first, then the members. Record counts, programme
     counts, and any other activity measure are not sort keys.
 
@@ -82,7 +79,7 @@ from giye.config import Config
 from giye.field import Field, edition_alias, rim_family, rim_label
 from giye.ledger.io import read_csv
 
-# Same staff test the programme rim used. A mentor, juror, or facilitator is not an entrant.
+# R1. Running or judging an edition is not entering it. The pattern is the staff test.
 STAFF_ROLE = re.compile(
     r"기획|총괄|퍼실리테이터|facilitat|연구위원|엮음|curat|큐레이|organi[sz]|운영|심사|judge|jury|mentor|멘토|"
     r"moderat|coordinator|코디네이|자문|advis|위원|컨설턴트|consultant",
@@ -98,31 +95,38 @@ _UNDATED_YEAR = 9999
 
 
 def short_name(name: str) -> str:
-    """Registry name without a parenthetical or a `` · `` / `` — `` subtitle."""
+    """R6 label. Returns the registry name without a parenthetical or a `` · `` / `` — `` subtitle.
+
+    Returns the original name when stripping would leave it empty.
+    """
     return re.sub(r"\s*[(（][^)）]*[)）]", "", name).split(" · ")[0].split(" — ")[0].strip() or name
 
 
 def family_of(code: str, field: Field | None = None) -> str:
-    """Field-file family fold. No fold leaves the code unchanged."""
+    """R5 family fold. Returns the field-file family, or ``code`` when nothing folds it."""
     if field is None:
         return code
     return rim_family(code, field)
 
 
 def code_year(code: str) -> int | None:
-    """Four-digit year only when the membership code itself ends in ``-YYYY``."""
+    """R1 year. Returns the four-digit suffix of ``code``, or None when the code is undated."""
     match = YEAR_SUFFIX.search(code)
     return int(match.group(1)) if match else None
 
 
 def generation_of(year: int) -> tuple[str, int]:
-    """Bin code and its first year. Floor division extends the grid before the anchor."""
+    """R2 bin. Returns ``(GEN-<start>, start)``.
+
+    Floor division extends the five-year grid before the 2000 anchor, so an
+    older edition gets its own arc.
+    """
     start = BIN_START + BIN_WIDTH * ((year - BIN_START) // BIN_WIDTH)
     return f"GEN-{start}", start
 
 
 def generation_labels(code: str, start: int | None) -> tuple[str, str]:
-    """Korean and English arc labels. The page displays these strings as written."""
+    """R2 arc labels. Returns ``(label_ko, label_en)`` for the page to display as written."""
     if code == UNDATED:
         return "진입 연도 미상", "Entry year unknown"
     if start is None:
@@ -167,13 +171,14 @@ def resolve_frame_edition(
 def build_rim_order(
     source: Config | Mapping[str, Any], *, now: datetime | None = None, field: Field | None = None
 ) -> dict[str, Any]:
-    """Ring document for ``source``.
+    """Ring document for ``source`` (R1–R7).
 
-    ``source`` is a :class:`giye.config.Config`, or a mapping with ``artists``,
-    ``activities``, ``frame_membership`` and ``frames`` (optional ``scope``).
-    Rows are the ledger CSV rows. Frame rows are the ``frames.yml`` objects
-    (``code``, ``name_ko``, ``name_en``, ``years_covered``, ``source_url``).
-    ``now`` fixes ``version`` and ``computed_at``; the default is the current UTC time.
+    Returns the JSON object the home page reads. ``source`` is a
+    :class:`giye.config.Config`, or a mapping with ``artists``, ``activities``,
+    ``frame_membership`` and ``frames`` (optional ``scope``). Rows are the
+    ledger CSV rows. Frame rows are the ``frames.yml`` objects (``code``,
+    ``name_ko``, ``name_en``, ``years_covered``, ``source_url``). ``now`` fixes
+    ``version`` and ``computed_at``; the default is the current UTC time.
     """
     tables = _tables(source)
     clock = _clock(now)
@@ -189,10 +194,10 @@ def build_rim_order(
 
 
 def write_rim_order(document: Mapping[str, Any], site_dir: str | Path) -> Path:
-    """Write ``document`` to ``<site_dir>/rim_order.json``.
+    """Write ``document`` to ``<site_dir>/rim_order.json`` and return that path.
 
-    The bytes match the production writer: UTF-8, no ASCII escaping, no spaces,
-    and no trailing newline. The page reads that file as one JSON value.
+    UTF-8, no ASCII escaping, no spaces, and no trailing newline: the page
+    reads the file as one JSON value.
     """
     directory = Path(site_dir)
     directory.mkdir(parents=True, exist_ok=True)
@@ -202,6 +207,7 @@ def write_rim_order(document: Mapping[str, Any], site_dir: str | Path) -> Path:
 
 
 def _clock(now: datetime | None) -> datetime:
+    """UTC clock for ``version`` and ``computed_at``. A naive datetime is taken as UTC."""
     if now is None:
         return datetime.now(timezone.utc)
     if now.tzinfo is None:
@@ -210,6 +216,7 @@ def _clock(now: datetime | None) -> datetime:
 
 
 def _tables(source: Config | Mapping[str, Any]) -> dict[str, Any]:
+    """Ledger tables from a Config, or from a mapping that already holds them."""
     if isinstance(source, Config):
         from giye.config import checked_frames
 
@@ -250,61 +257,116 @@ def _frames_from_file(path: Path) -> list[dict[str, Any]]:
 
 
 def _parse_year(value: object) -> int | None:
-    """First 19xx or 20xx in ``value``. Same reading as the site builder."""
+    """First 19xx or 20xx in ``value``. A year outside that window is not used."""
     if value is None or value == "":
         return None
     match = re.search(r"(19|20)\d{2}", str(value))
     return int(match.group(0)) if match else None
 
 
-def _published_view(
-    tables: Mapping[str, Any],
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    """The artist, frame, and activity rows the production rim reads off the snapshot.
+def _mapping_rows(rows: Sequence[Any]) -> list[dict[str, Any]]:
+    """Keep mapping rows. A non-dict row is not a ledger record."""
+    return [row for row in rows if isinstance(row, dict)]
 
-    Built here from the ledger so the ring does not depend on a snapshot that
-    may be older than the ledger. Roles are attached the way the site builder
-    attaches them: the activity ``origin`` is the membership code.
-    """
-    frames = [row for row in tables["frames"] if isinstance(row, dict)]
-    registry = [str(row.get("code") or "") for row in frames]
-    years_by_frame = {str(row.get("code") or ""): str(row.get("years_covered") or "") for row in frames}
 
-    def edition_of(mem_code: str) -> tuple[str, str | None] | None:
-        return resolve_frame_edition(mem_code, registry, years_by_frame)
-
-    membership = [row for row in tables["frame_membership"] if isinstance(row, dict)]
+def _codes_by_person(membership: Sequence[Mapping[str, Any]]) -> dict[str, list[str]]:
+    """Person → membership codes, in file order."""
     mem_by: dict[str, list[str]] = {}
     for row in membership:
         mem_by.setdefault(str(row.get("ledger_id") or ""), []).append(str(row.get("frame_code") or ""))
+    return mem_by
 
+
+def _roster_http_by_person(
+    membership: Sequence[Mapping[str, Any]],
+    frames: Sequence[Mapping[str, Any]],
+    registry: Sequence[str],
+    years_by_frame: Mapping[str, str],
+) -> dict[str, str]:
+    """First http(s) source for a person: the membership row, else the frame page.
+
+    A person with no http(s) source of their own can still be published from the roster.
+    """
     frame_url = {str(row.get("code") or ""): str(row.get("source_url") or "") for row in frames}
     roster_url: dict[str, str] = {}
     for row in membership:
-        edition = edition_of(str(row.get("frame_code") or ""))
+        edition = resolve_frame_edition(str(row.get("frame_code") or ""), registry, years_by_frame)
         for url in (str(row.get("source_url") or ""), frame_url.get(edition[0], "") if edition else ""):
             if url.startswith("http"):
                 roster_url.setdefault(str(row.get("ledger_id") or ""), url)
                 break
+    return roster_url
 
-    out_of_scope = {
+
+def _scope_out_ids(scope_rows: Sequence[Any]) -> set[str]:
+    """Ledger ids marked out of scope."""
+    return {
         str(row.get("ledger_id") or "")
-        for row in tables["scope"]
+        for row in scope_rows
         if isinstance(row, dict) and row.get("scope") == "out"
     }
-    # Last non-CV role for a (person, membership code) wins, as a dict comprehension does.
+
+
+def _last_non_cv_role(activities: Sequence[Any]) -> dict[tuple[str, str], str]:
+    """Last non-CV role for a (person, membership code). A later row replaces an earlier one.
+
+    The activity ``origin`` is the membership code, which is how a roster role is attached.
+    """
     roster_role: dict[tuple[str, str], str] = {}
-    for row in tables["activities"]:
+    for row in activities:
         if not isinstance(row, dict):
             continue
         origin = str(row.get("origin") or "")
         role = str(row.get("role") or "")
         if role and origin and not origin.startswith("cv:"):
             roster_role[(str(row.get("ledger_id") or ""), origin)] = role
+    return roster_role
 
+
+def _edition_records(
+    codes: Sequence[str],
+    roster_role: Mapping[tuple[str, str], str],
+    ledger_id: str,
+    registry: Sequence[str],
+    years_by_frame: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    """Roster editions for one person, with the role recorded on that membership code."""
+    editions: list[dict[str, Any]] = []
+    seen: list[tuple[Any, ...]] = []
+    for code in codes:
+        item = (resolve_frame_edition(code, registry, years_by_frame) or (None, None)) + (code,)
+        if item not in seen:
+            seen.append(item)
+    for frame, edition, code in seen:
+        if not frame:
+            continue
+        record: dict[str, Any] = {"frame": frame, "edition": edition}
+        role = roster_role.get((ledger_id, code))
+        if role:
+            record["role"] = role
+        editions.append(record)
+    return editions
+
+
+def _ring_people(
+    artists: Sequence[Any],
+    *,
+    mem_by: Mapping[str, list[str]],
+    roster_url: Mapping[str, str],
+    out_of_scope: set[str],
+    roster_role: Mapping[tuple[str, str], str],
+    registry: Sequence[str],
+    years_by_frame: Mapping[str, str],
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """People on the ring, and ledger id → ``gy_id``.
+
+    Same publication test as the site: in scope, an http(s) source, on a roster
+    or ``cv_link_ok=yes``, status empty / ``PUBLISHED`` / ``STAGED``, and a
+    ``gy_id`` already issued. Returns the ring rows. This does not mint an id.
+    """
     artists_out: list[dict[str, Any]] = []
     ledger_to_gy: dict[str, str] = {}
-    for raw in tables["artists"]:
+    for raw in artists:
         if not isinstance(raw, dict):
             continue
         artist = dict(raw)
@@ -328,20 +390,7 @@ def _published_view(
         if not gy:
             continue
         codes = mem_by.get(ledger_id, [])
-        editions: list[dict[str, Any]] = []
-        seen: list[tuple[Any, ...]] = []
-        for code in codes:
-            item = (edition_of(code) or (None, None)) + (code,)
-            if item not in seen:
-                seen.append(item)
-        for frame, edition, code in seen:
-            if not frame:
-                continue
-            record: dict[str, Any] = {"frame": frame, "edition": edition}
-            role = roster_role.get((ledger_id, code))
-            if role:
-                record["role"] = role
-            editions.append(record)
+        editions = _edition_records(codes, roster_role, ledger_id, registry, years_by_frame)
         name_ko = artist.get("name_ko") or artist.get("name_en") or "이름 미상"
         artists_out.append(
             {
@@ -353,11 +402,17 @@ def _published_view(
             }
         )
         ledger_to_gy[ledger_id] = gy
+    return artists_out, ledger_to_gy
 
-    # Team credit is read from the activities the site would publish, in that
-    # file's order. The first ``팀:`` role for a person wins (setdefault).
+
+def _team_credit_rows(activities: Sequence[Any], ledger_to_gy: Mapping[str, str]) -> list[dict[str, Any]]:
+    """Publishable activities with a title, a year, and an http(s) source.
+
+    Newest year first, then title. The first team-prefix role kept later is
+    therefore the latest year (R4).
+    """
     team_rows: list[dict[str, Any]] = []
-    for row in tables["activities"]:
+    for row in activities:
         if not isinstance(row, dict) or row.get("publishable") != "yes":
             continue
         gy = ledger_to_gy.get(str(row.get("ledger_id") or ""))
@@ -370,19 +425,37 @@ def _published_view(
             continue
         team_rows.append({"artist_id": gy, "title": title, "year": year, "role": row.get("role") or ""})
     team_rows.sort(key=lambda item: (-item["year"], item["title"]))
-    return artists_out, frames, team_rows
+    return team_rows
 
 
-def _order(
-    artists: Sequence[Mapping[str, Any]],
-    frames: Sequence[Mapping[str, Any]],
-    activities: Sequence[Mapping[str, Any]],
-    clock: datetime,
-    field: Field,
-) -> dict[str, Any]:
-    """The production ``main`` body, given the three snapshot lists it reads."""
+def _published_view(
+    tables: Mapping[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Artist, frame, and activity rows the ring draws, read from the ledger.
+
+    Built from the ledger so the ring does not depend on a snapshot that may
+    be older than the ledger. Returns those three lists.
+    """
+    frames = _mapping_rows(tables["frames"])
     registry = [str(row.get("code") or "") for row in frames]
     years_by_frame = {str(row.get("code") or ""): str(row.get("years_covered") or "") for row in frames}
+    membership = _mapping_rows(tables["frame_membership"])
+    mem_by = _codes_by_person(membership)
+    roster_url = _roster_http_by_person(membership, frames, registry, years_by_frame)
+    artists_out, ledger_to_gy = _ring_people(
+        tables["artists"],
+        mem_by=mem_by,
+        roster_url=roster_url,
+        out_of_scope=_scope_out_ids(tables["scope"]),
+        roster_role=_last_non_cv_role(tables["activities"]),
+        registry=registry,
+        years_by_frame=years_by_frame,
+    )
+    return artists_out, frames, _team_credit_rows(tables["activities"], ledger_to_gy)
+
+
+def _labels_by_family(frames: Sequence[Mapping[str, Any]], field: Field) -> dict[str, tuple[str, str]]:
+    """R6 labels. A field-file label wins; otherwise the first registry short name is kept."""
     name_of: dict[str, tuple[str, str]] = {}
     for frame in frames:
         fam = family_of(str(frame.get("code") or ""), field)
@@ -393,72 +466,87 @@ def _order(
             name_ko = short_name(str(frame.get("name_ko") or ""))
             name_en = short_name(str(frame.get("name_en") or frame.get("name_ko") or ""))
             name_of.setdefault(fam, (name_ko, name_en))
+    return name_of
 
+
+def _teams_by_person(activities: Sequence[Mapping[str, Any]], field: Field) -> dict[str, str]:
+    """R4 team name. The first team-prefix role for a person wins."""
     team_role = re.compile(re.escape(field.team_prefix or "팀:") + r"\s*(.+)")
     team_of: dict[str, str] = {}
     for row in activities:
         match = team_role.match(str(row.get("role") or ""))
         if match:
             team_of.setdefault(str(row.get("artist_id") or ""), match.group(1).strip())
+    return team_of
 
-    name_key = {str(artist["id"]): str(artist.get("name_ko") or artist.get("name_en") or "") for artist in artists}
-    placed: list[dict[str, Any]] = []
-    for artist in artists:
-        artist_id = str(artist["id"])
-        pool: dict[tuple[str, str], list[str]] = {}
-        for edition_row in artist.get("frame_editions") or []:
-            key = (str(edition_row.get("frame") or ""), str(edition_row.get("edition") or ""))
-            pool.setdefault(key, []).append(str(edition_row.get("role") or ""))
-        years: list[int] = []
-        programmes: set[str] = set()
-        for code in artist.get("frame_codes") or []:
-            code = str(code)
-            resolved = resolve_frame_edition(code, registry, years_by_frame, field=field)
-            role = ""
-            if resolved is None:
-                frame = YEAR_SUFFIX.sub("", code)
-            else:
-                frame, edition = resolved
-                roles = pool.get((frame, edition or ""), [])
-                if roles:
-                    role = roles.pop(0)
-            year = code_year(code)
-            if role and STAFF_ROLE.search(role):
-                continue
-            if frame:
-                programmes.add(family_of(frame, field))
-            if year is not None:
-                years.append(year)
-        entry = min(years) if years else None
-        if entry is None:
-            code, start = UNDATED, None
+
+def _place_one(
+    artist: Mapping[str, Any],
+    *,
+    registry: Sequence[str],
+    years_by_frame: Mapping[str, str],
+    field: Field,
+    team_of: Mapping[str, str],
+    name_key: Mapping[str, str],
+) -> dict[str, Any]:
+    """One ring slot: R1 entry year, R2 bin, R4 sort key, R5 programme families."""
+    artist_id = str(artist["id"])
+    pool: dict[tuple[str, str], list[str]] = {}
+    for edition_row in artist.get("frame_editions") or []:
+        key = (str(edition_row.get("frame") or ""), str(edition_row.get("edition") or ""))
+        pool.setdefault(key, []).append(str(edition_row.get("role") or ""))
+    years: list[int] = []
+    programmes: set[str] = set()
+    for code in artist.get("frame_codes") or []:
+        code = str(code)
+        resolved = resolve_frame_edition(code, registry, years_by_frame, field=field)
+        role = ""
+        if resolved is None:
+            frame = YEAR_SUFFIX.sub("", code)
         else:
-            code, start = generation_of(entry)
-        edition_label = str(entry) if entry is not None else ""
-        team = team_of.get(artist_id)
-        person_name = name_key[artist_id]
-        group_name = team or person_name
-        placed.append(
-            {
-                "id": artist_id,
-                "family": code,
-                "year": entry,
-                "edition": edition_label,
-                "also": sorted(programmes),
-                "_start": start,
-                "_k": (
-                    start if start is not None else _UNDATED_START,
-                    entry if entry is not None else _UNDATED_YEAR,
-                    edition_label,
-                    group_name,
-                    0 if person_name == group_name else 1,
-                    person_name,
-                    artist_id,
-                ),
-            }
-        )
-    placed.sort(key=lambda row: row["_k"])
+            frame, edition = resolved
+            roles = pool.get((frame, edition or ""), [])
+            if roles:
+                role = roles.pop(0)
+        year = code_year(code)
+        if role and STAFF_ROLE.search(role):
+            continue
+        if frame:
+            programmes.add(family_of(frame, field))
+        if year is not None:
+            years.append(year)
+    entry = min(years) if years else None
+    if entry is None:
+        code, start = UNDATED, None
+    else:
+        code, start = generation_of(entry)
+    edition_label = str(entry) if entry is not None else ""
+    team = team_of.get(artist_id)
+    person_name = name_key[artist_id]
+    group_name = team or person_name
+    return {
+        "id": artist_id,
+        "family": code,
+        "year": entry,
+        "edition": edition_label,
+        "also": sorted(programmes),
+        "_start": start,
+        "_k": (
+            start if start is not None else _UNDATED_START,
+            entry if entry is not None else _UNDATED_YEAR,
+            edition_label,
+            group_name,
+            0 if person_name == group_name else 1,
+            person_name,
+            artist_id,
+        ),
+    }
 
+
+def _arc_sequence(
+    placed: list[dict[str, Any]],
+) -> tuple[list[str], dict[str, int], dict[str, int | None]]:
+    """R2–R3. Count occupied bins, drop the private sort keys, oldest first, undated last."""
     counts: dict[str, int] = {}
     starts: dict[str, int | None] = {}
     for row in placed:
@@ -466,9 +554,15 @@ def _order(
         starts.setdefault(row["family"], row["_start"])
         del row["_k"]
         del row["_start"]
-
     order = sorted(counts, key=lambda code: (starts[code] is None, starts[code] or 0, code))
-    programmes = [
+    return order, counts, starts
+
+
+def _programme_rows(
+    placed: Sequence[Mapping[str, Any]], name_of: Mapping[str, tuple[str, str]]
+) -> list[dict[str, str]]:
+    """R6. One row per family that appears in ``also``, in family-code order, with no counts."""
+    return [
         {
             "code": code,
             "label_ko": name_of.get(code, (code, code))[0],
@@ -476,6 +570,10 @@ def _order(
         }
         for code in sorted({item for row in placed for item in row["also"]})
     ]
+
+
+def _boundary_rows(order: Sequence[str]) -> list[dict[str, Any]]:
+    """R3. Every consecutive pair, including the wrap. The similarity keys stay 0."""
     boundaries: list[dict[str, Any]] = []
     if len(order) >= 2:
         for index, left in enumerate(order):
@@ -490,6 +588,53 @@ def _order(
                     "seam": index == len(order) - 1,
                 }
             )
+    return boundaries
+
+
+def _family_arcs(
+    order: Sequence[str], counts: Mapping[str, int], starts: Mapping[str, int | None]
+) -> list[dict[str, Any]]:
+    """R7. One arc per occupied bin. ``participants`` equals ``n``. Undated is not linked."""
+    return [
+        {
+            "code": code,
+            "label_ko": generation_labels(code, starts[code])[0],
+            "label_en": generation_labels(code, starts[code])[1],
+            "n": counts[code],
+            "participants": counts[code],
+            "linked": code != UNDATED,
+            "first_year": starts[code],
+        }
+        for code in order
+    ]
+
+
+def _order(
+    artists: Sequence[Mapping[str, Any]],
+    frames: Sequence[Mapping[str, Any]],
+    activities: Sequence[Mapping[str, Any]],
+    clock: datetime,
+    field: Field,
+) -> dict[str, Any]:
+    """Rim document for the published rows. Returns the R1–R7 object the page reads."""
+    registry = [str(row.get("code") or "") for row in frames]
+    years_by_frame = {str(row.get("code") or ""): str(row.get("years_covered") or "") for row in frames}
+    name_of = _labels_by_family(frames, field)
+    team_of = _teams_by_person(activities, field)
+    name_key = {str(artist["id"]): str(artist.get("name_ko") or artist.get("name_en") or "") for artist in artists}
+    placed = [
+        _place_one(
+            artist,
+            registry=registry,
+            years_by_frame=years_by_frame,
+            field=field,
+            team_of=team_of,
+            name_key=name_key,
+        )
+        for artist in artists
+    ]
+    placed.sort(key=lambda row: row["_k"])
+    order, counts, starts = _arc_sequence(placed)
     return {
         "version": clock.strftime("%Y-%m-%d"),
         "computed_at": clock.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -515,19 +660,8 @@ def _order(
             ),
             "home": "entry generation",
         },
-        "programmes": programmes,
-        "families": [
-            {
-                "code": code,
-                "label_ko": generation_labels(code, starts[code])[0],
-                "label_en": generation_labels(code, starts[code])[1],
-                "n": counts[code],
-                "participants": counts[code],
-                "linked": code != UNDATED,
-                "first_year": starts[code],
-            }
-            for code in order
-        ],
-        "boundaries": boundaries,
+        "programmes": _programme_rows(placed, name_of),
+        "families": _family_arcs(order, counts, starts),
+        "boundaries": _boundary_rows(order),
         "artists": placed,
     }

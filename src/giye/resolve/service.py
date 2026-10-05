@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Run same-person resolution against a ledger.
 
-Order, matching production ``resolve_same_person.py``:
+Order (see docs/RULES.md):
 
 1. Expand team members onto their own rows (the team stays; T1).
 2. E1: rows that share a website and an overlapping name, unless one side is a
@@ -16,10 +16,10 @@ Order, matching production ``resolve_same_person.py``:
 5. Reopen review items a merge closed without joining that pair.
 6. Queue same-script pairs no rule decided.
 
-Production's live loop merged E2–E4 only when an open review item already named
-the pair, because collectors had queued it. This collector does not, so a pair
-the evidence rules accept is merged here. The evidence, the guards, and the
-year window are unchanged. Nothing is merged on a shared name alone.
+E2–E4 merge a pair the evidence rules accept, including a pair no open review
+item has named yet. Collectors here do not pre-queue those pairs. The
+evidence, the guards, and the year window are the rules in ``giye.resolve.evidence``.
+Nothing is merged on a shared name alone.
 """
 
 from __future__ import annotations
@@ -58,6 +58,8 @@ from giye.resolve.teams import expand_teams, team_like, team_person_mismatch
 
 @dataclass
 class MergeRecord:
+    """One merge: the surviving ledger id, the retired id, the evidence sentence, and the rule token."""
+
     kept: str
     dropped: str
     evidence: str
@@ -66,6 +68,8 @@ class MergeRecord:
 
 @dataclass
 class ResolveResult:
+    """What one resolve run did. ``dry_run`` still fills these lists and writes nothing."""
+
     merges: list[MergeRecord] = field(default_factory=list)
     queued: list[dict] = field(default_factory=list)
     blocked_team: list[tuple[str, str]] = field(default_factory=list)
@@ -80,6 +84,7 @@ def resolve(config: Config, *, dry_run: bool = False) -> ResolveResult:
 
 
 def resolve_ledger(ledger: Ledger, *, dry_run: bool = False) -> ResolveResult:
+    """Resolve ``ledger`` in the order in the module docstring. Returns the merges, the queue, and the blocks."""
     result = ResolveResult()
     result.expanded = expand_teams(ledger, dry_run=dry_run)
     state = _State(ledger)
@@ -137,6 +142,7 @@ class _State:
         self.reload()
 
     def reload(self) -> None:
+        """Re-read artists, activities, membership, identities, and links after a write."""
         self.artists = self.ledger.read("artists")
         self.by_id = {row["ledger_id"]: row for row in self.artists}
         rows_of: dict[str, list[dict]] = defaultdict(list)
@@ -158,6 +164,7 @@ class _State:
         self.sites = website_keys(self.links)
 
     def transfer_cv(self, keep: str, drop: str) -> None:
+        """Move the dropped person's CV file and keep both activity lists on the survivor."""
         move_extract_file(self.ledger.config, keep, drop)
         # Both readings stay on the survivor. Dropping the second list would
         # hide a CV line from a later pair in this same run.
@@ -180,6 +187,7 @@ def evidence_for_pair(ledger: Ledger, left: str, right: str) -> str | None:
 
 
 def _review(state: _State) -> list[dict]:
+    """The review queue, or an empty list when the ledger has no queue file yet."""
     path = state.ledger.path("review_queue")
     return state.ledger.read("review_queue") if path.exists() else []
 
@@ -204,6 +212,7 @@ def _blocks_merge(
 
 
 def _evidence(state: _State, left: str, right: str) -> str | None:
+    """E1, or the first of E2–E4. None when no evidence rule holds."""
     return evidence_e1(left, right, state.sites) or evidence_e2_e4(
         left, right, state.frames, state.rows_of, state.cvs, state.patterns, team_prefix=state.team_prefix
     )
@@ -225,6 +234,7 @@ def _apply(
     *,
     dry_run: bool,
 ) -> None:
+    """Record the merge and, unless this is a dry run, write it and reload."""
     drops = [drop for drop in drops if drop in state.by_id and drop != keep]
     if keep not in state.by_id or not drops:
         return
@@ -244,6 +254,7 @@ def _apply(
 
 
 def _names(artist: dict) -> set[str]:
+    """Hangul runs, or the lower-cased spelling when a name has no Hangul, for an E1 overlap."""
     values = [artist.get("name_ko") or "", artist.get("name_en") or "", *split_pipe(artist.get("aliases"))]
     found = set()
     for value in values:
@@ -255,7 +266,7 @@ def _names(artist: dict) -> set[str]:
 
 
 def _merge_by_website(state: _State, result: ResolveResult, *, dry_run: bool) -> None:
-    """E1. One website group, then reload, matching production's restart after each write."""
+    """E1. Merge one website group, then reload, so the next group is chosen from the rows just written."""
     for _ in range(len(state.artists) + 1):
         owners: dict[str, set[str]] = defaultdict(set)
         live = set(state.by_id)

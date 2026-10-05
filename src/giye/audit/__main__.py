@@ -26,6 +26,7 @@ from giye.audit.sheet import KINDS, read_sheet
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run ``sample``, ``score``, ``page``, or ``serve``. Returns the process status."""
     parser = argparse.ArgumentParser(prog="giye.audit", description="Accuracy-audit sheets for a Giye ledger.")
     sub = parser.add_subparsers(dest="command", required=True)
 

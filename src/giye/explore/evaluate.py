@@ -1,10 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Score a division of people against ties the division was not built from.
 
-Ported from the generic part of ``research/flocks/evaluate.py`` and the bars in
-``research/tendency/groups.py``. The candidate builders (k-means, Leiden,
-roster entry) stay in the archive. This module only measures an assignment
-that the caller already has.
+This module only measures an assignment the caller already has. It does not
+build the clusters. See docs/EXPLORE.md.
 
 Given ``{person_id: group}`` and unordered pairs of person ids (for example
 two people at the same institution in the same year, already filtered so a
@@ -16,7 +14,8 @@ pair does not restate a roster appearance):
   on people drawn with replacement. A fixed assignment scores 1, because the
   labels do not move. A ``refit`` callable can label each draw again; the
   index is then against the full assignment, on people who appear at least
-  once. Adjusted Rand is implemented here. scikit-learn is not imported.
+  once. Adjusted Rand is implemented here so this module does not depend on
+  scikit-learn.
 - Lift: among the ties, the share that sit inside a group, divided by the
   share of all pairs that sit inside a group. 1 is chance.
 - AUC: the area under the ROC of the binary score "same group", which for a
@@ -28,8 +27,8 @@ pair does not restate a roster appearance):
 
 Seeds are ``numpy`` ``Generator(seed)`` objects. Stability and the metric
 interval each build their own generator from the same seed, so neither stream
-depends on how far the other has been read. The default sizes are the flock
-evaluation's: 100 stability draws and 500 metric draws.
+depends on how far the other has been read. The defaults are 100 stability
+draws and 500 metric draws.
 
 A group value of ``None`` is unplaced. That person is counted in coverage and
 left out of the pair universe. The outcome ties are the caller's. This module
@@ -198,6 +197,7 @@ def bootstrap_stability(
 
 
 def _placed(assignment: Mapping[Person, Group | None]) -> dict[Person, Group]:
+    """Drop unplaced people. A ``None`` group is not in the pair universe."""
     return {person: group for person, group in assignment.items() if group is not None}
 
 
@@ -209,6 +209,7 @@ def _sort_key(person: Person) -> tuple[str, str]:
 
 
 def _index(assignment: Mapping[Person, Group]) -> tuple[list[Person], np.ndarray]:
+    """People in a stable order, and their group labels in that same order."""
     ids = sorted(assignment, key=_sort_key)
     labels = np.array([assignment[person] for person in ids], dtype=object)
     return ids, labels
@@ -290,6 +291,7 @@ def _pair_metrics_counts(
 
 
 def _encode(labels: np.ndarray) -> np.ndarray:
+    """Integer codes for labels, stable within one array."""
     _values, inverse = np.unique(labels, return_inverse=True)
     return inverse.astype(np.int64)
 
@@ -301,6 +303,7 @@ def _metric_intervals(
     n_boot: int,
     seed: int,
 ) -> dict[str, Any]:
+    """Person-level bootstrap 95% intervals for lift and AUC. Undefined draws are dropped."""
     ids, labels = _index(assignment)
     n = int(labels.shape[0])
     tie_i, tie_j = _tie_index(ids, ties)
@@ -334,6 +337,7 @@ def _percentile_ci(values: list[float]) -> list[float] | None:
 
 
 def _stability_block(aris: list[float], omitted: list[float], n_boot: int) -> dict[str, Any]:
+    """Mean adjusted Rand, the 5% and 95% percentiles, and the mean share omitted."""
     if not aris:
         return {
             "n_bootstrap": n_boot,
@@ -356,6 +360,7 @@ def _stability_block(aris: list[float], omitted: list[float], n_boot: int) -> di
 
 
 def _comb2(values: np.ndarray) -> np.ndarray:
+    """Pairs among n items: n*(n-1)/2, for each count."""
     values = values.astype(np.int64)
     return values * (values - 1) // 2
 

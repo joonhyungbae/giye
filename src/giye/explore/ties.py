@@ -1,15 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Co-presence ties: two people at one institution in one year.
 
-Ported from ``research/paper-numbers/compute.py`` (the SoftwareX impact
-numbers) and ``research/flocks/evaluate.py`` (the flock evaluation's primary
-outcome), so both can be recomputed with public code. A tie is an unordered
-pair of person ids, counted once however many institution-years the two share.
-Institution means an activity row whose resolved ``venue_kind`` is
-``institution`` and whose ``venue_id`` is set: a funder is not a place where
-people meet.
+A tie is an unordered pair of person ids, counted once however many
+institution-years the two share. Institution means an activity row whose
+resolved ``venue_kind`` is ``institution`` and whose ``venue_id`` is set: a
+funder is not a place where people meet. See docs/RULES.md (V7–V9, P1, E2)
+and docs/EXPLORE.md.
 
-Two definitions, each matching its source exactly:
+Two definitions:
 
 CV listing (``cv_listing_ties``)
     Rows are publishable (``publishable=yes``), have a numeric year (``isdigit``),
@@ -31,10 +29,10 @@ Roster independent (``roster_independent_ties``)
     outcome and the ties ``giye explore --assignment`` scores against.
 
 Rule layers (``resolve_layers``, ``layer_report``): the institution resolver
-runs four times, cumulatively: ``base`` (V7–V9 off, the resolver before
-2026-09-27), ``V7`` (spelling V7a–d and the Latin word-bag merge V7e),
-``V7+V8`` (subordinate spaces) and ``V7+V8+V9`` (the Hangul–Latin bag merge,
-the production setting). ``attribute_merges`` replays the full run one merge at
+runs four times, cumulatively: ``base`` (V7–V9 off), ``V7`` (spelling V7a–d
+and the Latin word-bag merge V7e), ``V7+V8`` (subordinate spaces) and
+``V7+V8+V9`` (the Hangul–Latin bag merge, the default when every name rule is
+on). ``attribute_merges`` replays the full run one merge at
 a time. V7a–d rewrite a key before any join is recorded, so their share is the
 difference between the post-spelling components and the base run. V7e, V8 and
 V9 are then applied in the recorded order; a merge adds the person pairs that
@@ -51,6 +49,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
+from giye.config import Config
 from giye.normalize.language import LanguageModule
 from giye.normalize.rules import norm_text, year_flags
 from giye.normalize.venues import BuildResult, UnionFind, build
@@ -59,7 +58,7 @@ from giye.resolve.evidence import event_pattern
 Pair = tuple[str, str]
 Annotations = Mapping[str, Mapping[str, str]]
 
-# Cumulative layers. None is every name rule (the production default).
+# Cumulative layers. None means every name rule is on (the default).
 LAYERS: tuple[tuple[str, frozenset[str] | None], ...] = (
     ("base", frozenset()),
     ("V7", frozenset({"V7"})),
@@ -76,6 +75,7 @@ _FOUR_DIGITS = re.compile(r"\d{4}")
 
 
 def is_cv(row: Mapping[str, str]) -> bool:
+    """True when the row was taken from a CV (``origin`` starts with ``cv:``)."""
     return (row.get("origin") or "").startswith("cv:")
 
 
@@ -138,7 +138,11 @@ def institution_groups(
 
 
 def cv_listing_ties(activities: Sequence[Mapping[str, str]], annotations: Annotations | None) -> set[Pair]:
-    """CV-listing co-presence among ``cv_population``. See the module docstring."""
+    """CV-listing co-presence among ``cv_population``.
+
+    Returns unordered pairs. Rows are publishable, have a numeric year, are not
+    flagged ``year_from_title`` (P1), and come from a CV.
+    """
     rows = [row for row in usable_rows(activities) if is_cv(row)]
     return pairs_of(institution_groups(rows, annotations))
 
@@ -208,7 +212,12 @@ def roster_independent_ties(
     patterns: Mapping[str, str],
     people: set[str] | None = None,
 ) -> set[Pair]:
-    """The flock evaluation's primary outcome. ``people`` limits both ends of a tie."""
+    """Roster-independent co-presence. Returns unordered pairs.
+
+    A CV row that restates the person's own roster edition in that edition's
+    year is already dropped. ``people`` limits both ends of a tie. This is the
+    outcome ``giye explore --assignment`` scores against.
+    """
     rows, _dropped = roster_independent_rows(activities, memberships, patterns)
     return pairs_of(institution_groups(rows, annotations, people))
 
@@ -405,7 +414,8 @@ def layer_report(
 KINDS = ("roster-independent", "cv-listing")
 
 
-def _inputs(config: Any) -> tuple[list[dict[str, str]], list[dict[str, str]], dict[str, str]]:
+def _inputs(config: Config) -> tuple[list[dict[str, str]], list[dict[str, str]], dict[str, str]]:
+    """Ledger activities, memberships, and the E2 event-pattern table."""
     from giye.ledger.io import read_csv
     from giye.resolve.evidence import pattern_table
 
@@ -415,7 +425,7 @@ def _inputs(config: Any) -> tuple[list[dict[str, str]], list[dict[str, str]], di
     return activities, memberships, patterns
 
 
-def ties_for_config(config: Any, kind: str = "roster-independent") -> set[Pair]:
+def ties_for_config(config: Config, kind: str = "roster-independent") -> set[Pair]:
     """Ties of one definition for an archive, with the configured language and name rules."""
     from giye.normalize.language import language_for
     from giye.normalize.service import parse_name_rules
@@ -430,7 +440,7 @@ def ties_for_config(config: Any, kind: str = "roster-independent") -> set[Pair]:
     return roster_independent_ties(activities, result.annotations, memberships, patterns)
 
 
-def layers_for_config(config: Any) -> dict[str, Any]:
+def layers_for_config(config: Config) -> dict[str, Any]:
     """``layer_report`` for an archive: four resolver runs, both definitions, the attribution."""
     from giye.normalize.language import language_for
 

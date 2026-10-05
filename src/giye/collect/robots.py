@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Decide whether this run may fetch a URL, from that origin's robots.txt.
 
-Ported from ``scripts/collectors/robots.py``. Path matching is this module, not
-``urllib.robotparser``: RFC 9309 §2.2.2 picks the longest match.
+Path matching is this module, not ``urllib.robotparser``: RFC 9309 §2.2.2
+picks the longest match.
 
 RFC 9309 §2.3.1.1: an HTTP 2xx response is a successful download. The body is
 parsed and its rules are followed.
@@ -12,7 +12,7 @@ another host. The rules apply to the origin we first asked (the page's
 origin), not to the host that happened to serve the file. A sixth redirect
 is more than five consecutive redirects. The file is then unavailable, and
 the URL may be fetched. That is the RFC's "MAY assume unavailable", and it
-is the choice this archive keeps (same as the J3 helper). It is not treated
+is the choice this archive keeps. It is not treated
 as unreachable.
 
 RFC 9309 §2.3.1.3: a 4xx response, including 404, means robots.txt is
@@ -82,6 +82,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from types import SimpleNamespace
+from typing import Any
 from urllib.parse import urldefrag, urljoin, urlparse
 
 log = logging.getLogger(__name__)
@@ -166,6 +167,8 @@ class _Group:
 
 @dataclass
 class OriginRules:
+    """robots.txt outcome cached for one origin in this process."""
+
     kind: str  # parsed | unavailable | unreachable
     rules: tuple[_Rule, ...] | None
     http_status: int | None
@@ -282,13 +285,14 @@ def _without_body(kwargs: dict, method: str) -> dict:
     return hop
 
 
-def _close_response(response) -> None:
+def _close_response(response: object) -> None:
+    """Close a robots.txt response when it has ``close``."""
     close = getattr(response, "close", None)
     if callable(close):
         close()
 
 
-def guarded_request(session, method: str, url: str, *args, **kwargs) -> CheckedFetch:
+def guarded_request(session: Any, method: str, url: str, *args: Any, **kwargs: Any) -> CheckedFetch:
     """Send one request, following redirects by hand.
 
     `decide()` runs before every hop, including the first. A hop that is not
@@ -297,7 +301,7 @@ def guarded_request(session, method: str, url: str, *args, **kwargs) -> CheckedF
     the session's `max_redirects`.
 
     The call uses `requests.Session.request` on `session`, not `session.request`,
-    so a subclass that calls this function (SnapshotSession) does not recurse.
+    so a subclass that overrides `request` and calls this function does not recurse.
     robots.txt is fetched by `decide()` on its own session, not on `session`.
     """
     import requests
@@ -355,6 +359,7 @@ class _CdpDocumentRoute:
         self.settled = False
 
     def abort(self) -> None:
+        """Fail the paused request so Chromium does not send it. A second call does nothing."""
         if self.settled:
             return
         self.settled = True
@@ -364,13 +369,14 @@ class _CdpDocumentRoute:
         )
 
     def continue_(self) -> None:
+        """Let Chromium send the paused request. A second call does nothing."""
         if self.settled:
             return
         self.settled = True
         self._session.send("Fetch.continueRequest", {"requestId": self._id})
 
 
-def handle_document_route(route) -> None:
+def handle_document_route(route: Any) -> None:
     """Refuse a document navigation that robots.txt disallows or could not judge.
 
     ``route`` has ``request`` (``url``, ``resource_type``, ``headers``) and ``abort()`` /
@@ -402,7 +408,7 @@ def handle_document_route(route) -> None:
     route.continue_()
 
 
-def install_document_guard(page) -> None:
+def install_document_guard(page: Any) -> None:
     """Pause every Document request on ``page`` and refuse the ones robots.txt forbids.
 
     Playwright's page.route handler is not called for a redirect hop: Playwright
@@ -423,7 +429,8 @@ def install_document_guard(page) -> None:
         },
     )
 
-    def paused(params) -> None:
+    def paused(params: dict) -> None:
+        """Judge one paused Document request and abort it when robots.txt refuses it."""
         route = _CdpDocumentRoute(session, params)
         try:
             handle_document_route(route)
@@ -452,7 +459,8 @@ def _fetch_rules(origin: str, user_agent: str, *, timeout: float, get, session) 
     tls_unverified = False
     fetcher = get or (lambda fetch_url, timeout: _default_get(fetch_url, timeout, session=session, user_agent=user_agent))
 
-    def noted(response_or_exc) -> None:
+    def noted(response_or_exc: object) -> None:
+        """Remember a hop that was fetched only after TLS verification was turned off."""
         nonlocal tls_unverified
         if getattr(response_or_exc, "tls_unverified", False):
             tls_unverified = True
@@ -536,6 +544,7 @@ def _parse(text: str) -> list[_Group]:
     rules: list[_Rule] = []
 
     def flush() -> None:
+        """Store the current user-agent group and start the next one."""
         nonlocal tokens, rules
         if tokens:
             groups.append(_Group(tuple(tokens), tuple(rules)))
@@ -591,6 +600,7 @@ def _select_rules(groups: list[_Group], user_agent: str) -> list[_Rule]:
 
 
 def _percent(octet: int) -> str:
+    """One octet as an uppercase percent-escape (RFC 9309 §2.2.2)."""
     return f"%{octet:02X}"
 
 
@@ -712,7 +722,8 @@ def _allowed_by_rules(rules: tuple[_Rule, ...] | list[_Rule], url: str) -> bool:
     return allow >= disallow
 
 
-def _body(response) -> str:
+def _body(response: object) -> str:
+    """robots.txt body as UTF-8 text, capped at the parse limit."""
     content = getattr(response, "content", None)
     if isinstance(content, bytes):
         # RFC 9309 §2.2 is UTF-8. requests would otherwise guess ISO-8859-1 when
@@ -722,7 +733,8 @@ def _body(response) -> str:
     return text[:MAX_ROBOTS_BYTES]
 
 
-def _location(response, current: str) -> str | None:
+def _location(response: object, current: str) -> str | None:
+    """Absolute URL from a redirect's Location header, or None when it is missing."""
     headers = getattr(response, "headers", None) or {}
     loc = headers.get("Location")
     if not loc:
@@ -772,7 +784,8 @@ def _default_get(url: str, timeout: float, *, session, user_agent: str):
     if own_session:
         http.headers["User-Agent"] = user_agent
 
-    def attempt(verify: bool):
+    def attempt(verify: bool) -> SimpleNamespace:
+        """GET robots.txt once. ``verify`` is TLS certificate checking. Returns the capped response."""
         response = http.get(
             url,
             timeout=timeout,

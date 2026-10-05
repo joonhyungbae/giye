@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """HTTP fetcher that checks robots.txt before every request and every redirect hop.
 
-Ported from ``scripts/collectors/robots.py`` (``decide``, ``guarded_request``) and the
-per-host pause collectors used around the evidence keeper. Decisions kept from production:
+Roster collectors, CV pulls, and the evidence keeper share this fetcher, so a
+refusal is the same whoever asked (docs/RULES.md, collection policy). The decisions:
 
 - A host whose terms forbid collection (``SOCIAL_HOSTS``) is refused before
   robots.txt is fetched and before the request is sent. Roster collectors, CV
@@ -69,8 +69,8 @@ log = logging.getLogger(__name__)
 # Used when a session has no max_redirects. 30 is requests' own default.
 _PAGE_REDIRECT_LIMIT = 30
 
-# Production list. Their terms forbid automated collection. The evidence keeper
-# used to apply this on its own; every request now goes through ``Fetcher.get``.
+# Hosts whose terms forbid automated collection. Refused in ``Fetcher.get``
+# before robots.txt, for every caller (docs/RULES.md, collection policy).
 SOCIAL_HOSTS = (
     "instagram.com",
     "facebook.com",
@@ -139,6 +139,7 @@ class Page:
 
     @property
     def text(self) -> str:
+        """Body decoded with the charset in ``Content-Type``, or UTF-8. Bad bytes are replaced."""
         charset = "utf-8"
         for part in self.content_type.split(";")[1:]:
             key, _, value = part.strip().partition("=")
@@ -318,9 +319,9 @@ class Fetcher:
     def _raw_get(self, url: str, timeout: float) -> tuple[object, bool]:
         """GET one hop. Redirects stay off so the caller can check robots.txt on the next URL.
 
-        The retry after ``SSLError`` is immediate (production did not pause between the two
-        attempts). The per-host delay applies before the first attempt. ``allow_redirects``
-        is always false.
+        The retry after ``SSLError`` is immediate. The per-host delay already ran
+        before the first attempt; the retry is the same request after a certificate
+        failure, not a new visit. ``allow_redirects`` is always false.
         """
         netloc = urlparse(url).netloc
         self._throttle(netloc)
@@ -403,13 +404,15 @@ def _offline_robots(root: Path, url: str):
     )
 
 
-def _close(response) -> None:
+def _close(response: object) -> None:
+    """Close a response when it has ``close``. A fixture page does not."""
     close = getattr(response, "close", None)
     if callable(close):
         close()
 
 
 def _under(root: Path, rel: str) -> Path:
+    """Resolve ``rel`` under ``root``. A path that climbs out is refused."""
     parts = Path(rel).parts
     if any(part == ".." for part in parts):
         raise ValueError(f"offline URL escapes the fixture root: {rel}")
@@ -421,6 +424,7 @@ def _under(root: Path, rel: str) -> Path:
 
 
 def _content_type(path: Path) -> str:
+    """Content-Type for an offline fixture, from the file suffix."""
     suffix = path.suffix.lower()
     if suffix in {".html", ".htm"}:
         return "text/html; charset=utf-8"

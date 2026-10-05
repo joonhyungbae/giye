@@ -204,8 +204,9 @@ def member_rows(
 ) -> list[dict]:
     """Rows for a team's members: the team's activities credited as ``<prefix> <team>``.
 
-    ``team_prefix`` is the field file's E4 marker. The default is the production
-    spelling so a caller without a field file still writes a credit E4 can read.
+    ``team_prefix`` is the field file's E4 marker (see docs/RULES.md). The default
+    ``팀:`` is that marker's usual spelling, so a caller without a field file
+    still writes a credit E4 can read.
     """
     name = str(team.get("name_ko") or "").strip() or str(team.get("name_en") or "").strip()
     # The first note segment is the collector's label. ``members=`` / ``rep=`` mark
@@ -238,6 +239,171 @@ def member_rows(
 _AMBIGUOUS = object()
 
 
+def _index_families(membership: list[dict], field: object) -> dict[str, set[str]]:
+    """Frame family of each roster row, so A1 can see who already belongs to this programme."""
+    families: dict[str, set[str]] = {}
+    for row in membership:
+        families.setdefault(row["ledger_id"], set()).add(frame_family(row.get("frame_code", ""), field))
+    return families
+
+
+def _shaped_team(artist: Mapping[str, object], members: list[dict[str, str]], team_acts: list[dict]) -> dict:
+    """Names, collector note, and this frame's activities, the fields ``member_rows`` reads."""
+    return {
+        "name_ko": artist.get("name_ko") or "",
+        "name_en": artist.get("name_en") or "",
+        "reviewer_note": artist.get("reviewer_note") or "",
+        "members": members,
+        "activities": [
+            {
+                key: row.get(key) or ""
+                for key in ("title", "venue", "year", "activity_type", "source_url", "source_type", "publishable")
+            }
+            for row in team_acts
+        ],
+    }
+
+
+def _append_member_note(existing: dict, note: str) -> bool:
+    """Copy the member credit onto the person when that sentence is not already there."""
+    if note and note not in (existing.get("reviewer_note") or ""):
+        existing["reviewer_note"] = f"{existing.get('reviewer_note') or ''}; {note}".strip("; ")
+        return True
+    return False
+
+
+def _ensure_frame_membership(
+    membership: list[dict],
+    ledger_id: str,
+    frame: str,
+    source: str,
+    collected: str,
+) -> bool:
+    """Add the member to this edition when they are not already on it. Returns whether a row was added."""
+    if any(item["ledger_id"] == ledger_id and item["frame_code"] == frame for item in membership):
+        return False
+    membership.append(
+        empty_row(
+            MEMBERSHIP_FIELDS,
+            ledger_id=ledger_id,
+            frame_code=frame,
+            source_url=source,
+            collected_at=collected,
+        )
+    )
+    return True
+
+
+def _copy_member_activities(
+    activities: list[dict],
+    ledger_id: str,
+    frame: str,
+    member_activities: list,
+    source: str,
+    collected: str,
+    *,
+    dry_run: bool,
+) -> bool:
+    """Copy this frame's team activities onto the member. A dry run writes none of them."""
+    changed = False
+    for activity in member_activities:
+        if _has_activity(activities, ledger_id, frame, activity):
+            continue
+        if dry_run:
+            continue
+        activities.append(_member_activity(activities, ledger_id, frame, activity, source, collected))
+        changed = True
+    return changed
+
+
+def _create_member(
+    artists: list[dict],
+    by_id: dict[str, dict],
+    taken: set[str],
+    issued: list[str],
+    row: Mapping[str, str],
+    source: str,
+    collected: str,
+    stamp: str,
+    id_prefix: str,
+) -> dict:
+    """A new roster row for a member no existing person matched under A1–A4."""
+    lid = _new_id(taken)
+    gy = allocate_gy_id(issued, prefix=id_prefix)
+    issued.append(gy)
+    ko = (row.get("name_ko") or "").strip() or (row.get("name_en") or "").strip() or "unknown"
+    existing = empty_row(
+        ARTISTS_FIELDS,
+        ledger_id=lid,
+        gy_id=gy,
+        name_ko=ko,
+        name_en=(row.get("name_en") or "").strip(),
+        cv_link_ok="no",
+        frame_status="IN_FRAME",
+        verification="UNVERIFIED",
+        status="STAGED",
+        source_url=source,
+        source_type=row.get("source_type") or "PUBLIC_RECORD",
+        collected_at=collected,
+        reviewer_note=row.get("reviewer_note") or "",
+        updated_at=stamp,
+    )
+    artists.append(existing)
+    by_id[lid] = existing
+    return existing
+
+
+def _place_member(
+    artists: list[dict],
+    by_id: dict[str, dict],
+    families: dict[str, set[str]],
+    activities: list[dict],
+    membership: list[dict],
+    taken: set[str],
+    issued: list[str],
+    created: list[str],
+    frame: str,
+    row: Mapping[str, str],
+    team_lid: str,
+    field: object,
+    language: LanguageModule | None,
+    source: str,
+    collected: str,
+    stamp: str,
+    id_prefix: str,
+    *,
+    dry_run: bool,
+) -> bool:
+    """Attach or create one member on this edition. Returns whether the tables changed.
+
+    A dry run that would create a person appends the name to ``created`` and
+    stops, so the roster is not written. An existing person still receives the
+    credit note and the membership row in memory; the caller skips the write.
+    """
+    existing = _attach_member(artists, by_id, families, frame, row, team_lid, field, language)
+    if existing is _AMBIGUOUS:
+        return False
+    changed = False
+    if existing is None:
+        if dry_run:
+            created.append(row.get("name_ko") or row.get("name_en") or "")
+            return False
+        existing = _create_member(artists, by_id, taken, issued, row, source, collected, stamp, id_prefix)
+        created.append(existing["ledger_id"])
+        changed = True
+    if _append_member_note(existing, row.get("reviewer_note") or ""):
+        changed = True
+    if _ensure_frame_membership(membership, existing["ledger_id"], frame, source, collected):
+        changed = True
+    families.setdefault(existing["ledger_id"], set()).add(frame_family(frame, field))
+    member_activities = row.get("activities") or []
+    if _copy_member_activities(
+        activities, existing["ledger_id"], frame, member_activities, source, collected, dry_run=dry_run
+    ):
+        changed = True
+    return changed
+
+
 def expand_teams(ledger: Ledger, *, dry_run: bool = False) -> list[str]:
     """Give every named team member their own roster row. Returns new ledger ids.
 
@@ -257,13 +423,13 @@ def expand_teams(ledger: Ledger, *, dry_run: bool = False) -> list[str]:
     taken = {row["ledger_id"] for row in artists}
     by_id = {row["ledger_id"]: row for row in artists}
     field = ledger.config.field_config
-    families: dict[str, set[str]] = {}
-    for row in membership:
-        families.setdefault(row["ledger_id"], set()).add(frame_family(row.get("frame_code", ""), field))
+    families = _index_families(membership, field)
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     from giye.normalize.language import language_for
 
     language = language_for(ledger.config)
+    team_prefix = ledger.config.field_config.team_prefix or "팀:"
+    id_prefix = ledger.config.id_prefix or "GY"
     for artist in list(artists):
         members = members_of(artist, language)
         if not members:
@@ -271,96 +437,37 @@ def expand_teams(ledger: Ledger, *, dry_run: bool = False) -> list[str]:
         team_lid = artist["ledger_id"]
         for mem in [row for row in membership if row["ledger_id"] == team_lid]:
             frame = mem["frame_code"]
-            team_acts = [
-                row for row in activities if row["ledger_id"] == team_lid and row.get("origin") == frame
-            ]
+            team_acts = [row for row in activities if row["ledger_id"] == team_lid and row.get("origin") == frame]
             source = mem.get("source_url") or artist.get("source_url") or ""
             collected = (mem.get("collected_at") or artist.get("collected_at") or "")[:10]
-            shaped = {
-                "name_ko": artist.get("name_ko") or "",
-                "name_en": artist.get("name_en") or "",
-                "reviewer_note": artist.get("reviewer_note") or "",
-                "members": members,
-                "activities": [
-                    {
-                        key: row.get(key) or ""
-                        for key in ("title", "venue", "year", "activity_type", "source_url", "source_type", "publishable")
-                    }
-                    for row in team_acts
-                ],
-            }
             for row in member_rows(
-                shaped,
+                _shaped_team(artist, members, team_acts),
                 team_lid,
                 source_url=source,
                 source_type=artist.get("source_type") or "PUBLIC_RECORD",
                 collected=collected,
-                team_prefix=ledger.config.field_config.team_prefix or "팀:",
+                team_prefix=team_prefix,
             ):
-                existing = _attach_member(
+                if _place_member(
                     artists,
                     by_id,
                     families,
+                    activities,
+                    membership,
+                    taken,
+                    issued,
+                    created,
                     frame,
                     row,
                     team_lid,
                     field,
                     language,
-                )
-                if existing is _AMBIGUOUS:
-                    continue
-                if existing is None:
-                    if dry_run:
-                        created.append(row.get("name_ko") or row.get("name_en") or "")
-                        continue
-                    lid = _new_id(taken)
-                    gy = allocate_gy_id(issued, prefix=ledger.config.id_prefix or "GY")
-                    issued.append(gy)
-                    ko = (row.get("name_ko") or "").strip() or (row.get("name_en") or "").strip() or "unknown"
-                    existing = empty_row(
-                        ARTISTS_FIELDS,
-                        ledger_id=lid,
-                        gy_id=gy,
-                        name_ko=ko,
-                        name_en=(row.get("name_en") or "").strip(),
-                        cv_link_ok="no",
-                        frame_status="IN_FRAME",
-                        verification="UNVERIFIED",
-                        status="STAGED",
-                        source_url=source,
-                        source_type=row.get("source_type") or "PUBLIC_RECORD",
-                        collected_at=collected,
-                        reviewer_note=row.get("reviewer_note") or "",
-                        updated_at=stamp,
-                    )
-                    artists.append(existing)
-                    by_id[lid] = existing
-                    created.append(lid)
-                    changed = True
-                note = row.get("reviewer_note") or ""
-                if note and note not in (existing.get("reviewer_note") or ""):
-                    existing["reviewer_note"] = f"{existing.get('reviewer_note') or ''}; {note}".strip("; ")
-                    changed = True
-                if not any(item["ledger_id"] == existing["ledger_id"] and item["frame_code"] == frame for item in membership):
-                    membership.append(
-                        empty_row(
-                            MEMBERSHIP_FIELDS,
-                            ledger_id=existing["ledger_id"],
-                            frame_code=frame,
-                            source_url=source,
-                            collected_at=collected,
-                        )
-                    )
-                    changed = True
-                families.setdefault(existing["ledger_id"], set()).add(frame_family(frame, field))
-                for activity in row.get("activities") or []:
-                    if _has_activity(activities, existing["ledger_id"], frame, activity):
-                        continue
-                    if dry_run:
-                        continue
-                    activities.append(
-                        _member_activity(activities, existing["ledger_id"], frame, activity, source, collected)
-                    )
+                    source,
+                    collected,
+                    stamp,
+                    id_prefix,
+                    dry_run=dry_run,
+                ):
                     changed = True
     if changed and not dry_run:
         ledger.write("artists", artists, task="expand-teams")
@@ -399,6 +506,7 @@ def _attach_member(
     name_en = member.get("name_en") or ""
 
     def decide(pool: list[dict]):
+        """A1–A4 against this pool. The team row is excluded on the second call."""
         return match_artist(pool, families, frame, name_ko, name_en, "", field, language)
 
     decision = decide(artists)

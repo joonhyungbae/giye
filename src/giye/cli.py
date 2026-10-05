@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Command line: ``giye <stage> --config giye.toml`` or ``giye run`` for the whole chain.
 
-Stages that are not yet ported say so and exit with status 2, so scripts fail loudly instead
-of silently skipping a step (see docs/ROADMAP.md).
+A stage this package does not run yet says so and exits with status 2, so a chain
+fails loudly instead of skipping a step (see docs/ROADMAP.md).
 """
 
 from __future__ import annotations
@@ -17,8 +17,9 @@ from giye.resolve.names import hangul_name_keys, latin_name_keys
 STAGES = ["collect", "extract", "ledger", "resolve", "normalize", "explore", "publish"]
 
 
-def _not_ported(stage: str) -> int:
-    print(f"giye {stage}: not ported yet (see docs/ROADMAP.md)", file=sys.stderr)
+def _unknown_command(command: str) -> int:
+    """Exit 2 for a command the dispatcher does not handle (argparse normally rejects it first)."""
+    print(f"giye: error: unknown command {command}", file=sys.stderr)
     return 2
 
 
@@ -355,10 +356,18 @@ def _evidence(args: argparse.Namespace) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def _parser() -> argparse.ArgumentParser:
+    """The ``giye`` command line. Help text is part of the public interface."""
     ap = argparse.ArgumentParser(prog="giye", description=__doc__)
     ap.add_argument("--version", action="version", version=f"giye {__version__}")
     sub = ap.add_subparsers(dest="cmd", required=True)
+    _add_stage_parsers(sub)
+    _add_tool_parsers(sub)
+    return ap
+
+
+def _add_stage_parsers(sub: argparse._SubParsersAction) -> None:
+    """``collect`` through ``run``, including the flags only one stage reads."""
     for stage in STAGES + ["run"]:
         sp = sub.add_parser(stage, help=f"run the {stage} stage" if stage != "run" else "run every stage in order")
         sp.add_argument("--config", default="giye.toml")
@@ -430,6 +439,10 @@ def main(argv: list[str] | None = None) -> int:
                 default=None,
                 help="Override [extract] model. The cache key records this string as given.",
             )
+
+
+def _add_tool_parsers(sub: argparse._SubParsersAction) -> None:
+    """Commands that are not a pipeline stage: keys, demo, render, export, queue, merge, hide."""
     nk = sub.add_parser("name-keys", help="print romanized matching keys for names (rule X1)")
     nk.add_argument("names", nargs="+")
     demo = sub.add_parser("demo", help="run the synthetic field offline and print a summary")
@@ -476,7 +489,11 @@ def main(argv: list[str] | None = None) -> int:
     unhide_cmd.add_argument("--config", default="giye.toml")
     evidence_cmd = sub.add_parser("evidence", help="keep a copy of every URL the ledger cites")
     evidence_cmd.add_argument("--config", default="giye.toml")
-    args = ap.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run one ``giye`` command. Returns 0 on success and 2 on a usage or stage error."""
+    args = _parser().parse_args(argv)
     try:
         return _dispatch(args)
     except GiyeError as exc:
@@ -485,6 +502,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _dispatch(args: argparse.Namespace) -> int:
+    """Run the parsed command. A command this package does not run yet exits 2."""
     if args.cmd == "name-keys":
         return _name_keys(args)
     if args.cmd == "collect":
@@ -521,7 +539,7 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _unhide(args)
     if args.cmd == "evidence":
         return _evidence(args)
-    return _not_ported(args.cmd)
+    return _unknown_command(args.cmd)
 
 
 if __name__ == "__main__":

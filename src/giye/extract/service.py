@@ -66,9 +66,9 @@ class ExtractResult:
 def api_key_configured() -> bool:
     """True when the process has an Anthropic key in the environment.
 
-    Production also accepts an ``ant auth login`` profile. Probing that profile
-    imports the SDK and can reach the network, so this release treats a missing
-    environment key as "replay the cache" for the Anthropic provider only.
+    An ``ant auth login`` profile is not probed. That probe imports the SDK and
+    can reach the network, so a missing environment key means replay the cache
+    for the Anthropic provider only.
     ``openai_compatible`` does not consult this. Its bearer token, when one
     is set, comes from the variable named by ``[extract] api_key_env``.
     """
@@ -351,9 +351,9 @@ def _extraction_current(
 ) -> bool:
     """True when source hashes, prompt, model, and ``chunk_chars`` still match.
 
-    Production compared source content hashes only. The replay key also
-    includes the prompt digest and the model, so a change to either reads the
-    CV again instead of keeping an extraction made with the old instructions.
+    Source content hashes, the prompt digest, and the model must all still
+    match. A change to the prompt or the model reads the CV again instead of
+    keeping an extraction made with the old instructions.
     ``chunk_chars`` is part of the same check. A file from before this setting
     has no key; that counts as 0, the hosted default. Any other budget reads
     the CV again.
@@ -417,6 +417,7 @@ def _complete(
     api_key_env: str,
     reasoning_effort: str | None = None,
 ) -> str | CacheMiss:
+    """Replay the cache, or call the configured model on a miss. A miss with no key returns ``CacheMiss``."""
     replay = ReplayProvider(cache_dir, content_sha256=content_sha256, prompt_sha256=prompt_sha256, model=model)
     try:
         return replay.complete(prompt, document)

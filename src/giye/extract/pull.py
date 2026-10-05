@@ -3,7 +3,7 @@
 
 Every request goes through ``giye.collect.Fetcher``, which checks robots.txt
 first. The content hash is the whitespace-free SHA-256 of the extracted text
-(production ``fingerprint``). An unchanged hash does not write a new snapshot
+(``fingerprint``). An unchanged hash does not write a new snapshot
 and does not count as a new CV. A new or changed text is queued
 (``cv_new`` / ``cv_changed``). A failure, including a robots disallow, is
 queued as ``cv_pull_failed`` and the registry row is kept.
@@ -35,7 +35,7 @@ def _now() -> str:
 
 
 def _as_of(today: date | None) -> date:
-    """UTC date, the same clock as ledger backups. Production used the local date."""
+    """UTC date, the same clock as ledger backups, so a snapshot and its backup name the same day."""
     return today or datetime.now(timezone.utc).date()
 
 
@@ -101,7 +101,7 @@ def pull_one(
         row["last_status"] = "not_public"
         enqueue(queue, row["ledger_id"], "cv_pull_failed", f"{row['source_id']}: {exc}")
         return row["last_status"]
-    except Exception as exc:  # noqa: BLE001 — record any transport or parse failure, as production does
+    except Exception as exc:  # noqa: BLE001 — queue the failure and keep the registry row
         row["last_status"] = "error"
         enqueue(queue, row["ledger_id"], "cv_pull_failed", f"{row['source_id']}: {type(exc).__name__}: {exc}")
         return row["last_status"]
@@ -172,7 +172,7 @@ def _download(fetcher: Fetcher, kind: str, url: str) -> tuple[bytes, str]:
 
 
 def _reject_login_page(kind: str, page: Page) -> None:
-    """A Google HTML page is not the exported file. Production also follows a virus-scan form; that hop is not ported."""
+    """A Google HTML page is not the exported file. A virus-scan form is refused rather than followed."""
     if kind not in ("gdrive_file", "gdoc", "gsheet"):
         return
     ctype = (page.content_type or "").lower()

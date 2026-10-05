@@ -2,7 +2,7 @@
 """Stage 3: ledger tables, CSV I/O with backups, permanent IDs and their retirement.
 
 People are ``artists.csv``. A ``gy_id`` is never reused or renumbered. Activity
-ids are uuid5 of a fixed namespace (the same string as the production archive).
+ids are uuid5 of a fixed namespace (``ACTIVITY_NAMESPACE``). Do not change it.
 A CV-derived row belongs to the owner of its CV source.
 """
 

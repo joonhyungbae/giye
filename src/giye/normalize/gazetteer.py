@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Place names → (country, Korean region).
 
-Ported from the production preprocessor. The lookup order is the production one.
+Lookup order, first hit wins. See docs/RULES.md.
 
 G1  An ISO alpha-2 or alpha-3 country code, read only when the fragment is the
     whole token (``KR``, ``KOR``). Used by fragment resolution (enhanced).
@@ -11,9 +11,9 @@ G3  An uppercase two- or three-letter token after a place inherits that place's
 G6  A two-letter US postal abbreviation that is not itself a country code
     (``NY``), when no previous place gave G3 a country.
 
-The other steps are unnamed in the production source (the audit header says
-G1–G6). They are, in order: a Korean first-level region written in Hangul, a
-city (the most populous row wins when a name is listed twice), an admin1 name,
+G2, G4, and G5 are not separate steps. The audit header says G1–G6, and the
+remaining lookups, in order, are a Korean first-level region written in Hangul,
+a city (the most populous row wins when a name is listed twice), an admin1 name,
 then a country name. A Korean administrative suffix is stripped before the
 second try (서울시 → 서울, 경기도 → 경기).
 
@@ -21,8 +21,9 @@ V1 calls this with ``words=False``: the whole fragment must be a place. A town
 inside an institution name (``Nam June Paik Art Center``) is not a place; the
 city is the fragment that is only the city (``…, Yongin``).
 
-The packaged table is a compact gazetteer. ``from_geonames`` reads the
-production layout (GeoNames cities15000 + admin1, CC BY 4.0, not shipped).
+The packaged table is a compact gazetteer. ``from_geonames`` reads a GeoNames
+tree (cities15000 + admin1, CC BY 4.0, not shipped) so a configured archive can
+resolve places the compact table omits.
 A country extract in the same directory (``KR.txt``, or ``allCountries.txt``)
 supplies the places cities15000 drops: administrative divisions and
 neighbourhoods. See ``OMITTED_PLACE_CODES``.
@@ -37,8 +38,8 @@ import unicodedata
 from pathlib import Path
 from typing import NamedTuple
 
-# First-level Korean regions the archive publishes. Incheon folds into 경기,
-# as the production site region tags did; every other province is 기타.
+# First-level Korean regions the site publishes. Incheon folds into 경기 so the
+# published set stays those region tags; every other province is 기타.
 KR_REGION = {
     "11": "서울",
     "13": "경기",
@@ -49,7 +50,7 @@ KR_REGION = {
     "19": "대전",
 }
 # Short forms the country lists leave out. "Korea" alone is the Republic of
-# Korea: the production note says no CV in that archive used it for the DPRK.
+# Korea: no CV in this archive uses that bare name for the DPRK.
 EXTRA_COUNTRY = {
     "korea": "KR",
     "한국": "KR",
@@ -105,6 +106,8 @@ City = tuple[int, str, str, str]
 
 
 class Index(NamedTuple):
+    """Tables one gazetteer lookup reads: countries, cities, admin1 names, US postal codes."""
+
     countries: dict[str, str]
     country_codes: set[str]
     alpha3_codes: dict[str, str]
@@ -229,6 +232,7 @@ def _index_omitted_places(
 
 
 def _read_tsv(path: Path) -> list[dict[str, str]]:
+    """Tab-separated rows. Blank lines and ``#`` comments are not data."""
     rows: list[dict[str, str]] = []
     with path.open(encoding="utf-8", newline="") as handle:
         for line in handle:
@@ -241,14 +245,20 @@ def _read_tsv(path: Path) -> list[dict[str, str]]:
 
 
 class Gazetteer:
-    """A place index with the production lookup."""
+    """Place index.
+
+    Fragment lookup tries G1, then G6, then a Korean region, a city, an admin1
+    name, and a country name.
+    """
 
     def __init__(self, index: Index, sources: tuple[Path, ...] = ()) -> None:
+        """``sources`` are the files whose hashes a normalisation manifest records."""
         self.index = index
         self.sources = sources
 
     @property
     def countries(self) -> dict[str, str]:
+        """Lower-cased country name → ISO alpha-2, including the short forms in ``EXTRA_COUNTRY``."""
         return self.index.countries
 
     @property
@@ -260,8 +270,7 @@ class Gazetteer:
         """English city name for a gazetteer key, lower-cased, suffix stripped.
 
         V9 looks the Hangul segment up as stored. Keys are already normalised,
-        and a Hangul key is unchanged by that, so the segment is used as-is
-        (the production ``cities.get(segment)``).
+        and a Hangul key is unchanged by that, so the segment is used as-is.
         """
         hit = self.cities.get(segment)
         if not hit:
@@ -316,6 +325,10 @@ class Gazetteer:
         return out
 
     def _lookup_detail(self, part: str, *, enhanced: bool = False) -> tuple[str, str, str] | None:
+        """One fragment: G1, then G6, then a Korean region, a city, an admin1 name, a country.
+
+        None when nothing matches.
+        """
         index = self.index
         cities = index.cities if enhanced else index.legacy_cities
         stripped = part.strip()
@@ -371,9 +384,9 @@ class Gazetteer:
     ) -> Gazetteer:
         """Build an index from in-memory rows. Both city indexes receive every row.
 
-        The production GeoNames loader keeps Latin alternate names out of the
-        legacy index unless the city has at least a million people. A table
-        built here has no alternate-name column, so the two indexes match.
+        ``from_geonames`` keeps Latin alternate names out of the legacy index
+        unless the city has at least a million people. A table built here has
+        no alternate-name column, so the two indexes match.
         """
         enhanced: dict[str, City] = {}
         legacy: dict[str, City] = {}
@@ -430,7 +443,7 @@ class Gazetteer:
 
     @classmethod
     def from_geonames(cls, reference: Path) -> Gazetteer:
-        """Production index. ``reference`` holds ``geonames/`` and ``countries/``.
+        """GeoNames index. ``reference`` holds ``geonames/`` and ``countries/``.
 
         ``cities15000.txt`` is GeoNames (CC BY 4.0) and is not part of this
         package. A missing file raises ``FileNotFoundError``.

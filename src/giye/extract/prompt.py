@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """The versioned CV extraction prompt.
 
-``prompts/cv_extract_v1.txt`` is the production system prompt
-(``extract_cvs_llm.py``, ``SYSTEM``) and the default. A field file can name its
+``prompts/cv_extract_v1.txt`` is the packaged system prompt and the default.
+A field file can name its
 own prompt file (``[extract] prompt``), because the prompt describes the field.
 The SHA-256 of the file bytes is stored on each cache record and on each
 extraction file, so a changed or different prompt is a different cache key and
@@ -25,10 +25,12 @@ def prompt_path(path: Path | None = None) -> Path:
 
 
 def prompt_bytes(path: Path | None = None) -> bytes:
+    """Raw bytes of the prompt file, including the trailing newline the hash covers."""
     return prompt_path(path).read_bytes()
 
 
 def prompt_text(path: Path | None = None) -> str:
+    """The prompt decoded as UTF-8, the system text sent to the model."""
     return prompt_bytes(path).decode("utf-8")
 
 

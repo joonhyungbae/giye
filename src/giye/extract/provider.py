@@ -9,9 +9,9 @@ there too, so importing this module does not open a socket.
 The replay cache is one JSON file per ``(content sha256, prompt sha256, model)``.
 The file holds the raw response plus ``model``, ``prompt_sha256``,
 ``content_sha256``, ``created_at``, and ``temperature``. Temperature is
-recorded and is not part of the key: production's call does not set it, and
-two temperatures are not two extractions unless the caller changes the model
-or the prompt. A local call also stores ``response_mode`` (which structured-
+recorded and is not part of the key. The live call omits temperature unless
+the config sets one, and two temperatures are not two extractions unless the
+caller changes the model or the prompt. A local call also stores ``response_mode`` (which structured-
 output shape the server accepted). That field is not part of the key either.
 """
 
@@ -97,6 +97,7 @@ class ReplayProvider:
         self.model = model
 
     def complete(self, prompt: str, document: str) -> str:
+        """Return the stored raw response. ``prompt`` and ``document`` are ignored; the cache key already names them."""
         path = cache_path(self.directory, self.content_sha256, self.prompt_sha256, self.model)
         if not path.is_file():
             raise CacheMiss(self.content_sha256, self.prompt_sha256, self.model)
@@ -120,10 +121,10 @@ class ReplayProvider:
 class AnthropicProvider:
     """Live call. The SDK is imported here, not at module import.
 
-    The request follows ``scripts/extract_cvs_llm.py``: the configured model,
-    the versioned prompt as the system text, and the extraction JSON schema as
-    the structured output. ``temperature`` is sent only when the config sets
-    one. Production omitted the parameter. Tests must not construct a call;
+    The request sends the configured model, the versioned prompt as the system
+    text, and the extraction JSON schema as the structured output.
+    ``temperature`` is sent only when the config sets one, so an omitted key
+    does not change the model's default. Tests must not construct a call;
     a run without an API key uses ``ReplayProvider`` instead.
     """
 
@@ -132,6 +133,7 @@ class AnthropicProvider:
         self.temperature = temperature
 
     def complete(self, prompt: str, document: str) -> str:
+        """Call the model. Returns the raw text, which must be the extraction JSON."""
         import anthropic
 
         from giye.extract.schema import Extraction
@@ -208,6 +210,7 @@ class OpenAICompatibleProvider:
         self.response_mode: str | None = None
 
     def complete(self, prompt: str, document: str) -> str:
+        """POST one completion. Returns the raw text. Retries a rejected schema as JSON, then as plain text."""
         import requests
 
         from giye.extract.schema import Extraction
@@ -239,6 +242,7 @@ class OpenAICompatibleProvider:
         headers = self._headers()
 
         def post(body: dict) -> requests.Response:
+            """POST one attempt. A connection error becomes ``ProviderError``. Redirects are not followed."""
             try:
                 # A redirect would repeat the CV text at another URL. Stay on base_url.
                 return requests.post(

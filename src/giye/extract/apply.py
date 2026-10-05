@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Write validated CV rows into the ledger.
 
-Ported from ``scripts/apply_cv_extractions.py``. Decisions kept:
-
 - A row's origin is ``cv:<source_id>``. Re-applying a file removes the rows
   those sources produced and writes the new reading, so a changed CV replaces
   the old one instead of stacking.
@@ -26,7 +24,9 @@ Ported from ``scripts/apply_cv_extractions.py``. Decisions kept:
 - An extraction file whose ledger id is no longer an artist is skipped when a
   live artist's file already covers the same sources. Applying both would let
   file order decide which reading survives.
-- Activity ids come from ``giye.ledger`` (uuid5 of the production key).
+- Activity ids come from ``giye.ledger`` (uuid5 of the ledger id, source,
+  title, year, type, and venue). Applying the same reading again rewrites
+  those ids; that rewrite is not a new activity.
 """
 
 from __future__ import annotations
@@ -97,9 +97,8 @@ def same_activity(left: dict, right: dict) -> bool:
     """Same year and the same title, or one title contained in the other.
 
     Hangul packs a word into fewer characters, so the shorter title may be 4
-    characters. A Latin title needs 6. Production uses this for a Korean line
-    and an English line that repeat one event, and for a show title that also
-    names the work.
+    characters. A Latin title needs 6. A Korean line and an English line that
+    repeat one event match, and so does a show title that also names the work.
     """
     if str(left.get("year") or "") != str(right.get("year") or ""):
         return False
@@ -116,7 +115,7 @@ def apply_extractions(ledger: Ledger, *, today: date | None = None) -> ApplyStat
     """Merge ``data/work/cv_extract/*.json`` into ``activities.csv``.
 
     ``today`` decides which upcoming year is still in the future. The default
-    is the real date, as in production. Tests pass a fixed date.
+    is today's UTC date. Tests pass a fixed date.
     """
     config = ledger.config
     today = today or datetime.now(timezone.utc).date()
@@ -176,43 +175,68 @@ def apply_extractions(ledger: Ledger, *, today: date | None = None) -> ApplyStat
     return stats
 
 
-def _apply_file(
-    path: Path,
-    *,
-    registry: dict[str, dict[str, str]],
-    activities: list[dict[str, str]],
-    queue: list[dict[str, str]],
-    id_changes: list[tuple[str, str, str, str]],
-    today: date,
-    stats: ApplyStats,
-) -> tuple[list[dict[str, str]], int, int]:
-    data = json.loads(path.read_text(encoding="utf-8"))
+def _extraction_owner(data: dict, registry: dict[str, dict[str, str]]) -> str:
+    """The source's person when every source in the file has the same owner.
+
+    Several owners, or none, keep the ledger id written on the file. A merge
+    retires that id and updates ``cv_sources``; a mixed file must not guess
+    which person the rows belong to.
+    """
     owners = {
         registry[item["source_id"]]["ledger_id"]
         for item in data.get("sources", [])
         if item.get("source_id") in registry
     }
-    # One owner: the source decides. Several owners, or none: the file's own id.
-    ledger_id = owners.pop() if len(owners) == 1 else data["ledger_id"]
-    stale = [
-        item["source_id"]
-        for item in data.get("sources", [])
-        if registry.get(item["source_id"], {}).get("content_sha256") != item.get("content_sha256")
-    ]
-    if stale:
-        stats.skipped_stale.append(ledger_id)
-        return activities, 0, 0
+    return owners.pop() if len(owners) == 1 else data["ledger_id"]
 
-    file_origins = {f"cv:{item['source_id']}" for item in data.get("sources", [])}
-    old_cv = [row for row in activities if row.get("origin") in file_origins]
-    kept = [row for row in activities if row.get("origin") not in file_origins]
-    others = [row for row in kept if row.get("ledger_id") == ledger_id]
+
+def _sources_stale(data: dict, registry: dict[str, dict[str, str]]) -> bool:
+    """True when a source's registry hash is not the hash this file was extracted from."""
+    return any(
+        registry.get(item["source_id"], {}).get("content_sha256") != item.get("content_sha256")
+        for item in data.get("sources", [])
+    )
+
+
+def _clear_superseded(others: list[dict[str, str]]) -> None:
+    """Drop ``superseded_by_cv`` so this apply recomputes which rows the CV replaces."""
     for other in others:
         note = other.get("reviewer_note") or ""
         if SUPERSEDED in note:
             other["publishable"] = "yes"
             other["reviewer_note"] = re.sub(rf";?\s*{SUPERSEDED}", "", note).strip("; ")
 
+
+def _repeats_new_row(activity: dict, new_rows: list[dict[str, str]]) -> bool:
+    """Korean and English copies of one event inside the rows this file is adding."""
+    venue_key = norm_activity_title(str(activity.get("venue") or ""))
+    return any(
+        same_activity(activity, existing) and venue_key == norm_activity_title(existing.get("venue") or "")
+        for existing in new_rows
+    )
+
+
+def _supersede_self_reports(twins: list[dict[str, str]]) -> int:
+    """Hide self-reported copies of this CV event. Returns how many were newly hidden."""
+    superseded = 0
+    for other in twins:
+        if other.get("publishable") == "yes":
+            other["publishable"] = "no"
+            note = other.get("reviewer_note") or ""
+            other["reviewer_note"] = f"{note}; {SUPERSEDED}".strip("; ")
+            superseded += 1
+    return superseded
+
+
+def _rows_from_file(
+    data: dict,
+    *,
+    registry: dict[str, dict[str, str]],
+    others: list[dict[str, str]],
+    ledger_id: str,
+    today: date,
+) -> tuple[list[dict[str, str]], int, int]:
+    """CV rows to insert, plus how many copies and self-reports were skipped or hidden."""
     new_rows: list[dict[str, str]] = []
     id_counter: dict[str, int] = {}
     duplicates = 0
@@ -223,39 +247,68 @@ def _apply_file(
         title = (activity.get("title") or "").strip()
         if not source or not title or not year:
             continue
-        venue_key = norm_activity_title(str(activity.get("venue") or ""))
-        if any(
-            same_activity(activity, existing) and venue_key == norm_activity_title(existing.get("venue") or "")
-            for existing in new_rows
-        ):
+        if _repeats_new_row(activity, new_rows):
             duplicates += 1
             continue
         twins = [other for other in others if same_activity(activity, other)]
         if any(not self_reported(other) for other in twins):
             duplicates += 1
             continue
-        for other in twins:
-            if other.get("publishable") == "yes":
-                other["publishable"] = "no"
-                note = other.get("reviewer_note") or ""
-                other["reviewer_note"] = f"{note}; {SUPERSEDED}".strip("; ")
-                superseded += 1
-        new_rows.append(_cv_row(activity, source=source, ledger_id=ledger_id, year=year, title=title, today=today, counter=id_counter))
+        superseded += _supersede_self_reports(twins)
+        new_rows.append(
+            _cv_row(activity, source=source, ledger_id=ledger_id, year=year, title=title, today=today, counter=id_counter)
+        )
+    return new_rows, duplicates, superseded
 
-    # Old CV rows whose key is absent from this extraction are dropped facts.
-    # They are not given a new id (production counts them and does not invent one).
+
+def _close_cv_reviews(queue: list[dict[str, str]], ledger_id: str, stats: ApplyStats) -> None:
+    """Mark open ``cv_new`` / ``cv_changed`` items done once their file has been applied."""
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for item in queue:
+        if (
+            item.get("ledger_id") == ledger_id
+            and item.get("reason") in ("cv_new", "cv_changed")
+            and item.get("status") == "open"
+        ):
+            item["status"] = "done"
+            item["detail"] = f"{item.get('detail') or ''} | applied {now}".strip()
+            stats.closed_reviews += 1
+
+
+def _apply_file(
+    path: Path,
+    *,
+    registry: dict[str, dict[str, str]],
+    activities: list[dict[str, str]],
+    queue: list[dict[str, str]],
+    id_changes: list[tuple[str, str, str, str]],
+    today: date,
+    stats: ApplyStats,
+) -> tuple[list[dict[str, str]], int, int]:
+    """Replace this file's previous CV rows with the new reading. Returns activities, duplicates, superseded."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    ledger_id = _extraction_owner(data, registry)
+    if _sources_stale(data, registry):
+        stats.skipped_stale.append(ledger_id)
+        return activities, 0, 0
+
+    file_origins = {f"cv:{item['source_id']}" for item in data.get("sources", [])}
+    old_cv = [row for row in activities if row.get("origin") in file_origins]
+    kept = [row for row in activities if row.get("origin") not in file_origins]
+    others = [row for row in kept if row.get("ledger_id") == ledger_id]
+    _clear_superseded(others)
+    new_rows, duplicates, superseded = _rows_from_file(
+        data, registry=registry, others=others, ledger_id=ledger_id, today=today
+    )
+    # A CV line whose key is absent from this extraction is a dropped fact.
+    # It is not given a new id: a vanished line is a deletion, not a new activity.
     id_changes.extend(zip_activity_id_changes(old_cv, new_rows, cv_activity_key))
     # ``added`` is an id the ledger did not already hold. Applying the same
     # extraction again rewrites those ids; that rewrite is not a new activity,
     # so a second run of the pipeline can report that nothing was added.
     prior_ids = {row.get("activity_id") for row in old_cv} | {row.get("activity_id") for row in kept}
     stats.added += sum(1 for row in new_rows if row["activity_id"] not in prior_ids)
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    for item in queue:
-        if item.get("ledger_id") == ledger_id and item.get("reason") in ("cv_new", "cv_changed") and item.get("status") == "open":
-            item["status"] = "done"
-            item["detail"] = f"{item.get('detail') or ''} | applied {now}".strip()
-            stats.closed_reviews += 1
+    _close_cv_reviews(queue, ledger_id, stats)
     return kept + new_rows, duplicates, superseded
 
 
@@ -269,6 +322,7 @@ def _cv_row(
     today: date,
     counter: dict[str, int],
 ) -> dict[str, str]:
+    """One ledger activity. Education, service, and a future year stay unpublished."""
     section = (activity.get("cv_section") or "other").strip().lower()
     activity_type = activity.get("activity_type") if activity.get("activity_type") in TYPES else "other"
     private = section in PRIVATE_SECTIONS or bool(PRIVATE_TITLE.search(f"{title} {activity.get('role') or ''}"))
@@ -316,7 +370,7 @@ def _cv_row(
 
 
 def _write_id_map(ledger: Ledger, id_changes: list[tuple[str, str, str, str]]) -> None:
-    """One map per UTC day, as production. A second apply the same day keeps the first map."""
+    """One map per UTC day. A second apply the same day keeps the first map, so the morning's old-to-new ids stay."""
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
     path = ledger.config.work / "backups" / f"activity_id_map-{stamp}.csv"
     if path.exists():

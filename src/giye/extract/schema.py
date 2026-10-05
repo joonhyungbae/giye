@@ -1,18 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Activity schema for a CV extraction.
 
-The shape is the production ``Entry`` / ``Extraction`` models
-(``scripts/extract_cvs_llm.py``). ``extra="forbid"`` is required there because
-the API schema sets ``additionalProperties: false``. A response that does not
-match — an invented ``activity_type``, a non-integer year, an extra field — is
-rejected as a whole, the same way a ``ValidationError`` made production skip
-that artist.
+``Entry`` and ``Extraction`` are the objects the model must return.
+``extra="forbid"`` matches the API schema's ``additionalProperties: false``.
+A response that does not match — an invented ``activity_type``, a non-integer
+year, an extra field — is rejected as a whole, so that artist is skipped
+rather than half-written.
 
 A row whose ``source_id`` is not one of the documents sent with the prompt is
-dropped after validation (production keeps ``source_id in ids`` only). That is
-the coded check against a row the model attached to a document it was not
-given. Production does not also test that the year or the venue string occurs
-in the CV text.
+dropped after validation. That is the check against a row the model attached
+to a document it was not given. The year and the venue are not also required
+to occur in the CV text: the schema checks shape, not quotation.
 """
 
 from __future__ import annotations
@@ -87,8 +85,8 @@ def parse_extraction(raw: str) -> Extraction:
 def without_unknown_sources(extraction: Extraction, source_ids: set[str]) -> tuple[Extraction, list[Entry]]:
     """Drop rows whose ``source_id`` was not in the documents just read.
 
-    Returns ``(kept, dropped)``. Production filters before it writes the
-    extraction file, so a made-up source id never becomes a ledger row.
+    Returns ``(kept, dropped)``. Filtering happens before the extraction file
+    is written, so a made-up source id never becomes a ledger row.
     """
     kept: list[Entry] = []
     dropped: list[Entry] = []

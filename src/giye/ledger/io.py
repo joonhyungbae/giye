@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """CSV reads and writes, the ledger lock, and a backup before every write.
 
-The production writer is ``write_csv(path, fields, rows)``. That order is easy
-to swap. This writer is keyword-only. ``Ledger.write`` is the path that copies
-the current file to ``<work>/backups/<file>-<YYYYMMDD>-before-<task>.csv``
-before replacing it. A missing file has nothing to copy.
+``write_csv`` is keyword-only so ``path``, ``fields``, and ``rows`` cannot be
+swapped. ``Ledger.write`` copies the current file to
+``<work>/backups/<file>-<YYYYMMDD>-before-<task>.csv`` before replacing it
+(docs/RULES.md, ledger backups). A missing file has nothing to copy.
 """
 
 from __future__ import annotations
@@ -65,9 +65,8 @@ def hold_ledger_lock(ledger_dir: Path) -> None:
 def _lineterminator(path: Path) -> str:
     """The line ending already in ``path``, or ``\\n`` when the file is new.
 
-    Production ledger files use CRLF. Rewriting them as LF makes every row a
-    diff. A file that contains a CRLF pair keeps CRLF. Anything else, including
-    a file that does not exist yet, keeps the package default of LF.
+    A file that already contains a CRLF pair keeps CRLF. Rewriting it as LF
+    would make every row a diff. Anything else, including a new file, uses LF.
     """
     if not path.is_file() or path.stat().st_size == 0:
         return "\n"
@@ -96,10 +95,9 @@ def read_csv(path: Path) -> list[dict[str, str]]:
 def write_csv(*, path: Path, fields: Sequence[str], rows: Iterable[Mapping[str, Any]]) -> None:
     """Write ``rows`` with exactly ``fields`` as the header.
 
-    Keyword-only: production's positional ``(path, fields, rows)`` was easy to
-    call backwards. Unknown keys are dropped. ``None`` is written as an empty
-    cell. An existing file keeps its line ending (the production ledger is
-    CRLF). A new file uses ``\\n``.
+    Keyword-only so the path, the column list, and the rows cannot be passed
+    in the wrong order. Unknown keys are dropped. ``None`` is written as an
+    empty cell. An existing file keeps its line ending. A new file uses ``\\n``.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     columns = list(fields)
@@ -117,9 +115,9 @@ def backup_before_write(path: Path, backup_dir: Path, task: str) -> Path | None:
     The name is ``<stem>-<YYYYMMDD>-before-<task>.csv`` under ``backup_dir``
     (the archive's ``data/work/backups``). The date is UTC. A second write on
     the same day with the same task gets ``-2``, ``-3``, … so each write keeps
-    the bytes it is about to replace. Production's one-time id migration skipped
-    the copy when that name already existed; a ledger that is written more than
-    once a day still needs every previous version.
+    the bytes it is about to replace. A second write the same day must not
+    overwrite the earlier copy: each write needs the bytes it is about to
+    replace (docs/RULES.md, ledger backups).
     """
     if not path.is_file():
         return None

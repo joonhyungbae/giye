@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Name keys for matching Korean (Hangul) and Latin-script spellings of the same person.
 
-Part of the identity-resolution stage (rule X1 in docs/RULES.md). Ported from the Giye archive.
+Part of the identity-resolution stage (rule X1 in docs/RULES.md).
 
 Also: normalise free-text Latin names from survey answers into a display name plus aliases.
 
@@ -24,6 +24,7 @@ _MIDDLE = re.compile(r"^\s*middle\s*name\s*[:：]\s*(.+?)\s*$", re.IGNORECASE)
 
 
 def _space(s: str) -> str:
+    """Collapse whitespace and strip, so spacing is not part of a Latin name."""
     return re.sub(r"\s+", " ", s or "").strip()
 
 
@@ -36,6 +37,7 @@ def normalize_latin_name(raw: str) -> tuple[str, list[str]]:
     middle: str | None = None
 
     def lift(m: re.Match[str]) -> str:
+        """Pull a parenthetical alias or middle name out of the display name."""
         nonlocal middle
         inner = _space(m.group(1))
         mm = _MIDDLE.match(inner)
@@ -209,6 +211,7 @@ SURNAME: dict[str, frozenset[str]] = {
 
 
 def syllable_rr(ch: str) -> str:
+    """Revised Romanization of one Hangul syllable. X1 spelling variants start from this form."""
     code = ord(ch) - 0xAC00
     cho, jung, jong = code // 588, (code % 588) // 28, code % 28
     return CHO[cho] + JUNG[jung] + JONG[jong]
@@ -245,10 +248,12 @@ def _surnames(name: str) -> frozenset[str]:
 
 
 def _onset(ch: str) -> str:
+    """Revised Romanization of the initial consonant, the part an onset swap replaces."""
     return CHO[(ord(ch) - 0xAC00) // 588]
 
 
 def _flat(token: str) -> str:
+    """Drop hyphens and spaces so two spellings of one syllable compare equal."""
     return token.replace("-", "").replace(" ", "")
 
 
@@ -293,6 +298,7 @@ def korean_keys_v2(name: str) -> tuple[set[tuple[str, str]], int]:
 
 
 def _form_key(surname: str, given: str) -> str:
+    """One X1 key: surname, separator, given name."""
     return f"{surname}{_KEY_SEP}{given}"
 
 

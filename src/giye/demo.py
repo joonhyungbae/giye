@@ -24,7 +24,7 @@ import uuid
 from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
+from datetime import datetime, timezone, tzinfo
 from pathlib import Path
 
 from giye.collect.base import run_configured
@@ -61,6 +61,8 @@ _CLOCK_MODULES = (
 
 @dataclass
 class DemoResult:
+    """Counts and paths from one offline demo run, plus the text ``summary`` prints."""
+
     output: Path
     site: Path
     people: int
@@ -168,6 +170,7 @@ def _summary(result: DemoResult) -> str:
     ties = result.copresence["ties"]
 
     def per_layer(kind: str) -> str:
+        """Comma-separated ``name count`` pairs for one co-presence kind."""
         return ", ".join(f"{name} {ties[name][kind]}" for name, _rules in LAYERS)
 
     if result.fixed_run_date:
@@ -228,7 +231,8 @@ def _deterministic_ids():
     real = uuid.uuid4
     counter = {"n": 0}
 
-    def seq():
+    def seq() -> uuid.UUID:
+        """The next deterministic UUID. The counter is in the first and last groups."""
         counter["n"] += 1
         n = counter["n"]
         return uuid.UUID(f"{n:08x}-4000-8000-8000-{n:012x}")
@@ -250,8 +254,11 @@ def _frozen_clock(moment: datetime | None):
         moment = moment.replace(tzinfo=timezone.utc)
 
     class Frozen(datetime):
+        """``datetime`` whose ``now`` is the moment this demo run is pinned to."""
+
         @classmethod
-        def now(cls, tz=None):
+        def now(cls, tz: tzinfo | None = None) -> datetime:
+            """That moment in ``tz``, or a naive UTC wall time when ``tz`` is omitted."""
             if tz is None:
                 return moment.replace(tzinfo=None)
             return moment.astimezone(tz)

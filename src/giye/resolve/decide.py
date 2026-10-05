@@ -122,6 +122,7 @@ def unhide_person(ledger: Ledger, gy_id: str) -> None:
 
 
 def _decide_merge(ledger: Ledger, item: dict[str, str], *, evidence: str, note: str) -> None:
+    """Merge the pair a queue item names, then record ``decided=same`` on that item."""
     if item.get("reason") != "possible_same_person":
         raise GiyeError(f"{item.get('queue_id')} is {item.get('reason')}, not possible_same_person")
     if not evidence.strip():
@@ -156,6 +157,7 @@ def _stamp_evidence(ledger: Ledger, item: dict[str, str]) -> None:
 
 
 def _mark(item: dict[str, str], *, decision: str, note: str, status: str) -> None:
+    """Write ``decided=`` and a note onto the item, and set its status. A second decision is refused."""
     detail = item.get("detail") or ""
     if decision and explicit_decision(detail) not in ("", decision):
         raise GiyeError(f"{item.get('queue_id')} is already decided={explicit_decision(detail)}")
@@ -168,6 +170,7 @@ def _mark(item: dict[str, str], *, decision: str, note: str, status: str) -> Non
 
 
 def _other_ids(item: dict[str, str]) -> list[str]:
+    """Ledger ids in the detail other than the item's own id."""
     from giye.resolve.candidates import review_id_set
 
     own = item.get("ledger_id") or ""
@@ -175,6 +178,7 @@ def _other_ids(item: dict[str, str]) -> list[str]:
 
 
 def _person(artists: list[dict[str, str]], token: str, *, gy_only: bool = False) -> dict[str, str]:
+    """The artist row for a ``gy_id`` or, unless ``gy_only``, a ledger id."""
     text = (token or "").strip()
     if not text:
         raise GiyeError("missing person id")
