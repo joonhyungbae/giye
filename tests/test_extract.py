@@ -1080,3 +1080,20 @@ def test_cli_provider_override_recomputes_an_omitted_chunk_chars(tmp_path: Path,
     for path in (omitted, explicit):
         assert main(["extract", "--config", str(path), "--provider", "openai_compatible"]) == 0
     assert [c.extract_chunk_chars for c in seen] == [8000, 0]
+
+
+def test_local_provider_sends_reasoning_effort_only_when_set(tmp_path: Path):
+    content = json.dumps({"activities": []})
+    with _chat_server("ok", content) as (base, server):
+        OpenAICompatibleProvider("example-local", base, timeout=5, api_key="").complete("prompt", "document")
+        OpenAICompatibleProvider("example-local", base, timeout=5, api_key="", reasoning_effort="none").complete(
+            "prompt", "document"
+        )
+    assert "reasoning_effort" not in server.bodies[0]
+    assert server.bodies[1]["reasoning_effort"] == "none"
+    path = tmp_path / "giye.toml"
+    path.write_text('[archive]\nname = "Synthetic"\n[extract]\nreasoning_effort = "none"\n', encoding="utf-8")
+    assert load(path).extract_reasoning_effort == "none"
+    path.write_text('[archive]\nname = "Synthetic"\n[extract]\nreasoning_effort = "off"\n', encoding="utf-8")
+    with pytest.raises(ValueError, match="reasoning_effort must be one of"):
+        load(path)

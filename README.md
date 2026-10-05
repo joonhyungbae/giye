@@ -94,7 +94,7 @@ not to the process. See `examples/demo/giye.toml`.
 - `[archive]` — name, `id_prefix` (default `GY`), territory (frame rule F3), languages
 - `[paths]` — `data` (ledger, processed, site), `frames`, and `field` (the field file: event patterns, team words, tag lists, rim aliases)
 - `[collect]` — contact user agent, delay, timeouts, collector modules, offline fixtures
-- `[extract]` — `provider` (`anthropic` or `openai_compatible`), `model`, `base_url`, `api_key_env`, `chunk_chars`, replay cache, CV locations
+- `[extract]` — `provider` (`anthropic` or `openai_compatible`), `model`, `base_url`, `api_key_env`, `chunk_chars`, `reasoning_effort`, replay cache, CV locations
 - `[resolve]` — local CV directory, extra event patterns for rule E2 (they replace a field-file key of the same code)
 - `[normalize]` — `language_module` (default `giye.normalize.lang.ko_en:KoEn`), glossary, gazetteer, GeoNames tree, which of V7–V9 to apply
 - `[publish]` — `site_url`, `dataset_version` (default `0.2`), `dataset_title`, `citation_author`
@@ -121,7 +121,7 @@ giye extract --config giye.toml --provider openai_compatible \
 to that server, or to Anthropic when the provider is `anthropic`. The flags override the file.
 The replay cache key is the CV hash, the prompt hash, and that model string as given.
 
-`[extract] chunk_chars` splits a CV into pieces of at most that many characters before the call, because a long CV and its JSON reply do not fit a local context and fewer rows survive as the file grows. It defaults to 0 (off) for `anthropic` and 8000 for `openai_compatible`; a value in the file wins, and changing it extracts again.
+`[extract] chunk_chars` splits a CV into pieces of at most that many characters before the call, because a long CV and its JSON reply do not fit a local context and fewer rows survive as the file grows. It defaults to 0 (off) for `anthropic` and 8000 for `openai_compatible`; a value in the file wins, and changing it extracts again. `[extract] reasoning_effort` (`none`, `low`, `medium`, `high`) is sent to an OpenAI-compatible server only when set; `none` stops a thinking model (Qwen3.5, Gemma 4) from writing its reasoning before the JSON, which otherwise multiplies the time per call.
 
 ## Extending to another field
 

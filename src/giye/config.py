@@ -62,6 +62,7 @@ Example (see examples/demo/giye.toml)::
     # base_url = "http://localhost:11434/v1"
     # api_key_env = "GIYE_LLM_API_KEY"
     # chunk_chars = 8000
+    # reasoning_effort = "none"
     model = "claude-opus-5"
 
     # Site snapshot. site_url is the public origin cited on each page.
@@ -155,6 +156,9 @@ class Config:
     extract_base_url: str = "http://localhost:11434/v1"
     extract_model: str = "claude-opus-5"
     extract_temperature: float | None = None
+    # Sent as reasoning_effort to an OpenAI-compatible server when set. "none"
+    # turns off thinking on models that reason by default (qwen3.5, gemma4).
+    extract_reasoning_effort: str | None = None
     # 0 sends each CV whole. ``load`` uses 8000 when the provider is
     # openai_compatible and the file omits the key. An explicit value wins.
     extract_chunk_chars: int = 0
@@ -283,6 +287,7 @@ def load(path: str | Path) -> Config:
         extract_base_url=_extract_base_url(extract.get("base_url", "http://localhost:11434/v1")),
         extract_model=_extract_model(extract.get("model", "claude-opus-5")),
         extract_temperature=_extract_temperature(extract),
+        extract_reasoning_effort=_extract_reasoning_effort(extract),
         extract_chunk_chars=_extract_chunk_chars(extract, extract_provider),
         extract_chunk_chars_explicit="chunk_chars" in extract,
         extract_api_key_env=_extract_api_key_env(extract.get("api_key_env", "GIYE_LLM_API_KEY")),
@@ -385,6 +390,24 @@ def _extract_chunk_chars(extract: dict, provider: str) -> int:
         raise TypeError("[extract] chunk_chars must be an integer")
     if value < 0:
         raise ValueError("[extract] chunk_chars must be >= 0")
+    return value
+
+
+_REASONING_EFFORTS = ("none", "low", "medium", "high")
+
+
+def _extract_reasoning_effort(extract: dict) -> str | None:
+    """None when absent: the request carries no reasoning_effort, as before.
+
+    A local thinking model writes its reasoning before the JSON. On one
+    24 GB GPU that took about 70 s for a one-line request that answered in
+    about 1 s with "none", so a long CV split into pieces is far slower.
+    """
+    value = extract.get("reasoning_effort")
+    if value is None:
+        return None
+    if value not in _REASONING_EFFORTS:
+        raise ValueError(f"[extract] reasoning_effort must be one of {', '.join(_REASONING_EFFORTS)}")
     return value
 
 

@@ -180,6 +180,7 @@ def _extract_pending(ledger: Ledger, config: Config, result: ExtractResult, *, r
                     provider=config.extract_provider,
                     base_url=config.extract_base_url,
                     api_key_env=config.extract_api_key_env,
+                    reasoning_effort=config.extract_reasoning_effort,
                 )
             except ProviderError:
                 result.invalid.append(ledger_id)
@@ -310,6 +311,7 @@ def _complete(
     provider: str,
     base_url: str,
     api_key_env: str,
+    reasoning_effort: str | None = None,
 ) -> str | CacheMiss:
     replay = ReplayProvider(cache_dir, content_sha256=content_sha256, prompt_sha256=prompt_sha256, model=model)
     try:
@@ -321,7 +323,9 @@ def _complete(
     response_mode: str | None = None
     try:
         if provider == "openai_compatible":
-            live = OpenAICompatibleProvider(model, base_url, temperature, api_key_env=api_key_env)
+            live = OpenAICompatibleProvider(
+                model, base_url, temperature, api_key_env=api_key_env, reasoning_effort=reasoning_effort
+            )
             text = live.complete(prompt, document)
             response_mode = live.response_mode
         elif provider == "anthropic":

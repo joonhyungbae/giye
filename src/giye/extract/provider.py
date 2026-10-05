@@ -196,6 +196,7 @@ class OpenAICompatibleProvider:
         api_key: str | None = None,
         timeout: float = 600,
         api_key_env: str = "GIYE_LLM_API_KEY",
+        reasoning_effort: str | None = None,
     ) -> None:
         self.model = model
         self.base_url = base_url.rstrip("/")
@@ -203,6 +204,7 @@ class OpenAICompatibleProvider:
         self.api_key = api_key
         self.timeout = timeout
         self.api_key_env = api_key_env
+        self.reasoning_effort = reasoning_effort
         self.response_mode: str | None = None
 
     def complete(self, prompt: str, document: str) -> str:
@@ -230,6 +232,10 @@ class OpenAICompatibleProvider:
         payload: dict = {"model": self.model}
         if self.temperature is not None:
             payload["temperature"] = self.temperature
+        # Sent only when set, like temperature. "none" stops a thinking model
+        # from writing its reasoning before the JSON (Ollama maps it to think=false).
+        if self.reasoning_effort is not None:
+            payload["reasoning_effort"] = self.reasoning_effort
         headers = self._headers()
 
         def post(body: dict) -> requests.Response:
