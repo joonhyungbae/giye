@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Candidate pairs and the review queue.
 
-X1. A Hangul personal name and a Latin-only row are a candidate when
-``hangul_name_keys`` and ``latin_name_keys`` intersect. A candidate is merged
+X1. A Hangul personal name and a Latin-only row are a candidate when their
+name keys intersect (``LanguageModule.name_keys``; the Korean-English module
+wraps ``hangul_name_keys`` and ``latin_name_keys``). A candidate is merged
 only when E1–E4 also hold; the evidence is prefixed ``X1+``. With no evidence
 the pair is queued (``possible_same_person``), never merged on the spelling.
 
@@ -33,7 +34,6 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from giye.resolve.names import hangul_name_keys, latin_name_keys
 from giye.resolve.teams import person_like, team_person_mismatch
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -133,11 +133,18 @@ def same_script_pairs(artists: list[dict]) -> list[tuple[str, str, str]]:
 def x1_candidates(artists: list[dict], language: LanguageModule | None = None) -> list[tuple[str, str]]:
     """``(korean_ledger_id, english_only_ledger_id)`` pairs whose romanization keys meet (X1).
 
-    English-only: ``name_ko`` has no Hangul and ``latin_name_keys(name_en)`` is non-empty.
+    English-only: ``name_ko`` has no Hangul, ``name_en`` has Latin letters, and
+    ``language.name_keys(name_en)`` is non-empty. Keys come from ``language``
+    (the configured default when None).
     The ledger copies an English-only name into ``name_ko``, so that row is still
     English-only when ``name_ko`` has no Hangul. A Korean row that also has a Latin
     name is paired only when the two English keys do not meet.
     """
+    if language is None:
+        # Imported here: the language module imports giye.resolve.names, whose package imports this file.
+        from giye.normalize.language import default_language
+
+        language = default_language()
     index: dict[str, list[str]] = defaultdict(list)
     en_keys: dict[str, set[str]] = {}
     ko_rows = []
@@ -150,7 +157,12 @@ def x1_candidates(artists: list[dict], language: LanguageModule | None = None) -
         if _HANGUL.search(ko) and person_like(ko, language):
             ko_rows.append(row)
         elif not _HANGUL.search(ko):
-            keys = latin_name_keys(en)
+            # The English side is a name written in Latin letters. A name with
+            # none has no Latin keys; checking first keeps a Hangul-only
+            # name_en from taking Hangul keys through the language module.
+            if not _LATIN.search(en):
+                continue
+            keys = language.name_keys(en)
             if not keys:
                 continue
             en_keys[lid] = keys
@@ -161,10 +173,13 @@ def x1_candidates(artists: list[dict], language: LanguageModule | None = None) -
         ko = row["name_ko"]
         en = row.get("name_en") or ""
         latin = bool(_LATIN.search(en))
-        hkeys = hangul_name_keys(ko)
+        # Keys come from the language module (``name_keys``). For the Korean-English
+        # module a bare Hangul personal name gives its Hangul keys, and a name
+        # with Latin letters gives its Latin keys, as X1 compares them.
+        hkeys = language.name_keys(ko)
         if not hkeys:
             continue
-        own = latin_name_keys(en) if latin else set()
+        own = language.name_keys(en) if latin else set()
         hits: set[str] = set()
         for key in hkeys:
             hits.update(index.get(key, ()))

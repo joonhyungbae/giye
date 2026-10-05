@@ -44,7 +44,7 @@ Romanized matching keys of one personal name. Empty when the name yields none.
 
 `KoreanEnglish` calls `giye.resolve.names.hangul_name_keys`, then `giye.resolve.names.latin_name_keys` if that set is empty. Institution names do not use this; they use `romanise`. `Toy` returns `{name.casefold()}` or an empty set.
 
-No caller in `src/giye` calls `LanguageModule.name_keys`. Rule X1 calls `hangul_name_keys` and `latin_name_keys` directly (`giye.resolve.candidates`). A new module's `name_keys` is not on that path.
+Callers: rule X1 (`giye.resolve.candidates.x1_candidates`: the Korean side's `name_ko` and the English side's `name_en`, and a Korean row's own Latin name), the X1 check of a manual `X1+E*` merge (`giye.resolve.decide.verify_merge_evidence`), and `giye name-keys`. X1 still chooses its two sides by script: the Korean side has Hangul in `name_ko` and passes `personal_name`; the English side has no Hangul in `name_ko` and Latin letters in `name_en`. So a new module's keys are used on that path, but a pair is only formed between a Hangul row and a Latin row. Attachment (A1–A4) does not use `name_keys`; it has its own roster keys (`giye.resolve.attach.name_keys`).
 
 ### `glossary`
 
@@ -95,8 +95,8 @@ A third script has nowhere to go without a schema change.
 
 | Module | What is fixed |
 |---|---|
-| `giye.resolve.names` | Revised Romanization tables, surname spellings, and given-name spelling sets. `hangul_name_keys` / `latin_name_keys` are what X1 actually compares. `LanguageModule.name_keys` is not called. |
-| `giye.resolve.candidates` | `script_of` is Hangul or Latin. X1 treats a row as English-only when `name_ko` has no Hangul, then pairs it with `hangul_name_keys`. |
+| `giye.resolve.names` | Revised Romanization tables, surname spellings, and given-name spelling sets. `hangul_name_keys` / `latin_name_keys` are what the Korean–English `name_keys` returns, so what X1 compares under the default module. |
+| `giye.resolve.candidates` | `script_of` is Hangul or Latin. X1 treats a row as English-only when `name_ko` has no Hangul and `name_en` has Latin letters, and as Korean when `name_ko` has Hangul; the keys come from `language.name_keys`. |
 | `giye.resolve.attach` | Roster keys are `hk:` plus the Hangul syllables, or Latin tokens. Not `language.name_keys`. |
 | `giye.resolve.service` | `_names` keeps the Hangul syllables of a string, or the lower-cased string when there are none. |
 | `giye.resolve.teams` | Splits a credit into `name_ko` / `name_en` with `[가-힣]`. A single member of two to four Hangul syllables is taken as the person even when `personal_name` is false. The member note is the Korean string `팀 구성원:`. |

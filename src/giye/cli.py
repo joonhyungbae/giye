@@ -12,7 +12,6 @@ import sys
 
 from giye import __version__
 from giye.config import GiyeError
-from giye.resolve.names import hangul_name_keys, latin_name_keys
 
 STAGES = ["collect", "extract", "ledger", "resolve", "normalize", "explore", "publish"]
 
@@ -278,8 +277,12 @@ def _run(args: argparse.Namespace) -> int:
 
 
 def _name_keys(args: argparse.Namespace) -> int:
+    from giye.normalize.language import default_language
+
+    # The keys X1 compares, through the language module (Korean-English by default).
+    language = default_language()
     for name in args.names:
-        keys = hangul_name_keys(name) or latin_name_keys(name)
+        keys = language.name_keys(name)
         print(f"{name}\t{' '.join(sorted(keys)) or '-'}")
     return 0
 
