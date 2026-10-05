@@ -1607,12 +1607,7 @@
           "status": null,
           "last_fetched_at": null
         }
-      ],
-      "cadence": {
-        "weekly": "link check + site rebuild",
-        "monthly": "active frame collectors + site rebuild",
-        "quarterly": "out-of-frame / requests intake"
-      }
+      ]
     },
     "dataset_versions.json": [
       {

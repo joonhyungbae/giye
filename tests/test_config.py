@@ -63,3 +63,33 @@ def test_shipped_field_is_package_data():
     field = shipped_field()
     assert field.team_words
     assert field.edition_aliases
+
+
+def test_cadence_is_published_only_when_declared(tmp_path: Path) -> None:
+    import json
+
+    from giye.publish import publish
+
+    demo = load(DEMO)
+    assert demo.cadence == {}
+    path = tmp_path / "giye.toml"
+    path.write_text(
+        f"""
+[archive]
+name = "Cadence"
+id_prefix = "GY"
+[paths]
+data = "{(tmp_path / "data").as_posix()}"
+frames = "{(DEMO.parent / "frames.yml").as_posix()}"
+[publish]
+site_url = "https://example.org"
+[publish.cadence]
+weekly = "link check"
+""",
+        encoding="utf-8",
+    )
+    cfg = load(path)
+    assert cfg.cadence == {"weekly": "link check"}
+    publish(cfg)
+    coverage = json.loads((cfg.site / "coverage.json").read_text(encoding="utf-8"))
+    assert coverage["cadence"] == {"weekly": "link check"}

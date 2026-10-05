@@ -73,6 +73,10 @@ Example (see examples/demo/giye.toml)::
     dataset_version = "0.2"
     dataset_title = "Synthetic media-art field (demo)"
     citation_author = "Example Archive"
+    # Optional. Maintenance schedule stated in coverage.json (the site shows a
+    # cadence line only when it is set). Declare only what the archive runs.
+    # [publish.cadence]
+    # weekly = "link check, site rebuild"
     # cache = "cache"
     # [[extract.sources]]
     # name_ko = "김하늘"
@@ -179,6 +183,9 @@ class Config:
     dataset_title: str = ""
     # Production CiteDialog always writes this author string.
     citation_author: str = "기예 Giye"
+    # Maintenance schedule written to coverage.json, label → what runs. Empty
+    # means no cadence is published: the package itself schedules nothing.
+    cadence: dict[str, str] = field(default_factory=dict)
     extra: dict = field(default_factory=dict)
 
     @property
@@ -298,8 +305,17 @@ def load(path: str | Path) -> Config:
         dataset_version=_plain(publish.get("dataset_version", "0.2"), "0.2", "[publish] dataset_version"),
         dataset_title=_plain(publish.get("dataset_title", ""), "", "[publish] dataset_title"),
         citation_author=_plain(publish.get("citation_author", "기예 Giye"), "기예 Giye", "[publish] citation_author"),
+        cadence=_cadence(publish.get("cadence")),
         extra={k: v for k, v in raw.items() if k not in known},
     )
+
+
+def _cadence(value: object) -> dict[str, str]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict) or not all(isinstance(item, str) for item in value.values()):
+        raise TypeError("[publish.cadence] must be a table of label = string")
+    return {str(key): item for key, item in value.items()}
 
 
 def _site_url(value: object) -> str:

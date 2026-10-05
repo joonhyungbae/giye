@@ -201,12 +201,11 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
             }
             for row in frame_rows
         ],
-        "cadence": {
-            "weekly": "link check + site rebuild",
-            "monthly": "active frame collectors + site rebuild",
-            "quarterly": "out-of-frame / requests intake",
-        },
     }
+    # Only a schedule the archive declares is stated publicly. The package runs
+    # no link check on its own, so nothing is claimed by default.
+    if config.cadence:
+        coverage["cadence"] = dict(config.cadence)
     version = config.dataset_version or "0.2"
     versions = [
         {

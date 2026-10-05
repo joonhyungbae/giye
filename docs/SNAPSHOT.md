@@ -117,7 +117,8 @@ as written in `frames.yml`. `status`, `stage`, and `last_fetched_at` are copied 
 
 `generated_at`, `published_artists`, `ledger_artists`, `frame_count_active` (status
 `active`), `frame_count_total`, a `frames` array with the same coverage numbers, and
-the production `cadence` sentences (weekly link check, monthly collectors, quarterly intake).
+a `cadence` table only when `[publish.cadence]` declares one (label → what runs). Without it the
+key is absent and the site states no maintenance schedule.
 
 ### `dataset_versions.json`
 
