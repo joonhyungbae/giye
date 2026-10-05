@@ -138,6 +138,8 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
         if artist["ledger_id"] not in scope
         and (artist.get("cv_link_ok") == "yes" or artist["ledger_id"] in mem_by_ledger)
         and (artist.get("source_url") or "").startswith("http")
+        # A fact without its collection date is not published, like one without a source.
+        and (artist.get("collected_at") or "").strip()
         and artist.get("status") in ("", "PUBLISHED", "STAGED")
     ]
     publishable.sort(key=lambda row: row.get("name_ko") or row.get("name_en") or "")
@@ -160,7 +162,6 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
             cv_status=cv_status.get(artist["ledger_id"], "none"),
             same_name=same_name.get(artist["ledger_id"], []),
             stamp=stamp,
-            today=today,
             tags=config.field_config.resolved(),
         )
         for artist in publishable
@@ -171,10 +172,10 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
         for artist in artists_in
         if artist.get("gy_id") and artist["gy_id"] not in published_ids
     }
-    activities_out = _activities(acts_in, ledger_to_gy, flags, stamp, today)
+    activities_out = _activities(acts_in, ledger_to_gy, flags, stamp)
     links_out = _links(links_in, ledger_to_gy, stamp)
-    collaborations_out = _collaborations(ledger, ledger_to_gy, today)
-    background_out = _background(acts_in, ledger_to_gy, today, clock.year)
+    collaborations_out = _collaborations(ledger, ledger_to_gy)
+    background_out = _background(acts_in, ledger_to_gy, clock.year)
     frames_out = _frames(frame_rows, membership, edition_of, ledger_to_gy, scope)
     unpublished = sorted(set(mem_by_ledger) - set(ledger_to_gy) - scope)
     if unpublished:
@@ -476,7 +477,6 @@ def _artist_record(
     cv_status: str,
     same_name: list[str],
     stamp: str,
-    today: str,
     tags: Field | None = None,
 ) -> dict:
     editions = []
@@ -523,7 +523,7 @@ def _artist_record(
         "status": "PUBLISHED",
         "source_url": artist["source_url"],
         "source_type": artist.get("source_type") or "PUBLIC_RECORD",
-        "collected_at": (artist.get("collected_at") or today)[:10],
+        "collected_at": artist["collected_at"].strip()[:10],
         "external_ids": {"ledger_id": artist["ledger_id"]},
         "created_at": stamp,
         "updated_at": artist.get("updated_at") or stamp,
@@ -548,7 +548,7 @@ def _row_activity_id(row: dict) -> str:
     return activity_id_for(key, 0)
 
 
-def _activities(rows: list[dict], ledger_to_gy: dict[str, str], flags: dict[str, list[str]], stamp: str, today: str) -> list[dict]:
+def _activities(rows: list[dict], ledger_to_gy: dict[str, str], flags: dict[str, list[str]], stamp: str) -> list[dict]:
     out = []
     for row in rows:
         gy = ledger_to_gy.get(row.get("ledger_id") or "")
@@ -557,7 +557,9 @@ def _activities(rows: list[dict], ledger_to_gy: dict[str, str], flags: dict[str,
         title = (row.get("title") or "").strip()
         year = parse_year(row.get("year"))
         source_url = (row.get("source_url") or "").strip()
-        if not title or year is None or not source_url.startswith("http"):
+        collected_at = (row.get("collected_at") or "").strip()[:10]
+        # No source URL or no collection date: the row is not published.
+        if not title or year is None or not source_url.startswith("http") or not collected_at:
             continue
         activity_type = row.get("activity_type") or "other"
         if activity_type not in ALLOWED_TYPES:
@@ -572,7 +574,7 @@ def _activities(rows: list[dict], ledger_to_gy: dict[str, str], flags: dict[str,
             "role": row.get("role") or None,
             "source_url": source_url,
             "source_type": row.get("source_type") or "SELF_SUBMITTED",
-            "collected_at": (row.get("collected_at") or today)[:10],
+            "collected_at": collected_at,
             "created_at": stamp,
         }
         if row.get("activity_id") in flags:
@@ -614,7 +616,7 @@ def _links(rows: list[dict], ledger_to_gy: dict[str, str], stamp: str) -> list[d
     return out
 
 
-def _collaborations(ledger: Ledger, ledger_to_gy: dict[str, str], today: str) -> list[dict]:
+def _collaborations(ledger: Ledger, ledger_to_gy: dict[str, str]) -> list[dict]:
     people = {row["collaborator_id"]: row for row in ledger.read("collaborators")}
     out = []
     for row in ledger.read("collaborations"):
@@ -623,7 +625,8 @@ def _collaborations(ledger: Ledger, ledger_to_gy: dict[str, str], today: str) ->
         if not gy or not person or row.get("publishable") != "yes":
             continue
         source_url = (row.get("source_url") or person.get("source_url") or "").strip()
-        if not source_url.startswith("http"):
+        collected_at = (row.get("collected_at") or "").strip()[:10]
+        if not source_url.startswith("http") or not collected_at:
             continue
         out.append(
             {
@@ -639,14 +642,14 @@ def _collaborations(ledger: Ledger, ledger_to_gy: dict[str, str], today: str) ->
                 "year": parse_year(row.get("year")),
                 "topic": row.get("topic") or None,
                 "source_url": source_url,
-                "collected_at": (row.get("collected_at") or today)[:10],
+                "collected_at": collected_at,
             }
         )
     out.sort(key=lambda item: (-(item["year"] or 0), item["name_ko"] or item["name_en"] or ""))
     return out
 
 
-def _background(rows: list[dict], ledger_to_gy: dict[str, str], today: str, year_now: int) -> list[dict]:
+def _background(rows: list[dict], ledger_to_gy: dict[str, str], year_now: int) -> list[dict]:
     out = []
     seen: set[tuple] = set()
     for row in rows:
@@ -658,7 +661,8 @@ def _background(rows: list[dict], ledger_to_gy: dict[str, str], today: str, year
         title = (row.get("title") or "").strip()
         year = parse_year(row.get("year"))
         source_url = (row.get("source_url") or "").strip()
-        if not title or year is None or not source_url.startswith("http"):
+        collected_at = (row.get("collected_at") or "").strip()[:10]
+        if not title or year is None or not source_url.startswith("http") or not collected_at:
             continue
         if "upcoming" in (row.get("reviewer_note") or "") and year > year_now:
             continue
@@ -679,7 +683,7 @@ def _background(rows: list[dict], ledger_to_gy: dict[str, str], today: str, year
                 "role": row.get("role") or None,
                 "source_url": source_url,
                 "source_type": row.get("source_type") or "SELF_SUBMITTED",
-                "collected_at": (row.get("collected_at") or today)[:10],
+                "collected_at": collected_at,
             }
         )
     out.sort(key=lambda item: (item["artist_id"], BACKGROUND_SECTIONS.index(item["section"]), -item["year"], item["title"]))

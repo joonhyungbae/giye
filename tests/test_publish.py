@@ -361,6 +361,32 @@ def test_roster_member_without_a_source_is_refused(tmp_path: Path):
         _publish(tmp_path, artists, membership=membership)
 
 
+def test_rows_without_a_collection_date_are_not_published(tmp_path: Path):
+    # No date is filled in at publish time: an activity without collected_at is left out.
+    artists = [_artist("LED-haneul", "김하늘", gy_id="GY-000001", cv_link_ok="yes")]
+    activities = [
+        _activity("LED-haneul", activity_id="act-dated", title="Dated"),
+        _activity("LED-haneul", activity_id="act-undated", title="Undated", collected_at=""),
+    ]
+    site = _publish(tmp_path, artists, activities)
+    assert [row["title"] for row in site["activities.json"]] == ["Dated"]
+
+
+def test_roster_member_without_a_collection_date_is_refused(tmp_path: Path):
+    artists = [_artist("LED-haneul", "김하늘", gy_id="GY-000001", collected_at="")]
+    membership = [
+        empty_row(
+            MEMBERSHIP_FIELDS,
+            ledger_id="LED-haneul",
+            frame_code="EXAMPLE-RESIDENCY",
+            source_url="https://example.org/residency/alumni",
+            collected_at="2026-01-15",
+        )
+    ]
+    with pytest.raises(SystemExit, match="not published"):
+        _publish(tmp_path, artists, membership=membership)
+
+
 def test_missing_gy_id_is_issued_in_name_order_and_kept(tmp_path: Path):
     artists = [
         _artist("LED-park", "박서연"),

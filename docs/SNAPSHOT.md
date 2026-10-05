@@ -9,7 +9,8 @@ APA, Chicago, and BibTeX sentences in the browser (`CiteDialog`). They are store
 here so a static page can show them. Keys on the other files are unchanged.
 
 Timestamps (`created_at`, `generated_at`) are the UTC time of the build. `collected_at`
-is the calendar date on the ledger row.
+is the calendar date on the ledger row. An activity, background, or collaboration row
+without a `source_url` or a `collected_at` is left out of the snapshot.
 
 ## Who is published
 
@@ -18,6 +19,7 @@ A person is published when all of these hold:
 - not listed as `scope=out` in `scope.csv`
 - `cv_link_ok` is `yes`, or the person has a frame membership
 - `source_url` starts with `http` (a roster membership or the frame's own URL can fill an empty one)
+- `collected_at` is not empty (no date is filled in at publish time)
 - `status` is empty, `PUBLISHED`, or `STAGED`
 
 Everyone else who already has a `gy_id` is a stub in `artist_stubs.json`:
