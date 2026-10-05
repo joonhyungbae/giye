@@ -4,11 +4,14 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
+import re
 import zipfile
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from warcio.archiveiterator import ArchiveIterator
 
@@ -16,7 +19,7 @@ from giye import __version__
 from giye.collect.snapshot import HEADERS_NOT_KEPT
 from giye.config import load
 from giye.demo import run_demo
-from giye.export.rocrate import export_ro_crate
+from giye.export.rocrate import NO_DATA_LICENCE_REASON, SOFTWARE_LICENCE, export_ro_crate
 from giye.export.warc import export_warc
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -72,9 +75,21 @@ def test_demo_exports_warc_wacz_and_ro_crate(tmp_path: Path):
     graph = {entity["@id"]: entity for entity in crate["@graph"]}
     assert graph["ro-crate-metadata.json"]["conformsTo"]["@id"] == "https://w3id.org/ro/crate/1.1"
     assert graph["#giye"]["softwareVersion"] == __version__
+    assert graph["#giye"]["license"]["@id"] == SOFTWARE_LICENCE
+    root = graph["./"]
+    assert root["@type"] == "Dataset"
+    assert root["name"] == "Synthetic media-art field (demo)"
+    assert root["description"]
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", root["datePublished"])
+    # The demo config sets no data licence: the root licence is a statement that none is granted.
+    graph = {entity["@id"]: entity for entity in crate["@graph"]}
+    assert root["license"] == {"@id": "#no-data-licence"}
+    assert graph["#no-data-licence"]["description"] == NO_DATA_LICENCE_REASON
+    _assert_ids_inside_crate_or_absolute(meta_path.parent, crate)
+    _assert_rocrate_11(meta_path)
     config_entity = next(entity for entity in crate["@graph"] if entity.get("name") == "giye.toml")
     assert config_entity["sha256"] == hashlib.sha256(DEMO.read_bytes()).hexdigest()
-    assert (meta_path.parent / config_entity["@id"]).resolve() == DEMO.resolve()
+    assert _locate(meta_path.parent, config_entity["@id"]) == DEMO.resolve()
 
     works = [entity for entity in crate["@graph"] if entity.get("@type") == "CreativeWork" and entity.get("url")]
     rosters = {entity["url"]: entity for entity in works if entity.get("name") == "roster"}
@@ -102,4 +117,88 @@ def test_demo_exports_warc_wacz_and_ro_crate(tmp_path: Path):
     assert "V7" in actions["normalize"]["ruleId"] and "P1" in actions["normalize"]["ruleId"]
     assert actions["collect"]["result"]
     snapshot = actions["collect"]["result"][0]["@id"]
-    assert (meta_path.parent / snapshot).is_file()
+    assert _locate(meta_path.parent, snapshot).is_file()
+
+    licensed = tmp_path / "licensed.toml"
+    licensed.write_text('[publish]\ndata_license = "CC-BY-4.0"\n', encoding="utf-8")
+    licensed_meta = export_ro_crate(config, tmp_path / "crate-licensed", config_path=licensed)
+    licensed_crate = json.loads(licensed_meta.read_text(encoding="utf-8"))
+    licensed_graph = {entity["@id"]: entity for entity in licensed_crate["@graph"]}
+    assert licensed_graph["./"]["license"]["@id"] == "https://spdx.org/licenses/CC-BY-4.0.html"
+    assert licensed_graph["#giye"]["license"]["@id"] == SOFTWARE_LICENCE
+    assert NO_DATA_LICENCE_REASON not in licensed_graph["./"]["description"]
+    _assert_ids_inside_crate_or_absolute(licensed_meta.parent, licensed_crate)
+    _assert_rocrate_11(licensed_meta)
+
+
+def test_demo_summary_does_not_depend_on_the_system_date(tmp_path: Path, monkeypatch):
+    """A system clock in 2027 would publish one more activity. The demo must not."""
+    future = datetime(2027, 6, 1, tzinfo=timezone.utc)
+
+    class Future(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return future.replace(tzinfo=None)
+            return future.astimezone(tz)
+
+    demo = importlib.import_module("giye.demo")
+    for name in demo._CLOCK_MODULES:
+        module = importlib.import_module(name)
+        if hasattr(module, "datetime"):
+            monkeypatch.setattr(module, "datetime", Future)
+
+    result = run_demo(DEMO, tmp_path / "out")
+    header = result.summary.splitlines()[0]
+    assert header == "run date: 2026-01-15 (fixed; this summary does not follow the system date)"
+    assert "people: 20" in result.summary
+    assert "roster rows: 23" in result.summary
+    assert "activities: 38" in result.summary
+
+
+def _locate(crate: Path, entity_id: str) -> Path:
+    if entity_id.startswith("file:"):
+        return Path(unquote(urlparse(entity_id).path))
+    return (crate / entity_id).resolve()
+
+
+def _assert_ids_inside_crate_or_absolute(crate: Path, document: dict) -> None:
+    """Every hasPart and File id is inside the crate directory or an absolute URL."""
+    graph = {entity["@id"]: entity for entity in document["@graph"]}
+    root = graph["./"]
+    ids = [part["@id"] for part in root.get("hasPart") or []]
+    ids.extend(entity["@id"] for entity in document["@graph"] if entity.get("@type") == "File")
+    root_resolved = crate.resolve()
+    for entity_id in ids:
+        if ".." in Path(entity_id).parts:
+            raise AssertionError(entity_id)
+        if "://" in entity_id:
+            parsed = urlparse(entity_id)
+            assert parsed.scheme in {"file", "http", "https"}
+            assert parsed.netloc or parsed.scheme == "file"
+            if parsed.scheme == "file":
+                assert Path(unquote(parsed.path)).is_file()
+            continue
+        resolved = (crate / entity_id).resolve()
+        resolved.relative_to(root_resolved)
+        assert resolved.is_file()
+
+
+def _assert_rocrate_11(meta_path: Path) -> None:
+    """Run rocrate-validator when the package imports; otherwise the property checks above stand.
+
+    ``pip install rocrate-validator`` has no distribution. The package that provides
+    this API is ``roc-validator`` (import ``rocrate_validator``).
+    """
+    try:
+        from rocrate_validator import models, services
+    except ImportError:
+        return
+    settings = services.ValidationSettings(
+        rocrate_uri=str(meta_path.parent),
+        profile_identifier="ro-crate-1.1",
+        requirement_severity=models.Severity.REQUIRED,
+    )
+    result = services.validate(settings)
+    issues = [f"{issue.check.identifier}: {issue.message}" for issue in result.get_issues()]
+    assert not issues, "\n".join(issues)

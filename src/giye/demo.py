@@ -7,12 +7,13 @@ Reads stay on the offline fixtures. Ledger ids are a fixed sequence so two runs
 of the same fixtures publish the same snapshot aside from the clock.
 
 The synthetic CVs treat 2026 as the current year (an upcoming row in 2026 stays
-visible; 2027 stays hidden). The golden test freezes the clock at
-2026-01-15T00:00:00Z for that reason. ``giye demo`` without a frozen clock uses
-the real UTC time. The summary counts merges per rule, T1 blocks, open queue
-items, institution merges V7, V8 and V9, and the co-presence ties under each
-name-rule layer (``giye.explore.ties``). What those numbers refer to is listed
-in ``examples/demo/EXPECTED.md``.
+visible; 2027 stays hidden). ``giye demo`` therefore always runs at
+2026-01-15T00:00:00Z, the same instant the golden test uses, unless the caller
+passes ``now``. The summary's first line says that the run date is fixed.
+The summary counts merges per rule, T1 blocks, open queue items, institution
+merges V7, V8 and V9, and the co-presence ties under each name-rule layer
+(``giye.explore.ties``). What those numbers refer to is listed in
+``examples/demo/EXPECTED.md``.
 """
 
 from __future__ import annotations
@@ -39,7 +40,12 @@ from giye.normalize.venue_names import trimmed
 from giye.publish import publish, render
 from giye.resolve.service import resolve
 
-# Modules that stamp rows with datetime.now. Patched only when the caller freezes the clock.
+# The synthetic field treats 2026 as the current year. ``giye demo`` uses this
+# instant unless the caller passes ``now``, so a later system date still prints
+# the same counts. The golden test uses the same instant.
+DEMO_RUN_DATE = datetime(2026, 1, 15, tzinfo=timezone.utc)
+
+# Modules that stamp rows with datetime.now. Patched for the demo's run date.
 _CLOCK_MODULES = (
     "giye.collect.base",
     "giye.collect.snapshot",
@@ -67,6 +73,10 @@ class DemoResult:
     # giye.explore.ties.layer_report: entities and co-presence ties per name-rule layer.
     copresence: dict
     files: list[Path]
+    # UTC calendar date the run used. The summary header prints it.
+    run_date: str
+    # True when the caller omitted ``now`` and the built-in date was used.
+    fixed_run_date: bool
     summary: str
 
 
@@ -94,7 +104,11 @@ def run_demo(
     *,
     now: datetime | None = None,
 ) -> DemoResult:
-    """Run the offline demo. ``output`` is the data directory (ledger, processed, site)."""
+    """Run the offline demo. ``output`` is the data directory (ledger, processed, site).
+
+    ``now`` defaults to ``DEMO_RUN_DATE`` (2026-01-15). The CLI does not pass a
+    clock, so ``giye demo`` prints the same counts in any year.
+    """
     path = resolve_demo_config(config)
     out = Path(output) if output is not None else Path(tempfile.mkdtemp(prefix="giye-demo-"))
     out.mkdir(parents=True, exist_ok=True)
@@ -107,9 +121,12 @@ def run_demo(
     except (OSError, ValueError, TypeError) as exc:
         raise ConfigError(str(exc)) from exc
     cfg = replace(loaded, data=out.resolve())
-    if now is not None and now.tzinfo is None:
+    fixed_run_date = now is None
+    if now is None:
+        now = DEMO_RUN_DATE
+    if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
-    collected = now.astimezone(timezone.utc).date().isoformat() if now is not None else None
+    collected = now.astimezone(timezone.utc).date().isoformat()
     with _deterministic_ids(), _frozen_clock(now):
         roster = run_configured(cfg, collected_at=collected)
         extract(cfg, replay_only=True)
@@ -136,6 +153,8 @@ def run_demo(
         institution_merges=_institution_counts(norm.venue_merges, norm.processed, language_for(cfg)),
         copresence=copresence,
         files=files,
+        run_date=now.astimezone(timezone.utc).date().isoformat(),
+        fixed_run_date=fixed_run_date,
         summary="",
     )
     result.summary = _summary(result)
@@ -151,7 +170,12 @@ def _summary(result: DemoResult) -> str:
     def per_layer(kind: str) -> str:
         return ", ".join(f"{name} {ties[name][kind]}" for name, _rules in LAYERS)
 
+    if result.fixed_run_date:
+        header = f"run date: {result.run_date} (fixed; this summary does not follow the system date)"
+    else:
+        header = f"run date: {result.run_date}"
     lines = [
+        header,
         f"people: {result.people}",
         f"roster rows: {result.roster_rows}",
         f"activities: {result.activities}",

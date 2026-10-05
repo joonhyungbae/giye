@@ -1,12 +1,15 @@
 # What `giye demo` shows
 
 One offline run of the synthetic field. People are fictitious. Institution names are public
-places. Nothing is fetched from the network. The clock in the golden test is
-2026-01-15, so an upcoming row in 2026 stays on the page and a row in 2027 does not.
+places. Nothing is fetched from the network. The run date is fixed at
+2026-01-15, including when `giye demo` is started in a later year, so an upcoming
+row in 2026 stays on the page and a row in 2027 does not. The summary says so
+in its first line.
 
 The summary (paths omitted; they depend on `--output`) is:
 
 ```
+run date: 2026-01-15 (fixed; this summary does not follow the system date)
 people: 20
 roster rows: 23
 activities: 38

@@ -8,8 +8,15 @@ sha256 of the configuration file, each roster and CV URL as a ``CreativeWork``
 ``ruleId``. Extract, the ledger, and publish do not have F/E/P/V ids; their
 actions say so and carry an empty list.
 
-Paths in the crate are relative to the metadata file. Snapshot bytes stay where
-the run wrote them; the crate points at them.
+A file's ``@id`` is a path relative to the crate directory when the bytes are
+inside that directory. Bytes that stay outside it (the default crate lives in
+``<data>/work/export/ro-crate/``) are named with an absolute ``file:`` URL.
+RO-Crate 1.1 forbids a relative id that climbs out of the crate with ``..``.
+
+The software entity's licence is AGPL-3.0-only. The root dataset's ``license``
+is the data licence of the run when ``[publish]`` or ``[archive]`` sets
+``data_license`` (or ``data_licence``). Otherwise it points to a statement that
+no data licence is granted: the software licence does not cover the data.
 """
 
 from __future__ import annotations
@@ -17,7 +24,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
-import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -57,6 +64,21 @@ STAGE_RULES: dict[str, tuple[str, ...]] = {
     "publish": (),
 }
 
+# SPDX id for the software. The exported data are not under this licence.
+SOFTWARE_LICENCE = "https://spdx.org/licenses/AGPL-3.0-only.html"
+
+# Said in the root description when the run configures no data licence.
+# RO-Crate 1.1 requires ``license`` on the root dataset. This run omits it
+# anyway: labelling the data with AGPL-3.0-only would claim a licence the
+# archive did not set. The sentence is the reason.
+NO_DATA_LICENCE_REASON = (
+    "No data licence is configured for this run: no reuse licence is granted for these data. "
+    "The software is AGPL-3.0-only; that licence does not cover these data."
+)
+
+_LICENCE_SECTIONS = ("publish", "archive")
+_LICENCE_KEYS = ("data_license", "data_licence")
+
 _STAGE_NOTE = {
     "extract": "CV extraction has no production F/E/P/V id. The schema and the apply decisions are in docs/RULES.md.",
     "ledger": "The ledger invariants are not F/E/P/V ids. They are listed in docs/RULES.md.",
@@ -78,7 +100,13 @@ def export_ro_crate(config: Config, dest: Path | None = None, *, config_path: Pa
     document = {
         "@context": [
             "https://w3id.org/ro/crate/1.1/context",
-            {"ruleId": "https://giye.org/ns/ruleId"},
+            {
+                # Not terms in the RO-Crate 1.1 context. Compacted JSON-LD
+                # rejects a key the context does not define.
+                "ruleId": "https://giye.org/ns/ruleId",
+                "sha256": "https://giye.org/ns/sha256",
+                "wasGeneratedBy": "http://schema.org/wasGeneratedBy",
+            },
         ],
         "@graph": graph,
     }
@@ -102,7 +130,7 @@ def _graph(config: Config, crate: Path, toml: Path | None) -> list[dict]:
     def add_file(path: Path, *, encoding: str = "") -> str | None:
         if not path.is_file():
             return None
-        rel = _rel(crate, path)
+        rel = _file_id(crate, path)
         if rel in file_ids:
             return file_ids[rel]
         entity: dict = {
@@ -186,19 +214,46 @@ def _graph(config: Config, crate: Path, toml: Path | None) -> list[dict]:
         actions.append(action)
 
     parts = [{"@id": entity["@id"]} for entity in files]
+    data_licence = _data_licence(config, toml)
+    description = f"One Giye run, software giye/{__version__}."
+    licence_entities: list[dict] = [
+        {
+            "@id": SOFTWARE_LICENCE,
+            "@type": "CreativeWork",
+            "name": "AGPL-3.0-only",
+            "description": "GNU Affero General Public License v3.0 only. Covers the Giye software, not the exported data.",
+        }
+    ]
     root = {
         "@id": "./",
         "@type": "Dataset",
         "name": config.name,
-        "description": f"One Giye run, software giye/{__version__}.",
+        "description": description,
+        "datePublished": datetime.now(timezone.utc).date().isoformat(),
         "hasPart": parts,
         "wasGeneratedBy": [{"@id": action["@id"]} for action in actions],
     }
+    if data_licence:
+        ref, entity = _licence_ref(data_licence)
+        root["license"] = ref
+        if entity is not None and entity["@id"] != SOFTWARE_LICENCE:
+            licence_entities.append(entity)
+    else:
+        # RO-Crate 1.1 requires a license on the root. With no data licence the truthful
+        # value is a statement that none is granted, not the software's AGPL.
+        root["license"] = {"@id": "#no-data-licence"}
+        licence_entities.append({
+            "@id": "#no-data-licence",
+            "@type": "CreativeWork",
+            "name": "No data licence granted",
+            "description": NO_DATA_LICENCE_REASON,
+        })
     software = {
         "@id": "#giye",
         "@type": "SoftwareApplication",
         "name": "giye",
         "softwareVersion": __version__,
+        "license": {"@id": SOFTWARE_LICENCE},
     }
     descriptor = {
         "@id": "ro-crate-metadata.json",
@@ -206,7 +261,7 @@ def _graph(config: Config, crate: Path, toml: Path | None) -> list[dict]:
         "conformsTo": {"@id": "https://w3id.org/ro/crate/1.1"},
         "about": {"@id": "./"},
     }
-    return [descriptor, root, software, *work_entities, *files, *actions]
+    return [descriptor, root, software, *licence_entities, *work_entities, *files, *actions]
 
 
 def _inputs(config: Config) -> tuple[list[dict], list[Path]]:
@@ -347,5 +402,72 @@ def _read_csv(path: Path) -> list[dict[str, str]]:
         return [{key: value or "" for key, value in row.items()} for row in csv.DictReader(handle)]
 
 
-def _rel(crate: Path, path: Path) -> str:
-    return Path(os.path.relpath(path.resolve(), crate.resolve())).as_posix()
+def _data_licence(config: Config, toml: Path | None) -> str:
+    """Data licence string from the run's config, or "" when none is set.
+
+    ``[publish]`` wins over ``[archive]``. ``data_license`` and ``data_licence``
+    are the same key. The software licence is not read from here.
+    """
+    path = toml if toml is not None else _config_file(config, None)
+    if path is None:
+        return ""
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python 3.10
+        import tomli as tomllib  # type: ignore[no-redef]
+    try:
+        raw = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return ""
+    if not isinstance(raw, dict):
+        return ""
+    found = ""
+    for section in _LICENCE_SECTIONS:
+        block = raw.get(section)
+        if not isinstance(block, dict):
+            continue
+        for key in _LICENCE_KEYS:
+            value = block.get(key)
+            if isinstance(value, str) and value.strip():
+                found = value.strip()
+                break
+        if section == "publish" and found:
+            return found
+    return found
+
+
+def _licence_ref(value: str) -> tuple[dict, dict | None]:
+    """A licence property value, and a contextual entity when the value is a URI.
+
+    An SPDX id becomes the SPDX URL. A sentence stays a string: RO-Crate 1.1
+    allows ``license`` to be text.
+    """
+    if value.startswith(("http://", "https://")):
+        uri = value
+        name = value
+    elif " " not in value:
+        uri = f"https://spdx.org/licenses/{value}.html"
+        name = value
+    else:
+        return value, None
+    entity = {
+        "@id": uri,
+        "@type": "CreativeWork",
+        "name": name,
+        "description": f"Data licence configured for this run ({name}).",
+    }
+    return {"@id": uri}, entity
+
+
+def _file_id(crate: Path, path: Path) -> str:
+    """Relative path inside the crate, or an absolute ``file:`` URL.
+
+    ``Path.relative_to`` fails when ``path`` is outside ``crate``, which is
+    also when a relative id would have contained ``..``.
+    """
+    resolved = path.resolve()
+    try:
+        relative = resolved.relative_to(crate.resolve())
+    except ValueError:
+        return resolved.as_uri()
+    return relative.as_posix()

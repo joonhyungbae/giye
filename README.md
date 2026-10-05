@@ -39,7 +39,10 @@ temporary directory. Nothing is fetched from the network: fixture pages are read
 `robots.txt` is still checked. The command prints how many people, roster rows, and activities
 were published, how many merges each identity rule made, how many pairs T1 blocked, how many
 review-queue items are open, how many institution merges V7, V8 and V9 made, how many
-co-presence ties each name-rule layer gives, and the output paths. `examples/demo/EXPECTED.md` lists the cases and the summary lines.
+co-presence ties each name-rule layer gives, and the output paths. The first line is the run
+date, fixed at 2026-01-15 (the date the golden test uses). The synthetic CVs treat 2026 as
+the current year, so those counts do not change with the system date. `examples/demo/EXPECTED.md`
+lists the cases and the summary lines.
 
 ```bash
 giye demo --output /tmp/giye-demo
@@ -77,6 +80,12 @@ record with a reconstructed status line and `Content-Type`. Original response he
 not stored before manifest version 2; the file says so. `--wacz` also writes a WACZ package.
 `giye export ro-crate` writes RO-Crate 1.1 metadata for the run (software version, config
 hash, roster and CV inputs, snapshot files, and one action per stage with its rule ids).
+The root dataset has `name`, `description`, and `datePublished`. The software entity is
+licensed AGPL-3.0-only. The dataset's `license` is the run's data licence when
+`[publish] data_license` or `[archive] data_license` is set (`data_licence` is the same
+key; `[publish]` wins). Otherwise that property is omitted and the description says why.
+A file entity's `@id` is a path inside the crate directory, or an absolute `file:` URL
+when the bytes stay outside it.
 
 `giye collect` on the demo config writes under `examples/demo/data/`. `giye demo` does not: it
 uses a separate output directory so the fixtures stay clean.
