@@ -3,9 +3,12 @@
 Giye builds a **provenance-first census archive of a creative field**: everyone named on the
 field's programme rosters, every dated activity they publish, each record carrying its source,
 and a public website on which every person has a permanent, citable page. It was written for
-Korean media art and runs the live archive at [giye.org](https://giye.org). Nothing in the
-code is specific to Korea or to media art except configuration (rosters, glossaries, gazetteer) and the
-region-tag and medium lists the snapshot copies from the production builder (see SNAPSHOT.md).
+Korean media art and runs the live archive at [giye.org](https://giye.org). The language module
+(`giye.normalize.lang`) holds the glossaries and the gazetteer. Name, venue and team rules for
+Korean and English sit partly outside it: the collect name-column choice, explore rim labels, the
+extract upcoming marker, resolve teams, and publish citation defaults. Another script pair needs a
+language module plus changes in those places. Region-tag and medium lists in the snapshot are copied
+from the production builder (see SNAPSHOT.md).
 
 This repository holds **software only**. No person-level data is distributed. The demo uses a
 synthetic field (`examples/demo/`).
@@ -52,7 +55,7 @@ network, so the whole chain after collection is deterministic and can be re-run 
 
 ## Stage 1 — collection
 
-`giye.collect` is the only stage that uses the network. The demo does not: `collect.offline_roots` maps a URL prefix to a local directory, and those reads still go through that directory's `robots.txt`.
+Collection and CV extraction are the stages that use the network. The demo does not: `collect.offline_roots` maps a URL prefix to a local directory, and those reads still go through that directory's `robots.txt`.
 
 - `Fetcher` checks robots.txt before every request and before every redirect hop, and caches the outcome per origin for the process. The matcher is RFC 9309 §2.2.2 (longest match), not `urllib.robotparser`. HTTP 2xx is parsed. HTTP 4xx, including 404, is `unavailable_allowed` (the URL may be fetched). HTTP 5xx, a timeout, or a network error is `unreachable_disallowed` for this process only. A sixth redirect of robots.txt itself is treated as unavailable (allowed), which is the RFC's "may assume unavailable". A page redirect uses the session's `max_redirects` (30 when unset), not that five-hop limit. The configured User-Agent, which must include a contact URL or email, is sent on every request including robots.txt. Requests to one host are spaced by `collect.min_delay_s`. Page fetches use `collect.timeout_s`; robots.txt uses `collect.robots_timeout_s`. A certificate failure is retried once without verification. The page is marked `tls_unverified`; a robots.txt retry sets `robots_tls_unverified`. A parsed disallow raises `RobotsDisallowed`. An unreachable file raises `RobotsRefused`. The hop is not sent. The path `/robots.txt` is always allowed.
 - `SnapshotStore` writes each distinct body once. A later fetch of the same bytes is found by the full sha256 on an existing manifest line, not by a short prefix in the file name. The public path is still the hash itself (`<frame>/snapshots/sha256/<sha[:2]>/<sha><ext>`). Each line records `url`, `final_url`, `status`, `fetched_at` (UTC), `sha256`, `bytes`, `content_type`, `robots`, `collector`, `run_id`, and `tls_unverified`. `robots` is the verdict for the hop whose bytes were stored. `not_checked` is only for bytes the caller already held. Manifest version 1 does not keep the original response headers. Version 2 would be the first to store them.

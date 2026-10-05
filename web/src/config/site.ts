@@ -4,8 +4,9 @@
  *
  * Vite inlines `import.meta.env.VITE_*` when `bun run dev` starts and when
  * `bun run build` runs, on the server bundle and the client bundle together.
- * Unset variables use the giye.org deployment, so the reference site renders
- * the same sentences as before. Set the variables before dev or build; the
+ * Unset origin and contact use neutral placeholders on example.org. A
+ * deployment sets `VITE_GIYE_ORIGIN` and `VITE_GIYE_CONTACT_EMAIL` before
+ * `bun run dev` or `bun run build` (see `.env.production.example`). The
  * running `node .output/server/index.mjs` process does not re-read them.
  */
 
@@ -17,9 +18,9 @@ function vite(name: keyof ImportMetaEnv, fallback: string): string {
 
 export const site = {
   /** Public origin, no trailing slash. `VITE_GIYE_ORIGIN`. */
-  origin: vite("VITE_GIYE_ORIGIN", "https://giye.org").replace(/\/$/, ""),
+  origin: vite("VITE_GIYE_ORIGIN", "https://example.org").replace(/\/$/, ""),
   /** Contact address. `VITE_GIYE_CONTACT_EMAIL`. */
-  contactEmail: vite("VITE_GIYE_CONTACT_EMAIL", "jh.bae@kaist.ac.kr"),
+  contactEmail: vite("VITE_GIYE_CONTACT_EMAIL", "contact@example.org"),
   /**
    * Field name in Korean, the "미디어아트" in "한국 미디어아트 분야".
    * `VITE_GIYE_FIELD_KO`.

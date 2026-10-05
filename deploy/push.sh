@@ -42,7 +42,8 @@ smoke_test() {
 }
 
 if (( ! DATA_ONLY )); then
-  (cd "$WEB_DIR" && bun install --frozen-lockfile >/dev/null && bunx tsc --noEmit -p . && bun run build)
+  # The site origin and contact address are build-time values (deploy/site.env).
+  (set -a; source deploy/site.env; set +a; cd "$WEB_DIR" && bun install --frozen-lockfile >/dev/null && bunx tsc --noEmit -p . && bun run build)
   smoke_test
   rsync -az --delete "$OUT/" "$DEST/.output/"
 fi

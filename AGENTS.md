@@ -1,8 +1,9 @@
 # Giye rules (for every coding agent working here)
 
 Giye is a provenance-first census archive of the Korean media art field, published at **giye.org**, and the
-software that builds it. Design decisions are made by Claude; implementation is handed over as written specs
-(often to Cursor CLI). When a spec does not cover a design decision, stop and leave it as a question in your
+software that builds it. The author designs Giye and reviews every change. Coding agents (Claude Code
+and Cursor) write code and text from the author's specifications; nothing is merged without the author's review.
+When a spec does not cover a design decision, stop and leave it as a question in your
 report. Do not decide it yourself.
 
 ## Repository layout: one working copy, two git directories (since 2026-10-05)

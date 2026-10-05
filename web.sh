@@ -36,4 +36,6 @@ fi
 export GIYE_SITE_DIR="${GIYE_SITE_DIR:-$ROOT/data/site}"
 export GIYE_WORK_DIR="${GIYE_WORK_DIR:-$ROOT/data/work}"
 echo "Giye web: http://localhost:$PORT  (data: $GIYE_SITE_DIR)"
+# Build-time site values (origin, contact) of this deployment.
+[[ -f "$ROOT/deploy/site.env" ]] && { set -a; source "$ROOT/deploy/site.env"; set +a; }
 exec bun run dev --host "$HOST" --port "$PORT"

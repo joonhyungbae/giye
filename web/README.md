@@ -60,13 +60,14 @@ A guard value that is missing, blank, not an integer, or below 1 keeps the defau
 per-minute window stays 60 seconds.
 
 Inlined by Vite when `bun run dev` starts and when `bun run build` runs. Set them before that
-command. The running Node process does not re-read them. Unset, the sentences are the giye.org
-deployment.
+command. The running Node process does not re-read them. Unset, the origin and the contact
+address are neutral placeholders (`https://example.org`, `contact@example.org`). Copy
+`.env.production.example` and set the real values before a production build.
 
 | Variable | Default |
 |---|---|
-| `VITE_GIYE_ORIGIN` | `https://giye.org` |
-| `VITE_GIYE_CONTACT_EMAIL` | `jh.bae@kaist.ac.kr` |
+| `VITE_GIYE_ORIGIN` | `https://example.org` |
+| `VITE_GIYE_CONTACT_EMAIL` | `contact@example.org` |
 | `VITE_GIYE_FIELD_KO` | `미디어아트` |
 | `VITE_GIYE_FIELD_EN` | `Korean media art` |
 

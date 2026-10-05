@@ -1,4 +1,4 @@
-# Roadmap to the SoftwareX submission
+# Roadmap
 
 Source: the production archive's scripts (private repository). Each item is ported without data,
 translated to English, made path-independent (configuration instead of fixed paths), and tested.
@@ -20,4 +20,3 @@ translated to English, made path-independent (configuration instead of fixed pat
 | 12 | Web front-end reading the snapshot; admin/database optional | `src/` (TanStack Start) | `web/` | done for browsing (`web/`). The rim file is produced by `giye explore`. The embedding flight is not built. There is no admin UI |
 | 13 | Synthetic demo field and one-command reproduction (`giye demo`). The summary prints merges per rule, T1 blocks, and V7–V9 | – | `examples/demo/` | done |
 | 14 | Accuracy audit: extraction, same-person merges, institution merges (sampled, one coder) | – | `docs/EVALUATION.md` | planned |
-| 15 | Zenodo DOI, SoftwareX manuscript and code-metadata table | – | `paper/` | planned |

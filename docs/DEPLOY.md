@@ -56,11 +56,11 @@ deploy/push.sh         # type check, build, copy .output and data/site, restart,
 
 ## Schedule
 
-The home machine runs the weekly pipeline and publishes the snapshot (`crontab -e`):
+The home machine runs the weekly pipeline and publishes the snapshot (`crontab -e`). `$GIYE_HOME` is that checkout, and on the VPS it is the service account's home directory:
 
 ```
-10 6 * * *  cd /home/jhbae/giye && deploy/pull_requests.sh >> data/work/logs/pull_requests.log 2>&1
-0 4 * * 1   /home/jhbae/giye/deploy/scheduled.sh weekly
+10 6 * * *  cd $GIYE_HOME && deploy/pull_requests.sh >> data/work/logs/pull_requests.log 2>&1
+0 4 * * 1   $GIYE_HOME/deploy/scheduled.sh weekly
 ```
 
 `deploy/scheduled.sh` backs up the ledger, runs `scripts/pipeline.sh weekly` (link checks, evidence capture, self-reports, CV pulls) and pushes `data/site` when the run succeeds. After that it commits the ledger to the private repository (when `./gitp` exists) and copies the data that cannot be rebuilt to the VPS (`deploy/backup.sh`). A lock file keeps two runs from writing the ledger at once; a run that finds the lock taken is skipped and logged. Logs are in `data/work/logs/`.
@@ -72,7 +72,7 @@ New editions are not polled. The maintainer works in the field and collects a ne
 - SSH from a new address: rerun `SSH_FROM=<ip>/32 deploy/vultr.sh`, or use the Vultr web console.
 - The scrape guard refuses HeadlessChrome and HTTP libraries by design. Check the site with a normal browser. `deploy/push.sh` checks the origin over SSH with a browser-like user agent.
 - The VPS can be rebuilt from scratch with the four setup commands. It holds nothing that is not on the home machine, except self-reports not yet pulled.
-- Backup: `deploy/backup.sh` copies `data/ledger`, `data/raw` (original bytes of cited pages), `data/reference` and the audit, CV-extraction, CV-diff and quarantine folders of `data/work` to `/home/giye/backup/` on the VPS (mode 700, outside `/srv/giye`, never served). It never deletes on the VPS side. Derived folders are rebuilt by the pipeline and are not copied. Restore with `rsync -az giye@<host>:backup/data/ data/`. Rebuilding the VPS deletes this copy, so run `deploy/backup.sh` again afterwards.
+- Backup: `deploy/backup.sh` copies `data/ledger`, `data/raw` (original bytes of cited pages), `data/reference` and the audit, CV-extraction, CV-diff and quarantine folders of `data/work` to `$GIYE_HOME/backup/` on the VPS (mode 700, outside `/srv/giye`, never served). It never deletes on the VPS side. Derived folders are rebuilt by the pipeline and are not copied. Restore with `rsync -az giye@<host>:backup/data/ data/`. Rebuilding the VPS deletes this copy, so run `deploy/backup.sh` again afterwards.
 - Logs: `ssh giye@$(cat ~/.config/giye/host) journalctl -u giye-web -n 100` (the `giye` user may also run `sudo systemctl restart giye-web`).
 
 ## Contact
