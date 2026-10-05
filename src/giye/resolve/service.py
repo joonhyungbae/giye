@@ -48,6 +48,7 @@ from giye.resolve.cv import fold_merged_cvs, load_cv_activities, move_extract_fi
 from giye.resolve.evidence import (
     evidence_e1,
     evidence_e2_e4,
+    generic_titles,
     pattern_table,
     rule_of,
     url_key,
@@ -162,6 +163,8 @@ class _State:
         self.identities = identities
         self.links = self.ledger.read("links") if self.ledger.path("links").exists() else []
         self.sites = website_keys(self.links)
+        # E3: titles too many records use to identify one work, over the whole ledger.
+        self.generic = generic_titles(self.rows_of, self.cvs, self.ledger.config.generic_title_records)
 
     def transfer_cv(self, keep: str, drop: str) -> None:
         """Move the dropped person's CV file and keep both activity lists on the survivor."""
@@ -214,7 +217,14 @@ def _blocks_merge(
 def _evidence(state: _State, left: str, right: str) -> str | None:
     """E1, or the first of E2–E4. None when no evidence rule holds."""
     return evidence_e1(left, right, state.sites) or evidence_e2_e4(
-        left, right, state.frames, state.rows_of, state.cvs, state.patterns, team_prefix=state.team_prefix
+        left,
+        right,
+        state.frames,
+        state.rows_of,
+        state.cvs,
+        state.patterns,
+        team_prefix=state.team_prefix,
+        generic=state.generic,
     )
 
 

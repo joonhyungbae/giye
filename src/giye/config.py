@@ -37,6 +37,7 @@ Example (see examples/demo/giye.toml)::
 
     [resolve]
     cv_dir = "fixtures/cv"      # local HTML CVs, matched to people by name
+    # generic_title_records = 4 # E3: a title this many records use is not evidence; 0 = off
 
     # Optional. V7,V8,V9 is the default; "none" is the resolver from before those rules.
     # reference is a directory with geonames/ and countries/ (GeoNames is not shipped).
@@ -170,6 +171,9 @@ class Config:
     # Local HTML CVs, read by name. Extracted JSON at data/work/cv_extract/<id>.json
     # is preferred when that file exists (see giye.resolve.cv).
     cv_dir: Path | None = None
+    # E3: a work title base credited to or listed by this many distinct records is
+    # generic and not evidence. 0 turns the rule off. Default and its reason: giye.resolve.evidence.
+    generic_title_records: int = 4
     # Optional GeoNames tree (geonames/ + countries/). Unset uses the packaged gazetteer.
     normalize_reference: Path | None = None
     # Optional replacements for the packaged Korean–English glossary and city table.
@@ -345,6 +349,7 @@ def load(path: str | Path) -> Config:
         collector_modules=_collector_modules(collect),
         event_patterns=_event_patterns(resolve),
         cv_dir=cv_path,
+        generic_title_records=_generic_title_records(resolve.get("generic_title_records", 4)),
         normalize_reference=_optional_path(root, normalize.get("reference")),
         normalize_glossary=_optional_path(root, normalize.get("glossary")),
         normalize_gazetteer=_optional_path(root, normalize.get("gazetteer")),
@@ -414,6 +419,12 @@ def _optional_path(root: Path, value: object) -> Path | None:
     if not path.is_absolute():
         path = root / path
     return path.resolve()
+
+
+def _generic_title_records(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise TypeError("[resolve] generic_title_records must be a non-negative integer")
+    return value
 
 
 def _venue_name_rules(value: object) -> str:

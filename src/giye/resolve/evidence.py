@@ -17,6 +17,11 @@ E3. A work title in brackets (``〈…〉``, ``<…>``, ``《…》``, and the s
 appears on both roster rows, or on one roster row and the other's CV, in the
 same year give or take one year. The normalised title is at least 3 characters.
 The event name itself is E2's business, so an unbracketed title does not count.
+A title many records use does not identify one work: when its base (the
+normalised title without a trailing number, ``Untitled #3`` → ``untitled``) is
+credited to or listed by at least ``[resolve] generic_title_records`` distinct
+records across the ledger, or the base is shorter than 2 characters, it is not
+E3 evidence (:func:`generic_titles`).
 
 E4. Both roster rows credit the same team in the role, written with the field
 file's team prefix (default ``팀: <name>``). The normalised team name is
@@ -26,8 +31,8 @@ at least 2 characters.
 from __future__ import annotations
 
 import re
-from collections import defaultdict
-from collections.abc import Mapping
+from collections import Counter, defaultdict
+from collections.abc import Iterable, Mapping
 
 # E2. The CV year and the roster edition year may differ by at most this much.
 YEAR_WINDOW = 1
@@ -59,6 +64,19 @@ SHARED_HOSTS = (
 BRACKETED = re.compile(r"[<〈《‹「]([^>〉》›」]{2,})[>〉》›」]")
 _WORK_MIN = 3
 _TEAM_MIN = 2
+# E3. A title base shorter than this names no work (``〈2019〉``, ``〈A 3〉``).
+_WORK_BASE_MIN = 2
+# E3. Default of ``[resolve] generic_title_records``: a title base used by this many
+# distinct records or more is not E3 evidence. Chosen from the production ledger
+# (2026-10-06, docs/RULES.md E3). The pair E3 would join is itself two records.
+# Of the 145 bases rosters credit as works, every one used by 4 or more records is
+# an exhibition, programme or forum title that a whole group roster credits, or a
+# team work credited with the team prefix (E4 covers it). At exactly 3 the set is
+# mixed: common words ("flow", "summer") beside specific works credited to three
+# makers, one of them with no team credit, so E4 cannot stand in. A threshold of 3
+# would also refuse a duplicate pair whenever one unrelated record shares a
+# specific title, as in the demo (〈푸른 신호〉). Exactly 2 is always the pair.
+GENERIC_TITLE_RECORDS = 4
 
 
 def pattern_table(*layers: tuple[tuple[str, str], ...]) -> dict[str, str]:
@@ -174,8 +192,70 @@ def cv_mentions(cv_rows: list[dict], frame_code: str, years: list[int], patterns
     return None
 
 
-def roster_works(rows: list[dict]) -> set[tuple[str, int]]:
-    """Bracketed work titles credited on roster rows, with their year (E3)."""
+def title_base(key: str) -> str:
+    """A normalised title without its trailing number (E3).
+
+    ``norm_title`` has already dropped ``#``, brackets and spaces, so
+    ``Untitled #3``, ``Untitled 3`` and ``Untitled (2019)`` all end in digits
+    and share the base ``untitled``. A series is one title for counting use.
+    """
+    return re.sub(r"\d+$", "", key)
+
+
+def _row_titles(title: str, role: str = "") -> set[str]:
+    """Title bases one ledger or CV row names: its bracketed titles, else its whole title."""
+    found = BRACKETED.findall(f"{title} {role}")
+    if not found:
+        found = [title]
+    return {title_base(norm_title(item)) for item in found} - {""}
+
+
+def title_records(rows_of: Mapping[str, list[dict]], cvs: Mapping[str, list[dict]]) -> Counter[str]:
+    """Title base → number of distinct records that credit or list it (E3).
+
+    A record is a ledger id. Its titles are those of its activity rows (roster
+    and CV origin) and of its extracted CV lines. A row with a bracketed title
+    counts that title; a row without one counts its whole title, so a CV line
+    that is only ``Untitled`` counts too.
+    """
+    owners: dict[str, set[str]] = defaultdict(set)
+    for lid, rows in rows_of.items():
+        for row in rows:
+            for key in _row_titles(str(row.get("title") or ""), str(row.get("role") or "")):
+                owners[key].add(lid)
+    for lid, rows in cvs.items():
+        for row in rows:
+            for key in _row_titles(str(row.get("title") or "")):
+                owners[key].add(lid)
+    return Counter({key: len(ids) for key, ids in owners.items()})
+
+
+def generic_titles(
+    rows_of: Mapping[str, list[dict]], cvs: Mapping[str, list[dict]], threshold: int = GENERIC_TITLE_RECORDS
+) -> frozenset[str]:
+    """Title bases used by at least ``threshold`` distinct records. 0 turns the rule off."""
+    if threshold <= 0:
+        return frozenset()
+    return frozenset(key for key, count in title_records(rows_of, cvs).items() if count >= threshold)
+
+
+def is_work_title(key: str, generic: Iterable[str] = ()) -> bool:
+    """True when a normalised title can be E3 evidence.
+
+    It has ``_WORK_MIN`` characters, its base has ``_WORK_BASE_MIN``, and its
+    base is not in ``generic`` (:func:`generic_titles`). The resolver and the
+    manual-merge check both read works through :func:`roster_works`, so both
+    apply this.
+    """
+    base = title_base(key)
+    return len(key) >= _WORK_MIN and len(base) >= _WORK_BASE_MIN and base not in generic
+
+
+def roster_works(rows: list[dict], generic: frozenset[str] = frozenset()) -> set[tuple[str, int]]:
+    """Bracketed work titles credited on roster rows, with their year (E3).
+
+    A title in ``generic`` (or too short) is left out: see :func:`is_work_title`.
+    """
     found: set[tuple[str, int]] = set()
     for row in rows:
         if (row.get("origin") or "").startswith("cv:"):
@@ -186,7 +266,7 @@ def roster_works(rows: list[dict]) -> set[tuple[str, int]]:
         blob = f"{row.get('title', '')} {row.get('role', '')}"
         for title in BRACKETED.findall(blob):
             key = norm_title(title)
-            if len(key) >= _WORK_MIN:
+            if is_work_title(key, generic):
                 found.add((key, year))
     return found
 
@@ -231,11 +311,13 @@ def evidence_e2_e4(
     patterns: Mapping[str, str],
     *,
     team_prefix: str = "팀:",
+    generic: frozenset[str] = frozenset(),
 ) -> str | None:
     """First of E2, E3, E4 that holds, checked in that order, either direction.
 
     A hit stops the search, so the first rule that holds is the one recorded.
     E2 is tried before E3, and E4 runs only when neither of those fired.
+    ``generic`` is :func:`generic_titles` over the whole ledger: those titles are not E3 works.
     """
     evidence = None
     for this, other in ((left, right), (right, left)):
@@ -246,8 +328,8 @@ def evidence_e2_e4(
                 evidence = f"E2 {this}'s CV lists {frame_code}: {hit}"
                 break
         if not evidence:
-            works_this = roster_works(rows_of.get(this, []))
-            works_other = roster_works(rows_of.get(other, []))
+            works_this = roster_works(rows_of.get(this, []), generic)
+            works_other = roster_works(rows_of.get(other, []), generic)
             both = sorted(
                 title
                 for title, year in works_this

@@ -57,6 +57,7 @@ Re-collection never deletes an activity row and never blanks a field (`Ledger.ap
 | Key | Type | Default | Required | Read by | Example |
 |---|---|---|---|---|---|
 | `cv_dir` | path | unset | no | `giye.resolve.cv`. HTML under that directory fills people who have no `data/work/cv_extract/<ledger_id>.json`. An `<article data-name-ko data-name-en>` matches one ledger row. A `<li data-year data-venue>` is one activity. The match must be unique. The JSON file wins when both exist. | `"fixtures/cv"` |
+| `generic_title_records` | integer ≥ 0 | `4` | no | `giye.resolve.evidence.generic_titles`, through `giye.resolve.service` and the manual-merge check in `giye.resolve.decide`. A work title whose base (normalised, trailing number dropped) is credited to or listed by this many distinct records is not E3 evidence. `0` turns the check off. The default and its reason are in `docs/RULES.md` (E3). | `4` |
 
 ### `[resolve.event_patterns]`
 

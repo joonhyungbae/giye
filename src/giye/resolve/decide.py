@@ -213,7 +213,8 @@ def verify_merge_evidence(ledger: Ledger, keep: str, drop: str, evidence: str) -
       record, and that CV lists a roster edition of the other (``cv_mentions``
       with the edition years, ± one year).
     - ``E3``: the cited work title (normalised) is a bracketed work both rosters
-      credit, or one roster credits and the other's CV lists, in the year window.
+      credit, or one roster credits and the other's CV lists, in the year window,
+      and it is not a generic title (``evidence.generic_titles``).
     - ``E4``: the cited team name is a team both rosters credit with the team prefix.
     - ``X1+E*``: the two records' name keys (``LanguageModule.name_keys`` over
       ``name_ko`` and ``name_en``) intersect, and the E part holds as above.
@@ -326,7 +327,7 @@ def _verify_e2(state, keep: str, drop: str, rest: str) -> str:
 def _verify_e3(state, keep: str, drop: str, rest: str) -> str:
     from giye.resolve.evidence import YEAR_WINDOW, cv_lists_work, norm_title, roster_works
 
-    works = {lid: roster_works(state.rows_of.get(lid, [])) for lid in (keep, drop)}
+    works = {lid: roster_works(state.rows_of.get(lid, []), state.generic) for lid in (keep, drop)}
     holding: set[str] = {
         title
         for title, year in works[keep]
