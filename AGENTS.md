@@ -7,7 +7,7 @@ report. Do not decide it yourself.
 
 ## Repository layout: one working copy, two git directories (since 2026-10-05)
 - This working copy is the checkout of the **public** repository github.com/joonhyungbae/giye (`.git`): the Python
-  package `src/giye`, the website `web/` (giye.org is built from it), `tests/`, `docs/`, `examples/`, `fields/`, `deploy/`.
+  package `src/giye`, the website `web/` (giye.org is built from it), `tests/`, `docs/`, `examples/`, `deploy/` (the default field file ships in `src/giye/fields/`).
 - Private paths stay in the same tree and are versioned by the **private** repository (`.git-private`, remote
   giye-archive, never made public): `data/`, `research/`, `ref/`, `scripts/` (production pipeline and collectors not yet
   ported to the package), `tools/annotate/`, `tools/regress*`, `anno.sh`, `archive/`. They are listed in `.gitignore`.
