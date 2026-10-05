@@ -875,3 +875,32 @@ def test_t1_member_notes_and_members_lists_name_the_team():
     assert member_of_team(by_note, team) and member_of_team(by_id, team)
     assert member_of_team(listed, team_with_list)
     assert not member_of_team(stranger, team) and not member_of_team(team, by_note)
+
+
+def test_expand_teams_with_frames_touches_only_those_editions(tmp_path: Path):
+    ledger = _ledger(tmp_path)
+    _seed(
+        ledger,
+        [
+            _artist("LED-a", "GY-000001", "노을 스튜디오", note="members=김바다"),
+            _artist("LED-b", "GY-000002", "새벽 랩", note="members=박바다"),
+            _artist("LED-p", "GY-000003", "박바다", note="curated"),
+        ],
+        [_act("LED-a", "EXAMPLE-RESIDENCY-2019", 2019), _act("LED-b", "EXAMPLE-WORKSHOP-2020", 2020)],
+        [_mem("LED-a", "EXAMPLE-RESIDENCY-2019"), _mem("LED-b", "EXAMPLE-WORKSHOP-2020"),
+         _mem("LED-p", "EXAMPLE-WORKSHOP-2020")],
+    )
+    other = {row["ledger_id"]: row for row in ledger.read("artists") if row["ledger_id"] != "LED-a"}
+    created = expand_teams(ledger, frames={"EXAMPLE-RESIDENCY-2019"})
+    assert len(created) == 1
+    after = {row["ledger_id"]: row for row in ledger.read("artists")}
+    assert after[created[0]]["name_ko"] == "김바다"
+    assert {lid: after[lid] for lid in other} == other
+    assert {row["ledger_id"] for row in ledger.read("activities")} == {"LED-a", "LED-b", created[0]}
+    # Without a filter the other frame's team is expanded too (giye resolve): the existing
+    # member gets the team credit row but no note; only a record created here carries one.
+    expand_teams(ledger)
+    after = {row["ledger_id"]: row for row in ledger.read("artists")}
+    assert after["LED-p"]["reviewer_note"] == "curated"
+    assert any(row["ledger_id"] == "LED-p" and row["role"] == "팀: 새벽 랩" for row in ledger.read("activities"))
+    assert after[created[0]]["reviewer_note"] == "팀 구성원: 노을 스튜디오 (LED-a)"

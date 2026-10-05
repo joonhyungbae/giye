@@ -26,7 +26,13 @@ Content-Type from these fields and the stored body (see ``giye.export``).
 ``<root>/*/snapshots/manifest.jsonl``. A line matches when its ``url`` or
 ``final_url`` equals the requested URL and its request method and body hash
 equal the request's. A line without ``method`` is a GET with no body, so two
-POSTs to one URL with different bodies are two captures. Withdrawn lines are
+POSTs to one URL with different bodies are two captures. A legacy line whose
+``url`` is ``"POST <url>"`` and that has no ``method`` (written before the
+store recorded methods) is a POST to ``<url>`` with an unrecorded body: it
+answers a POST to that URL whatever the body hash, but only when no line
+records that exact method and body, and only when every legacy capture of
+that URL holds the same bytes (otherwise the body that produced each one is
+unknown and nothing is served). Withdrawn lines are
 not bodies (``servable_rows``). The newest match has the greatest ``fetched_at``; an equal
 timestamp keeps the later line. When ``prefer_frame`` also has a match, only
 that frame is considered, so a collector re-reads its own store first.
@@ -209,6 +215,15 @@ class SnapshotStore:
             for index, (frame, row) in enumerate(self._servable_lines())
             if _line_matches(row, url) and _request_matches(row, method, body_sha256)
         ]
+        # A legacy POST line does not record its body, so a line that names the
+        # body exactly wins over it. Legacy captures of one URL with different
+        # bytes were answers to different bodies; which one this request gets
+        # cannot be told, so none is served and the caller sees "not kept".
+        exact = [item for item in matched if not _legacy_post_url(item[2])]
+        if exact:
+            matched = exact
+        elif len({str(item[2].get("sha256") or "") for item in matched}) > 1:
+            return None
         if not matched:
             return None
         if prefer_frame:
@@ -328,10 +343,24 @@ def _read_manifest(path: Path) -> list[dict]:
     return rows
 
 
+_LEGACY_POST = "POST "
+
+
+def _legacy_post_url(row: dict) -> str:
+    """``<url>`` of a legacy ``"POST <url>"`` line without ``method``, else empty."""
+    url = row.get("url") if isinstance(row.get("url"), str) else ""
+    if "method" in row or not url.startswith(_LEGACY_POST):
+        return ""
+    return url[len(_LEGACY_POST):].strip()
+
+
 def _line_matches(row: dict, url: str) -> bool:
     """True when the line's requested URL or final URL is exactly ``url``."""
     if not url:
         return False
+    legacy = _legacy_post_url(row)
+    if legacy:
+        return url == legacy or url == row.get("final_url")
     return url == row.get("url") or url == row.get("final_url")
 
 
@@ -339,8 +368,12 @@ def _request_matches(row: dict, method: str, body_sha256: str) -> bool:
     """True when the line was made by the same request method and body.
 
     Lines written before POST support have no ``method``: they are GETs with
-    no body, so the absent keys read as ``GET`` and the empty hash.
+    no body, so the absent keys read as ``GET`` and the empty hash. A legacy
+    ``"POST <url>"`` line is a POST whose body was not recorded, so it
+    matches any POST body.
     """
+    if _legacy_post_url(row):
+        return (method or "GET").upper() == "POST"
     line_method = row.get("method") if isinstance(row.get("method"), str) else ""
     line_body = row.get("body_sha256") if isinstance(row.get("body_sha256"), str) else ""
     return (line_method or "GET").upper() == (method or "GET").upper() and line_body == (body_sha256 or "")
@@ -395,7 +428,7 @@ def _stored_text(row: dict, key: str) -> str:
 def _kept_body(frame: str, row: dict, content: bytes) -> KeptBody:
     return KeptBody(
         frame=frame,
-        url=_stored_text(row, "url"),
+        url=_legacy_post_url(row) or _stored_text(row, "url"),
         final_url=_stored_text(row, "final_url"),
         status=_stored_status(row),
         content=content,

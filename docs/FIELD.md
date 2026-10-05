@@ -142,6 +142,20 @@ Optional keys the loader drops and the snapshot still copies when present: `stag
 
 The five criteria were fixed before any candidate programme was examined. Inclusion is the text recorded here, not a decision the software makes after seeing who was selected. The admission set is which of those recorded words are collected.
 
+### Re-collection
+
+Collecting a frame again, live or with `giye collect --from-snapshots`, is idempotent against the register those pages built. It adds rows that did not exist and fills empty fields. Nothing else changes (`Ledger.apply_roster`).
+
+- An existing activity or membership row keeps its `collected_at`. A replayed page's fetch date does not re-date it.
+- An existing activity row keeps its `activity_id` and every non-empty value (`publishable`, `reviewer_note`, `source_url` and the rest). Only its empty columns are filled.
+- A new appearance row is matched to the person's existing rows by frame and edition (`origin`), person and normalised title, after an exact `activity_id` match. When one person appears twice in one edition with the same credit, the result is one row.
+- `Person(activity=False)` records the membership and no frame-coded activity row, for example a creator listed without a cohort year. Extra activity rows are still written.
+- A `source_url` stated on an activity, even an empty one, is not replaced by the roster page.
+- `Person.person_note` is written on a person the row creates. An existing person's note is changed only when `person_note_existing` is true, and then only segments not already present are appended (exact match after whitespace normalisation). A `members=` list is written on a record the row creates, or extended on one that already has a list; it gains missing names and keeps its spelling when it gains none. An existing record without a list is left alone.
+- A collector's `website` and `websites` are typed as the production collectors typed them: a host in `SOCIAL_HOSTS` (`giye.collect.fetch`) is `social`, YouTube and Vimeo are `video`, GitHub is `repository`, anything else `website`.
+- `expand_members` expands only the teams of the editions the collector wrote (`expand_teams(frames=...)`). Team expansion writes the member credit note (`팀 구성원: …`) only on a member record it creates; an existing person's note is left as it is.
+- A legacy snapshot line whose `url` is `"POST <url>"` and that has no `method` replays as a POST to `<url>` with an unrecorded body.
+
 ## Writing an extraction prompt
 
 Point `[extract] prompt` at a UTF-8 text file next to the field file. The whole file replaces `cv_extract_v1.txt`. The model reply is parsed by `giye.extract.schema.parse_extraction`. A reply that fails validation is rejected as a whole. That artist is skipped.

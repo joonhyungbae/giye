@@ -179,3 +179,16 @@ def test_recall_tells_two_posts_to_one_url_apart(tmp_path: Path):
     rows = [json.loads(line) for line in (tmp_path / "F" / "snapshots" / "manifest.jsonl").read_text().splitlines()]
     assert "method" not in rows[0] and "body_sha256" not in rows[0]
     assert rows[1]["method"] == "POST" and rows[1]["body_sha256"] == one
+
+
+def test_recall_reads_a_legacy_post_line(tmp_path: Path):
+    url = "https://example.org/search"
+    folder = tmp_path / "F" / "snapshots"
+    folder.mkdir(parents=True)
+    (folder / "legacy.html").write_bytes(b"<p>legacy</p>")
+    line = {"url": f"POST {url}", "fetched_at": "2026-09-21T00:00:00Z", "path": "snapshots/legacy.html"}
+    (folder / "manifest.jsonl").write_text(json.dumps(line) + "\n", encoding="utf-8")
+    store = SnapshotStore(tmp_path)
+    kept = store.recall(url, method="POST", body_sha256=hashlib.sha256(b"page=1").hexdigest())
+    assert kept is not None and kept.content == b"<p>legacy</p>" and kept.url == url
+    assert store.recall(url) is None

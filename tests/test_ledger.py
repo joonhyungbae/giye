@@ -404,7 +404,7 @@ def test_merge_collapses_two_registrations_of_one_cv(tmp_path: Path):
     assert saved["activities"][0]["source_id"] == "CV-snap"
 
 
-def test_roster_ordinals_stay_stable_for_the_same_appearance(tmp_path: Path):
+def test_identical_appearances_in_one_edition_collapse_into_one_row(tmp_path: Path):
     ledger = _ledger(tmp_path)
     rows = [
         {
@@ -424,8 +424,8 @@ def test_roster_ordinals_stay_stable_for_the_same_appearance(tmp_path: Path):
     ]
     ledger.apply_roster("EXAMPLE-RESIDENCY", rows, task="collect")
     activities = ledger.read("activities")
-    assert len(activities) == 2
-    assert activities[0]["activity_id"] != activities[1]["activity_id"]
+    # Same person, same edition, same credit: one fact, one row.
+    assert len(activities) == 1
     assert {row["gy_id"] for row in ledger.read("artists")} == {"GY-000001"}
     first_ids = [row["activity_id"] for row in activities]
     ledger.apply_roster("EXAMPLE-RESIDENCY", rows, task="collect")
@@ -551,24 +551,24 @@ def test_recollection_never_deletes_or_impoverishes_activity_rows(tmp_path: Path
     rich = next(a for a in ledger.read("activities") if a["activity_id"] == "old-rich")
     assert rich["venue"] == "Example Hall" and rich["reviewer_note"] == "from the 2019 booklet"
     assert len(ledger.read("activities")) == 3
-    # A row that fills every column the old one fills replaces its values.
+    # Even a row that fills every column the old one fills changes nothing: stored values win.
     ledger.apply_roster(code, [_roster_row(role="artist", note="checked again",
                                            activity={"title": "Night Garden", "venue": "Example Hall 2",
                                                      "activity_type": "residency"})], task="collect")
-    acts = ledger.read("activities")
-    assert len(acts) == 3
-    rich = next(a for a in acts if a["title"] == "Night Garden")
-    assert (rich["venue"], rich["reviewer_note"], rich["collected_at"]) == ("Example Hall 2", "checked again", "2026-10-04")
-    assert {a["activity_id"] for a in acts} >= {"old-career", "old-other"}
+    assert ledger.read("activities") == old
 
 
-def test_titled_row_replaces_an_earlier_placeholder(tmp_path: Path):
+def test_titled_row_fills_an_earlier_placeholder_without_retitling_it(tmp_path: Path):
     ledger = _ledger(tmp_path)
     code = "EXAMPLE-RESIDENCY-2019"
     ledger.apply_roster(code, [_roster_row()], task="collect")
-    assert [a["title"] for a in ledger.read("activities")] == [code]
+    before = ledger.read("activities")
+    assert [a["title"] for a in before] == [code]
     ledger.apply_roster(code, [_roster_row(activity={"title": "Night Garden", "venue": "Example Hall"})], task="collect")
-    assert [(a["title"], a["venue"]) for a in ledger.read("activities")] == [("Night Garden", "Example Hall")]
+    after = ledger.read("activities")
+    # The appearance is already recorded: no second row, the id and title stay, the empty venue is filled.
+    assert [(a["activity_id"], a["title"], a["venue"]) for a in after] == [
+        (before[0]["activity_id"], code, "Example Hall")]
 
 
 def test_recollecting_an_existing_person_changes_only_what_is_missing(tmp_path: Path):
@@ -592,8 +592,9 @@ def test_recollecting_an_existing_person_changes_only_what_is_missing(tmp_path: 
     studio = next(row for row in after.values() if row["name_en"] == "Studio Example")
     assert person["updated_at"] == "2000-01-01T00:00:00Z"
     assert studio["name_ko"] == ""
-    assert studio["reviewer_note"] == "collective; members=Jun Seo|Ara Lim"
-    assert studio["updated_at"] != "2000-01-01T00:00:00Z"
+    # The list gains no name, so its older spelling stays byte-identical.
+    assert studio["reviewer_note"] == "collective; members=Jun Seo, Ara Lim"
+    assert studio["updated_at"] == "2000-01-01T00:00:00Z"
     ledger.apply_roster(code, [_roster_row(), pipe_team], task="collect")
     again = {row["ledger_id"]: row for row in ledger.read("artists")}
     assert again[studio["ledger_id"]] == studio
@@ -606,3 +607,133 @@ def test_roster_row_with_several_websites_writes_each_link_once(tmp_path: Path):
     ledger.apply_roster("EXAMPLE-RESIDENCY-2019", [row], task="collect")
     ledger.apply_roster("EXAMPLE-RESIDENCY-2019", [row], task="collect")
     assert sorted(link["url"] for link in ledger.read("links")) == ["https://example.org/a", "https://example.org/b"]
+
+
+def test_recollection_keeps_dates_ids_and_curated_values(tmp_path: Path):
+    """Re-collection adds and fills only: no re-dating, no re-keying, no overwrite of a curated value."""
+    ledger = _ledger(tmp_path)
+    code = "EXAMPLE-RESIDENCY-2019"
+    first = _roster_row(collected_at="2026-09-01", activity={"title": "Night Garden"})
+    ledger.apply_roster(code, [first], task="collect")
+    acts = ledger.read("activities")
+    acts[0]["publishable"] = "no"
+    acts[0]["reviewer_note"] = "kept by hand; superseded_by_cv"
+    ledger.write("activities", acts, task="test")
+    before = ledger.read("activities"), ledger.read("frame_membership")
+    # The replayed page has another date, another citation and a note: none of it is new content.
+    replay = _roster_row(collected_at="2026-10-04", source_url="https://example.org/residency/2019",
+                         note="from the replay", activity={"title": "Night Garden", "venue": "Example Hall"})
+    ledger.apply_roster(code, [replay], task="collect")
+    acts, membership = ledger.read("activities"), ledger.read("frame_membership")
+    assert len(acts) == 1 and membership == before[1]
+    row = acts[0]
+    assert row["activity_id"] == before[0][0]["activity_id"]
+    assert (row["collected_at"], row["publishable"], row["source_url"]) == ("2026-09-01", "no", _SRC)
+    assert row["reviewer_note"] == "kept by hand; superseded_by_cv"
+    assert row["venue"] == "Example Hall"  # the one empty field is filled
+    ledger.apply_roster(code, [replay], task="collect")
+    assert ledger.read("activities") == acts
+
+
+def test_second_appearance_merges_into_the_existing_row_by_title(tmp_path: Path):
+    ledger = _ledger(tmp_path)
+    code = "EXAMPLE-RESIDENCY-2019"
+    ledger.apply_roster(code, [_roster_row()], task="collect")
+    lid = ledger.read("artists")[0]["ledger_id"]
+    # A row an older collector keyed differently (another source URL, its own id).
+    old = empty_row(ledger.fields("activities"), activity_id="old-1", ledger_id=lid, title="Night Garden",
+                    year="2019", activity_type="residency", source_url="https://example.org/old",
+                    collected_at="2026-09-01", origin=code)
+    ledger.write("activities", [old], task="test")
+    twice = [
+        _roster_row(role="artist", activity={"title": "Night Garden"}),
+        _roster_row(role="team lead", activity={"title": "Night  Garden"}),
+    ]
+    ledger.apply_roster(code, twice, task="collect")
+    acts = ledger.read("activities")
+    assert [row["activity_id"] for row in acts] == ["old-1"]
+    assert acts[0]["role"] == "artist" and acts[0]["collected_at"] == "2026-09-01"
+
+
+def test_appearance_without_an_activity_row(tmp_path: Path):
+    ledger = _ledger(tmp_path)
+    code = "EXAMPLE-RESIDENCY"
+    ledger.apply_roster(code, [_roster_row(year="", activity=False)], task="collect")
+    assert [row["frame_code"] for row in ledger.read("frame_membership")] == [code]
+    assert ledger.read("activities") == []
+    extra = _roster_row("박서연", year="", activity=False, extra_activities=[{"title": "Open Studio", "year": "2021"}])
+    ledger.apply_roster(code, [extra], task="collect")
+    assert [row["title"] for row in ledger.read("activities")] == ["Open Studio"]
+
+
+def test_extra_activity_with_a_stated_empty_source_has_no_source(tmp_path: Path):
+    ledger = _ledger(tmp_path)
+    row = _roster_row(extra_activities=[{"title": "Open Studio", "source_url": ""}, {"title": "Talk"}])
+    ledger.apply_roster("EXAMPLE-RESIDENCY-2019", [row], task="collect")
+    acts = {a["title"]: a for a in ledger.read("activities")}
+    assert (acts["Open Studio"]["source_url"], acts["Open Studio"]["publishable"]) == ("", "no")
+    assert acts["Talk"]["source_url"] == _SRC
+    before = ledger.read("activities")
+    ledger.apply_roster("EXAMPLE-RESIDENCY-2019", [row], task="collect")
+    assert ledger.read("activities") == before
+
+
+def test_person_note_goes_on_a_new_person_and_on_an_existing_one_only_on_request(tmp_path: Path):
+    ledger = _ledger(tmp_path)
+    code = "EXAMPLE-RESIDENCY-2019"
+    ledger.apply_roster(code, [_roster_row(reviewer_note="example_2019; raw=김하늘")], task="collect")
+    assert ledger.read("artists")[0]["reviewer_note"] == "example_2019; raw=김하늘"
+    artists = ledger.read("artists")
+    artists[0]["reviewer_note"] = "curated  text; raw=김하늘"
+    artists[0]["updated_at"] = "2000-01-01T00:00:00Z"
+    ledger.write("artists", artists, task="test")
+    # Default: an existing person's note is not touched, even by a team marker.
+    ledger.apply_roster(code, [_roster_row(reviewer_note="example_2020; team")], task="collect")
+    assert ledger.read("artists") == artists
+    # On request: only the segments not already there (whitespace-normalised) are appended.
+    asked = _roster_row(reviewer_note="curated text; raw=김하늘; example_2020", reviewer_note_existing=True)
+    ledger.apply_roster(code, [asked], task="collect")
+    assert ledger.read("artists")[0]["reviewer_note"] == "curated  text; raw=김하늘; example_2020"
+    ledger.apply_roster(code, [asked], task="collect")
+    assert ledger.read("artists")[0]["reviewer_note"] == "curated  text; raw=김하늘; example_2020"
+
+
+def test_members_list_gains_new_names_only(tmp_path: Path):
+    ledger = _ledger(tmp_path)
+    code = "EXAMPLE-RESIDENCY-2019"
+    ledger.apply_roster(code, [_roster_row("", "Studio Example", members="Jun Seo, Ara Lim")], task="collect")
+    artists = ledger.read("artists")
+    artists[0]["reviewer_note"] = "members=Jun Seo, Ara Lim"
+    ledger.write("artists", artists, task="test")
+    ledger.apply_roster(code, [_roster_row("", "Studio Example", members="Ara Lim")], task="collect")
+    assert ledger.read("artists")[0]["reviewer_note"] == "members=Jun Seo, Ara Lim"
+    ledger.apply_roster(code, [_roster_row("", "Studio Example", members="Ara Lim|Min Cho")], task="collect")
+    assert ledger.read("artists")[0]["reviewer_note"] == "members=Jun Seo|Ara Lim|Min Cho"
+
+
+def test_members_note_is_not_started_on_an_existing_record(tmp_path: Path):
+    ledger = _ledger(tmp_path)
+    code = "EXAMPLE-RESIDENCY-2019"
+    ledger.apply_roster(code, [_roster_row("", "Studio Example")], task="collect")
+    before = ledger.read("artists")
+    ledger.apply_roster(code, [_roster_row("", "Studio Example", members="Jun Seo|Ara Lim")], task="collect")
+    assert ledger.read("artists") == before
+    # A record this apply creates gets the list.
+    ledger.apply_roster(code, [_roster_row("", "Studio Other", members="Min Cho")], task="collect")
+    other = next(row for row in ledger.read("artists") if row["name_en"] == "Studio Other")
+    assert other["reviewer_note"] == "members=Min Cho"
+
+
+def test_roster_sites_are_typed_like_the_production_collectors(tmp_path: Path):
+    from giye.ledger.ledger import roster_link_type
+
+    assert roster_link_type("https://www.instagram.com/example") == "social"
+    assert roster_link_type("https://x.com/example") == "social"
+    assert roster_link_type("https://examplex.com/") == "website"
+    assert roster_link_type("https://vimeo.com/example") == "video"
+    assert roster_link_type("https://github.com/example") == "repository"
+    ledger = _ledger(tmp_path)
+    row = _roster_row(website="https://example.org/haneul", websites=["https://www.instagram.com/example"])
+    ledger.apply_roster("EXAMPLE-RESIDENCY-2019", [row], task="collect")
+    kinds = {link["url"]: link["link_type"] for link in ledger.read("links")}
+    assert kinds == {"https://example.org/haneul": "website", "https://www.instagram.com/example": "social"}

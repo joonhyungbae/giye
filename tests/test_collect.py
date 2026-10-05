@@ -497,3 +497,90 @@ def test_expand_members_gives_declared_members_their_rows(tmp_path: Path):
     before = ledger.read("artists"), ledger.read("activities")
     Studio(config).run(collected_at="2026-10-04")
     assert (ledger.read("artists"), ledger.read("activities")) == before
+
+
+def test_person_without_activity_and_note_options_reach_the_ledger(tmp_path: Path):
+    from giye.collect.base import Edition, Person, RosterCollector
+
+    class Creators(RosterCollector):
+        frame = "EXAMPLE-RESIDENCY"
+        note_existing = False
+
+        def editions(self):
+            yield Edition(year="creators", source_url="https://example.org/residency/alumni", people=[
+                Person(name="Ara Lim", activity=False, person_note="creator page",
+                       person_note_existing=type(self).note_existing),
+            ])
+
+    config = load(_config(tmp_path, modules=False))
+    Creators(config).run(collected_at="2026-10-04")
+    ledger = Ledger.open(config)
+    assert [row["frame_code"] for row in ledger.read("frame_membership")] == ["EXAMPLE-RESIDENCY"]
+    assert ledger.read("activities") == []
+    assert ledger.read("artists")[0]["reviewer_note"] == "creator page"
+    artists = ledger.read("artists")
+    artists[0]["reviewer_note"] = "curated"
+    ledger.write("artists", artists, task="test")
+    Creators(config).run(collected_at="2026-10-05")
+    assert ledger.read("artists")[0]["reviewer_note"] == "curated"
+    Creators.note_existing = True
+    Creators(config).run(collected_at="2026-10-05")
+    assert ledger.read("artists")[0]["reviewer_note"] == "curated; creator page"
+
+
+def test_expand_members_leaves_other_frames_teams_alone(tmp_path: Path):
+    from giye.collect.base import Edition, Person, RosterCollector
+    from giye.ledger.schemas import ACTIVITIES_FIELDS, ARTISTS_FIELDS, MEMBERSHIP_FIELDS, empty_row
+
+    config = load(_config(tmp_path, modules=False))
+    ledger = Ledger.open(config)
+    # A team of another frame whose member is not expanded yet.
+    ledger.write("artists", [empty_row(ARTISTS_FIELDS, ledger_id="LED-other", gy_id="GY-000001",
+                                       name_ko="새벽 랩", reviewer_note="members=박바다", status="STAGED")], task="test")
+    ledger.write("activities", [empty_row(ACTIVITIES_FIELDS, activity_id="act-other", ledger_id="LED-other",
+                                          title="EXAMPLE-WORKSHOP-2020", year="2020", origin="EXAMPLE-WORKSHOP-2020",
+                                          source_url="https://example.org/workshop")], task="test")
+    ledger.write("frame_membership", [empty_row(MEMBERSHIP_FIELDS, ledger_id="LED-other",
+                                                frame_code="EXAMPLE-WORKSHOP-2020",
+                                                source_url="https://example.org/workshop")], task="test")
+
+    class Studio(RosterCollector):
+        frame = "EXAMPLE-RESIDENCY"
+        expand_members = True
+
+        def editions(self):
+            yield Edition(year=2019, source_url="https://example.org/residency/alumni", people=[
+                Person(name="Studio Example", members=["Jun Seo"]),
+            ])
+
+    Studio(config).run(collected_at="2026-10-04")
+    names = {row["name_ko"] or row["name_en"] for row in ledger.read("artists")}
+    assert "Jun Seo" in names and "박바다" not in names
+
+
+def test_legacy_post_snapshot_line_replays_as_post(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from giye.collect.base import Edition, Person, RosterCollector
+    from giye.collect.fetch import Fetcher as _Fetcher
+
+    url = "https://example.org/residency/view/1"
+    folder = tmp_path / "data" / "raw" / "EXAMPLE-RESIDENCY" / "snapshots"
+    folder.mkdir(parents=True)
+    (folder / "POST_view_1.html").write_bytes("<p>정다운</p>".encode())
+    line = {"url": f"POST {url}", "fetched_at": "2026-09-21T14:49:40Z", "path": "snapshots/POST_view_1.html",
+            "sha256": "x", "collector": "legacy.py"}
+    (folder / "manifest.jsonl").write_text(json.dumps(line) + "\n", encoding="utf-8")
+
+    class Viewer(RosterCollector):
+        frame = "EXAMPLE-RESIDENCY"
+
+        def editions(self):
+            page = self.fetch(url, data={"idx": "1"})
+            assert page.ok and "정다운" in page.text
+            yield Edition(year=2019, source_url=url, people=[Person(name="정다운")])
+
+    config = load(_config(tmp_path, modules=False))
+    _block_sockets(monkeypatch)
+    replay = _Fetcher(UA, from_snapshots=True, snapshot_root=tmp_path / "data" / "raw")
+    assert replay.get(url).status == 404  # a GET never replays a POST answer
+    rows = Viewer(config, fetcher=replay).run()
+    assert [row["collected_at"] for row in rows] == ["2026-09-21"]

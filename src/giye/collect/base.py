@@ -105,19 +105,27 @@ class Person:
     ``note``
         Note on the appearance's activity row (``reviewer_note``).
     ``person_note``
-        ``;``-separated segments added once to the person's ``reviewer_note``
-        (for example ``team=<name>`` on a member).
+        ``;``-separated segments for the person's ``reviewer_note`` (for
+        example ``team=<name>`` on a member). Written when this row creates
+        the person. An existing person's note is curated and is left alone
+        unless ``person_note_existing`` is true; then only the segments it
+        lacks are appended (compared after whitespace normalisation).
     ``activity``
         Fields of the appearance's activity row: ``title``, ``venue``, ``year``,
         ``activity_type``, ``role``, ``source_url``, ``source_type``,
         ``collected_at``, ``publishable``, ``reviewer_note``. A missing key keeps
         the default (title = edition code, type ``other``, the edition's year,
-        the row's source and date, ``role`` and ``note`` above).
+        the row's source and date, ``role`` and ``note`` above). A
+        ``source_url`` that is stated, even empty, is not replaced by the
+        roster page. ``False`` means the appearance has no activity row (a
+        creator listed without a cohort year): the person gets the membership
+        and the ``extra_activities`` only.
     ``extra_activities``
         Further activity rows for this appearance (one per work or session),
         same keys plus an optional ``origin``; ``title`` is required.
 
-    Re-collection only adds or enriches activity rows (``Ledger.apply_roster``).
+    Re-collecting the same pages adds missing rows and fills empty fields,
+    nothing else (``Ledger.apply_roster``, docs/FIELD.md).
     """
 
     name: str
@@ -133,7 +141,8 @@ class Person:
     collected_at: str = ""
     note: str = ""
     person_note: str = ""
-    activity: dict | None = None
+    person_note_existing: bool = False
+    activity: dict | bool | None = None
     extra_activities: list[dict] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -174,8 +183,9 @@ class RosterCollector:
 
     ``expand_members`` makes ``run`` give each declared team member
     (``Person.members``) their own rows after the roster write, the way
-    ``giye resolve`` does (``expand_teams``). It is off by default so a
-    collector's run writes only its own rows.
+    ``giye resolve`` does (``expand_teams``), limited to the teams' memberships
+    in the editions this run wrote. It is off by default so a collector's run
+    writes only its own rows.
     """
 
     frame: str = ""
@@ -338,10 +348,13 @@ class RosterCollector:
                     "websites": list(person.websites),
                     "note": person.note,
                     "reviewer_note": person.person_note,
-                    "activity": dict(person.activity) if person.activity else None,
+                    "reviewer_note_existing": person.person_note_existing,
+                    "activity": dict(person.activity) if isinstance(person.activity, dict) and person.activity else None,
                     "extra_activities": [dict(item) for item in person.extra_activities],
                 }
                 row.update({key: value for key, value in optional.items() if value})
+                if person.activity is False:
+                    row["activity"] = False
                 rows.append(row)
                 batch.append(row)
         ledger = Ledger.open(self.config)
@@ -351,7 +364,8 @@ class RosterCollector:
             # Imported here: giye.resolve imports the ledger, which this module also imports.
             from giye.resolve.teams import expand_teams
 
-            expand_teams(ledger)
+            # Only this run's editions: a collector must not touch other frames' teams.
+            expand_teams(ledger, frames=set(batches))
         self.write_csv(rows)
         return rows
 

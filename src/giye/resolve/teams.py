@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -313,14 +313,6 @@ def _shaped_team(artist: Mapping[str, object], members: list[dict[str, str]], te
     }
 
 
-def _append_member_note(existing: dict, note: str) -> bool:
-    """Copy the member credit onto the person when that sentence is not already there."""
-    if note and note not in (existing.get("reviewer_note") or ""):
-        existing["reviewer_note"] = f"{existing.get('reviewer_note') or ''}; {note}".strip("; ")
-        return True
-    return False
-
-
 def _ensure_frame_membership(
     membership: list[dict],
     ledger_id: str,
@@ -460,8 +452,9 @@ def _place_member(
                     created_at=stamp,
                 )
             )
-    if _append_member_note(existing, row.get("reviewer_note") or ""):
-        changed = True
+    # The credit note goes only on a record this run created (_create_member
+    # writes it there). An existing person's note is curated text and a re-run
+    # must leave it as it was (docs/FIELD.md, Re-collection).
     if _ensure_frame_membership(membership, existing["ledger_id"], frame, source, collected):
         changed = True
     families.setdefault(existing["ledger_id"], set()).add(frame_family(frame, field))
@@ -473,8 +466,13 @@ def _place_member(
     return changed
 
 
-def expand_teams(ledger: Ledger, *, dry_run: bool = False) -> list[str]:
+def expand_teams(ledger: Ledger, *, dry_run: bool = False, frames: Iterable[str] | None = None) -> list[str]:
     """Give every named team member their own roster row. Returns new ledger ids.
+
+    ``frames`` limits the work to team memberships whose ``frame_code`` is one
+    of those codes (a collector passes the edition codes it just wrote), so
+    no member note, membership or activity is written for any other frame.
+    ``None`` expands every team in the ledger (``giye resolve``).
 
     The team row stays. Members are not merged with the team (T1). A member
     joins an existing person under the roster attachment rules (A1–A4,
@@ -490,6 +488,7 @@ def expand_teams(ledger: Ledger, *, dry_run: bool = False) -> list[str]:
     queued_before = len(review)
     created: list[str] = []
     changed = False
+    wanted = None if frames is None else set(frames)
     issued = [row.get("gy_id", "") for row in artists]
     issued += [row.get("gy_id", "") for row in ledger.read("gy_retired")]
     taken = {row["ledger_id"] for row in artists}
@@ -507,7 +506,11 @@ def expand_teams(ledger: Ledger, *, dry_run: bool = False) -> list[str]:
         if not members:
             continue
         team_lid = artist["ledger_id"]
-        for mem in [row for row in membership if row["ledger_id"] == team_lid]:
+        for mem in [
+            row
+            for row in membership
+            if row["ledger_id"] == team_lid and (wanted is None or row.get("frame_code") in wanted)
+        ]:
             frame = mem["frame_code"]
             team_acts = [row for row in activities if row["ledger_id"] == team_lid and row.get("origin") == frame]
             source = mem.get("source_url") or artist.get("source_url") or ""

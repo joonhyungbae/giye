@@ -20,9 +20,11 @@ import unicodedata
 import uuid
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from dataclasses import field as dc_field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from giye.config import Config
 from giye.ledger.ids import (
@@ -231,11 +233,14 @@ class Ledger:
         appearance row's note), ``websites`` and ``reviewer_note`` (segments
         added to the person's note); see ``giye.collect.Person``.
 
-        Re-collection adds or enriches and never deletes (``_upsert_frame_activities``):
-        an activity row is never removed, and a field is never blanked. An
-        existing row with the same identity is replaced only by a row that fills
-        every field it fills. An existing person is changed only where a value
-        is missing, and ``updated_at`` moves only when a field changed.
+        Re-collection is idempotent: it adds rows that did not exist and fills
+        empty fields, and nothing else (docs/FIELD.md, Re-collection). An
+        existing activity row keeps its id, its ``collected_at`` and every
+        non-empty value (``_upsert_frame_activities``); an existing membership
+        is not touched; an existing person gains a missing name, alias or
+        ``members=`` name, and a collector note only on request
+        (``_stamp_roster_person``). ``updated_at`` moves only when a field
+        changed. ``activity`` set to ``False`` writes no appearance row.
         """
         # Imported here: giye.resolve.teams imports Ledger, and attach imports teams.
         from giye.field import frame_family
@@ -438,6 +443,8 @@ class _RosterState:
     seen_links: set[tuple[str, str]]
     stamp: str
     field: Any
+    # People this apply created. A collector's person note goes on them only.
+    created: set[str] = dc_field(default_factory=set)
 
 
 def _require_roster_frame(frame: str) -> None:
@@ -546,8 +553,9 @@ def _attach_one_roster_row(
         artist, rule = _fill_attached_artist(ledger, state, decision, raw_ko, stored_en, source_url)
     else:
         artist, rule = _insert_roster_artist(ledger, state, stored_ko, stored_en, aliases, source_url, collected)
+        state.created.add(artist["ledger_id"])
     _note_roster_identity(artist, identity)
-    _stamp_roster_person(artist, row)
+    _stamp_roster_person(artist, row, created=artist["ledger_id"] in state.created)
     # An unchanged person keeps its timestamp, so a re-run does not look like an edit.
     if attached and artist != before:
         artist["updated_at"] = state.stamp
@@ -661,22 +669,58 @@ def _add_roster_website(
     websites: list[str],
     state: _RosterState,
 ) -> bool:
-    """Store a personal website once. Returns whether a link row was added (E1 reads it)."""
+    """Store a site from a roster row once. Returns whether a link row was added (E1 reads it).
+
+    The type is ``roster_link_type``: a social profile is stored as ``social``,
+    which E1 and the own-site depth level skip.
+    """
     if websites and (lid, website) not in state.seen_links:
+        kind = roster_link_type(website)
         state.links.append(
             empty_row(
                 ledger.fields("links"),
                 link_id=str(uuid.uuid4()),
                 ledger_id=lid,
-                label="website",
+                label=kind,
                 url=website,
-                link_type="website",
+                link_type=kind,
                 origin=frame,
             )
         )
         state.seen_links.add((lid, website))
         return True
     return False
+
+
+# Hosts filed as video or repository links. Not social: they still count as the
+# person's own published location (``normalize.rules.own_site_rows``).
+_VIDEO_HOSTS = ("youtube.com", "youtu.be", "vimeo.com")
+_REPOSITORY_HOSTS = ("github.com",)
+
+
+def roster_link_type(url: str) -> str:
+    """``social``, ``video``, ``repository`` or ``website`` for a URL a collector states.
+
+    The same classes the production collectors stored. ``social`` is a host in
+    ``giye.collect.fetch.SOCIAL_HOSTS`` (platforms whose terms forbid
+    collection). Hosts match exactly or as a subdomain, so ``minaparkx.com`` is
+    not ``x.com``.
+    """
+    # Imported here: giye.collect imports this module.
+    from giye.collect.fetch import is_social
+
+    if is_social(url):
+        return "social"
+    host = (urlparse(url.strip()).hostname or "").lower().rstrip(".")
+
+    def on(domains: tuple[str, ...]) -> bool:
+        return any(host == domain or host.endswith("." + domain) for domain in domains)
+
+    if on(_VIDEO_HOSTS):
+        return "video"
+    if on(_REPOSITORY_HOSTS):
+        return "repository"
+    return "website"
 
 
 def _queue_possible_same_person(
@@ -718,30 +762,31 @@ def _queue_possible_same_person(
 def _upsert_frame_activities(
     frame: str, roster: list[Mapping[str, Any]], assigned: list[str], state: _RosterState
 ) -> None:
-    """Add or enrich this edition's activity rows. No existing row is removed.
+    """Add this edition's missing activity rows and fill empty fields. Nothing else changes.
 
-    A collector run may add rows for its own edition and enrich rows it
-    recognises; every other row stays as it is. Older collectors wrote career
-    rows under the same origin and richer appearance rows than a later
-    collector may reproduce, and a re-run that deleted them lost real records.
+    Re-collecting the pages a register was built from must be idempotent
+    (docs/FIELD.md, Re-collection). A new row is matched against every row
+    this person already has under the same origin, rows appended earlier in
+    this apply included (``_match_existing``). A matched row keeps its id and
+    every non-empty value; only its empty columns are filled (``_enrich``).
+    An unmatched row is appended. No row is removed.
 
-    Each new row is matched against this person's unmatched rows with the same
-    origin (``_match_existing``). An unmatched new row is appended. A matched
-    row is updated by ``_enrich``: it never loses a field.
+    Because a match may be any earlier row, a person who appears twice in one
+    edition with the same credit ends up with one row, not a second row under
+    the next counter id.
     """
     counters: dict[str, dict[str, int]] = {}
     index: dict[tuple[str, str], list[dict[str, str]]] = {}
     for existing in state.activities:
         index.setdefault((existing.get("ledger_id", ""), existing.get("origin", "")), []).append(existing)
-    used: set[int] = set()
     for row, lid in zip(roster, assigned, strict=True):
         for new, primary in _roster_activity_rows(frame, row, lid, counters):
-            pool = [item for item in index.get((lid, new["origin"]), []) if id(item) not in used]
+            pool = index.setdefault((lid, new["origin"]), [])
             match, how = _match_existing(new, pool, primary=primary)
             if match is None:
                 state.activities.append(new)
+                pool.append(new)
                 continue
-            used.add(id(match))
             _enrich(match, new, how)
 
 
@@ -750,26 +795,26 @@ def _match_existing(
 ) -> tuple[dict[str, str] | None, str]:
     """The existing row ``new`` stands for, and how it was matched.
 
-    Identity is person, origin (frame and edition), and then, in order:
+    Identity is person and origin (frame and edition), and then, in order:
 
     1. the same ``activity_id`` (the same fact from the same source);
-    2. the same normalised title and year (the fact cited from another URL);
+    2. the same normalised title (the same credit, whatever the source URL,
+       year column or counter suffix the replay gives it);
     3. for the appearance row only, the same year when one side is the
        placeholder titled with the edition code: the appearance is already
-       recorded. A placeholder new row then leaves a titled row alone
-       (``placeholder``); a titled new row may replace an old placeholder.
+       recorded (``placeholder`` when the new row is the placeholder).
     """
     for row in pool:
         if row.get("activity_id") == new["activity_id"]:
             return row, "same"
     title = norm_activity_title(new["title"])
-    year = str(new.get("year") or "")
     for row in pool:
-        if norm_activity_title(row.get("title") or "") == title and str(row.get("year") or "") == year:
+        if norm_activity_title(row.get("title") or "") == title:
             return row, "same"
     if not primary:
         return None, ""
     origin = new["origin"]
+    year = str(new.get("year") or "")
     same_year = [row for row in pool if str(row.get("year") or "") == year]
     if new["title"] == origin:
         return (same_year[0], "placeholder") if same_year else (None, "")
@@ -779,7 +824,7 @@ def _match_existing(
     return None, ""
 
 
-# Columns compared when deciding whether a new row may replace an existing one.
+# Columns a re-collection may fill on a matched row.
 # activity_id, ledger_id and origin are identity, not content.
 _ACTIVITY_CONTENT = (
     "title",
@@ -796,24 +841,15 @@ _ACTIVITY_CONTENT = (
 
 
 def _enrich(existing: dict[str, str], new: Mapping[str, str], how: str) -> None:
-    """Update a matched row without losing a field.
+    """Fill the matched row's empty columns from ``new``. A non-empty value always wins.
 
-    ``placeholder``: the collector stated nothing beyond the edition code and
-    the person already has a titled row for it, so nothing changes.
-
-    Otherwise the new row replaces the values (and takes its content-derived
-    ``activity_id``) only when it fills every column the existing row fills.
-    A poorer row only fills the existing row's empty columns. A non-empty
-    value is never blanked.
+    The id is never replaced, and neither is a value someone or an earlier
+    run stored: ``collected_at`` stays the date the fact was first read,
+    ``publishable`` stays a curator's ``no``, and a note keeps its text.
+    ``placeholder``: the collector stated nothing beyond the edition code, so
+    nothing changes.
     """
     if how == "placeholder":
-        return
-    filled_old = {key for key in _ACTIVITY_CONTENT if existing.get(key)}
-    filled_new = {key for key in _ACTIVITY_CONTENT if new.get(key)}
-    if filled_new >= filled_old:
-        for key in ("activity_id", *_ACTIVITY_CONTENT):
-            if new.get(key):
-                existing[key] = new[key]
         return
     for key in _ACTIVITY_CONTENT:
         if not existing.get(key) and new.get(key):
@@ -891,32 +927,52 @@ def _merge_artist_fields(survivor: dict[str, str], dropped: list[dict[str, str]]
     survivor["reviewer_note"] = note.strip("; ")
 
 
-def _stamp_roster_person(artist: dict[str, str], row: Mapping[str, Any]) -> None:
+def _stamp_roster_person(artist: dict[str, str], row: Mapping[str, Any], *, created: bool) -> None:
     """Copy aliases, note segments and a ``members=`` note onto the person.
 
-    The note is merged segment by segment (``;``-separated): a segment already
-    on the person is not added again. There is one ``members=`` segment. Its
-    names are pipe-separated; an older ``A, B`` spelling is rewritten to
-    ``A|B`` and names from this row are added to it, never removed, so a re-run
-    that spells the list differently does not append a second list.
+    Re-collection may only add and fill (docs/FIELD.md, Re-collection), so
+    every part leaves the stored text byte-identical when it has nothing new:
+
+    - an alias is added when it is not listed yet;
+    - the collector's note (``reviewer_note``, ``Person.person_note``) goes on
+      a person this apply created. An existing person gets it only when the
+      row sets ``reviewer_note_existing`` (``Person.person_note_existing``),
+      and then only the segments not already there. Segments compare after
+      whitespace normalisation. A note is curated text, and a replayed page
+      must not reclassify a person (a ``team`` segment reads as T1);
+    - there is one ``members=`` segment. It is written on a person this apply
+      created, or extended on a person that already has one: an existing
+      record without a list was judged without one (T1 would turn it into a
+      team). Names from this row that the list lacks are added
+      (pipe-separated), none is removed, and a list that gains no name keeps
+      its spelling.
     """
-    aliases = str(row.get("aliases") or "")
-    if aliases:
-        artist["aliases"] = join_pipe([*split_pipe(artist.get("aliases")), *split_pipe(aliases)])
+    aliases = split_pipe(str(row.get("aliases") or ""))
+    have = split_pipe(artist.get("aliases"))
+    if any(alias not in have for alias in aliases):
+        artist["aliases"] = join_pipe([*have, *aliases])
     segments = _note_segments(artist.get("reviewer_note") or "")
-    for segment in _note_segments(str(row.get("reviewer_note") or "")):
-        if segment.startswith("members="):
-            _merge_members(segments, segment[len("members="):])
-        elif segment not in segments:
-            segments.append(segment)
+    changed = False
+    if created or row.get("reviewer_note_existing"):
+        for segment in _note_segments(str(row.get("reviewer_note") or "")):
+            if segment.startswith("members="):
+                changed = _merge_members(segments, segment[len("members="):]) or changed
+            elif _norm_segment(segment) not in {_norm_segment(item) for item in segments}:
+                segments.append(segment)
+                changed = True
     members = row.get("members") or ""
     if isinstance(members, (list, tuple)):
         members = "|".join(str(item) for item in members)
-    if str(members).strip():
-        _merge_members(segments, str(members))
-    # A note that only needed no change keeps its exact text.
-    if segments != _note_segments(artist.get("reviewer_note") or ""):
+    has_list = any(segment.startswith("members=") for segment in segments)
+    if str(members).strip() and (created or has_list):
+        changed = _merge_members(segments, str(members)) or changed
+    if changed:
         artist["reviewer_note"] = "; ".join(segments)
+
+
+def _norm_segment(segment: str) -> str:
+    """A note segment with runs of whitespace collapsed, for the already-present test."""
+    return " ".join(segment.split())
 
 
 def _note_segments(note: str) -> list[str]:
@@ -929,24 +985,29 @@ def _member_names(value: str) -> list[str]:
     return [part.strip() for part in re.split(r"[,|]", value or "") if part.strip()]
 
 
-def _merge_members(segments: list[str], value: str) -> None:
-    """Add names to the single ``members=`` segment, pipe-separated. Creates it when absent.
+def _merge_members(segments: list[str], value: str) -> bool:
+    """Add names to the single ``members=`` segment, pipe-separated. Returns whether it changed.
 
-    A second ``members=`` segment left by an earlier double write is folded
-    into the first, so the person keeps one list with every name.
+    A list that already holds every name is left as it is, whatever its
+    separator. Otherwise the list is rewritten pipe-separated with the new
+    names at the end, and a second ``members=`` segment left by an earlier
+    double write is folded into the first.
     """
     names = _member_names(value)
     found = [index for index, segment in enumerate(segments) if segment.startswith("members=")]
     if not names:
-        return
+        return False
     listed = [name for index in found for name in _member_names(segments[index][len("members="):])]
+    if found and all(name in listed for name in names):
+        return False
     merged = "members=" + join_pipe([*listed, *names])
     if not found:
         segments.append(merged)
-        return
+        return True
     segments[found[0]] = merged
     for index in reversed(found[1:]):
         del segments[index]
+    return True
 
 
 def _stored_name(name_ko: str, name_en: str) -> tuple[str, str]:
@@ -1005,8 +1066,15 @@ def _activity_spec(spec: object, *, extra: bool) -> dict[str, str]:
 def _roster_activity_rows(
     frame: str, row: Mapping[str, Any], ledger_id: str, counters: dict[str, dict[str, int]]
 ) -> list[tuple[dict[str, str], bool]]:
-    """The appearance row, then each extra row. The flag marks the appearance row."""
-    rows = [(_roster_activity(frame, row, ledger_id, counters), True)]
+    """The appearance row, then each extra row. The flag marks the appearance row.
+
+    ``activity`` set to ``False`` means the appearance has no activity row
+    (``Person(activity=False)``): the person gets the membership and only the
+    extra rows, if any.
+    """
+    rows: list[tuple[dict[str, str], bool]] = []
+    if row.get("activity") is not False:
+        rows.append((_roster_activity(frame, row, ledger_id, counters), True))
     for spec in row.get("extra_activities") or []:
         checked = _activity_spec(spec, extra=True)
         rows.append((_roster_activity(frame, row, ledger_id, counters, spec=checked), False))
@@ -1035,7 +1103,13 @@ def _roster_activity(
     """
     if spec is None:
         spec = _activity_spec(row.get("activity"), extra=False)
-    source = spec.get("source_url") or str(row.get("source_url") or "").strip()
+    # A stated ``source_url``, even an empty one, is the row's source. Falling
+    # back to the roster page would cite a page that does not state this fact
+    # and would change the row's identity.
+    if "source_url" in spec:
+        source = spec["source_url"]
+    else:
+        source = str(row.get("source_url") or "").strip()
     year = spec.get("year") or str(row.get("year") or "")
     origin = spec.get("origin") or frame
     title = spec.get("title") or frame
