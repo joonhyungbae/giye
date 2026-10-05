@@ -19,7 +19,7 @@ export const Route = createFileRoute("/data")({
         content:
           "기예 데이터는 이 웹사이트에서 열람할 수 있습니다. 자동화된 수집과 대량 복제는 허용하지 않으며, 연구용 사람 단위 데이터는 이용 약정 아래 요청 시 공유합니다. Giye data can be read on this website; automated collection and bulk copying are not permitted, and person-level data for research are shared on request under a data-use agreement.",
       },
-      { property: "og:title", content: "데이터 Data — 기예 Giye" },
+      { property: "og:title", content: "인용 Citation — 기예 Giye" },
       {
         property: "og:description",
         content: `${fieldPeopleEn(true)} index — versions and citation.`,
@@ -41,7 +41,7 @@ function DataPage() {
         <p className="font-mono text-[10px] uppercase text-primary">[ DATA ]</p>
         <div className="mt-5 grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-end">
           <h1 className="font-mono text-5xl font-bold italic leading-none sm:text-7xl">
-            {t("데이터", "Data")}
+            {t("인용과 버전", "Citation and versions")}
           </h1>
           <p className="max-w-xl leading-7 text-muted-foreground">
             {t(

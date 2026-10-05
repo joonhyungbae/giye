@@ -1,8 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { createFileRoute } from "@tanstack/react-router";
-import { getContentPage, getCoverage, getFrameEntries } from "@/lib/giye.functions";
-import { ContentPageView, type ContentPageData } from "@/components/ContentPage";
-import { admittedProgrammesEn, admittedProgrammesKo, countFrameDecisions } from "@/lib/frame-population";
+import {
+  getContentPage,
+  getCoverage,
+  getFrameEntries,
+} from "@/lib/giye.functions";
+import { AboutNav } from "@/components/SiteChrome";
+import {
+  ContentPageView,
+  type ContentPageData,
+} from "@/components/ContentPage";
+import {
+  admittedProgrammesEn,
+  admittedProgrammesKo,
+  countFrameDecisions,
+} from "@/lib/frame-population";
 import { useLang } from "@/lib/i18n";
 
 export const Route = createFileRoute("/about/methodology")({
@@ -39,7 +51,8 @@ function MethodologyPage() {
 
   return (
     <div>
-      <div className="wrap max-w-3xl pt-12">
+      <AboutNav />
+      <div className="wrap max-w-3xl pt-6">
         <p className="border border-border bg-card px-4 py-3 text-sm leading-7">
           {t(
             `${phraseKo} · 공개 작가 ${published}명 · 마지막 갱신 ${refreshed}. 매주 링크를 점검하고 바뀐 CV와 요청을 반영하며, 새 회차의 명단은 공개되면 수집합니다.`,
