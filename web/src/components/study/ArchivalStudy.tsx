@@ -802,7 +802,10 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
     const canvas = canvasRef.current;
     const wrap = wrapRef.current;
     if (!canvas || !wrap) return;
-    const ctx = canvas.getContext("2d");
+    // The frame's bitmap is snapshotted for the compositor after the draw. With the software
+    // rasterizer that copy sat on the main thread (~40 ms) and made every assembly frame a long
+    // task. Desynchronizing the paint cycle takes that copy off the task; the bitmap is the same.
+    const ctx = canvas.getContext("2d", { desynchronized: true });
     if (!ctx) return;
     // offscreen copy of the chord/strand/dot layers (see "Layer cache" in draw)
     const layer = document.createElement("canvas");
@@ -923,6 +926,10 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
     let raf = 0;
     let last = performance.now();
     let lastPaint = 0;
+    // settled record positions, reused while spread, stage and the year window stay put
+    let posHold = "";
+    // last pointer/geometry the hit test ran for; a still pointer over a still disc is the same pick
+    let hitHold = "";
     const draw = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
@@ -1321,7 +1328,13 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         spa[i] = a;
       }
       st.partsArtist = partsArtist;
-      let revealCount = 0;
+      // Once assembly is over, a record's place is fixed by the spread, the stage and the year
+      // window. Recomputing sixty thousand of them on a frame that changed none of those is the
+      // same picture as last time, so the arrays are kept.
+      const posHoldKey = assembling ? "" : `${st.yr0}|${st.yr1}|${spread}|${subSplit}`;
+      let revealCount = st.revealCount;
+      if (!(posHoldKey && posHoldKey === posHold)) {
+      revealCount = 0;
       for (let k = 0; k < records.length; k++) {
         const ri = revealOrder[k]!;
         const nd = records[ri]!;
@@ -1336,6 +1349,16 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
           const u = (T - t0) / RECORD_FLIGHT;
           if (u <= 0) {
             ra[ri] = 0;
+            continue;
+          }
+          // Flight over: the eased position is exactly the record's own place. Skip the
+          // trigonometry; the picture matches the branch below at u = 1.
+          if (u >= 1) {
+            rx[ri] = nd.x;
+            ry[ri] = nd.y;
+            rz[ri] = 0;
+            ra[ri] = 1;
+            revealCount++;
             continue;
           }
           const si = sourceOf[ri]!;
@@ -1361,6 +1384,8 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         ra[ri] = a;
       }
       st.revealCount = revealCount;
+      posHold = posHoldKey;
+      }
 
       /* -- the needle reads whoever sits at twelve o'clock -- */
       let reading = -1;
@@ -1508,12 +1533,26 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
             artistScale = 1 - horiz + horiz * den;
           }
         }
+        // Flat and unemphasised, every line is the same ink, so lane batching (one stroke per
+        // lane) stacks crossings the same way as a stroke per artist. An open diagram fogs each
+        // line on its own, and an emphasised artist is an accent, so those stay one stroke each.
+        const batchArtistLines = !emphasised && diagram <= 0.001;
+        const artistLines: Batch = new Map();
+        const artistInk = batchArtistLines
+          ? withAlpha(ink, qa(plateA * 0.1 * artistScale))
+          : "";
         for (let i = 0; i < artists.length; i++) {
           const a = artists[i]!;
           if (!a.strand.some((ri) => ra[ri]! > 0)) continue;
           const emph = isEmphArtist(i);
           const [x0, y0] = proj(a.x, a.y, zTop + gz(a.group));
           const [x1, y1] = proj(Math.cos(a.angle) * pr, Math.sin(a.angle) * pr, zPlate);
+          if (batchArtistLines && !emph) {
+            const p = pathIn(artistLines, strokeKey(0.8, artistInk, i % LANES));
+            p.moveTo(x0, y0);
+            p.lineTo(x1, y1);
+            continue;
+          }
           const lineFog = fogAt(
             (depthOf(a.x, a.y, zTop + gz(a.group)) +
               depthOf(Math.cos(a.angle) * pr, Math.sin(a.angle) * pr, zPlate)) *
@@ -1529,6 +1568,7 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
           ctx.lineTo(x1, y1);
           ctx.stroke();
         }
+        if (batchArtistLines) strokeBatch(ctx, artistLines);
       }
 
       /* ============================ layer: sources ============================ */
@@ -1859,13 +1899,104 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         }
       });
 
+      /* chords — chordA is part of the layer-cache key, which decides whether screen
+         positions of every record are needed this frame */
+      const chordA =
+        (assembling ? clamp((T - A_CLOSE[0]) / (A_CLOSE[1] - A_CLOSE[0]), 0, 1) : 1) *
+        (1 - spread * 0.7) *
+        (1 - diagram * 0.6);
+      // Layer cache validity, computed before the record projection so a frame that only
+      // re-stamps the cached chords, strands and record dots can skip that projection.
+      // Invalidated by spread, stage, diagram, parts, tilt past the threshold below, zoom
+      // or scale stretch, theme, period, emphasis (not which artist), version marks,
+      // chord alpha, and window size / dpr. Hover overlays are painted live on top.
+      const cacheable =
+        st.asmDone &&
+        spread < 1e-4 &&
+        st.stageT < 1e-3 &&
+        diagram <= 0.001 &&
+        partsOut < 1e-3 &&
+        cosT > 0.25;
+      const sig = cacheable
+        ? [
+            w,
+            h,
+            dpr,
+            ink,
+            paper,
+            accent,
+            // which artist is emphasised is deliberately NOT part of the key: the cached copy
+            // holds the unemphasised picture (dimmed while something is emphasised), so moving
+            // the pointer from artist to artist costs one small live pass, not a full repaint
+            emphasised ? 1 : 0,
+            lensRing,
+            liftChords ? 1 : 0,
+            st.yr0,
+            st.yr1,
+            st.versions ? 1 : 0,
+            chordA.toFixed(3),
+          ].join("|")
+        : "";
+      const dRot = st.rot - lc.rot;
+      const dScale = s / lc.s;
+      const dTilt = cosT / lc.cosT;
+      // "settled" means the reader stopped, not the slow idle spin: that never settles, and
+      // repainting the layer against it every 700 ms is a stutter for no gain (the rotated copy
+      // is repainted anyway once the turn passes the 0.5 rad limit below).
+      const settled =
+        st.gesture === "none" &&
+        Math.abs(st.vel) < 0.02 &&
+        st.targetRot == null &&
+        now - st.lastInput < 4000;
+      const stretched = dScale > 1.15 || dScale < 0.87 || dTilt > 1.15 || dTilt < 0.87;
+      const reuse =
+        cacheable &&
+        lc.sig === sig &&
+        Math.abs(dRot) < 0.5 &&
+        !stretched &&
+        !(
+          settled &&
+          now - lc.at > 700 &&
+          (Math.abs(dRot) > 1e-4 || cx !== lc.cx || cy !== lc.cy || dScale !== 1 || dTilt !== 1)
+        );
       // screen positions for every visible record. The projection is inlined (a call and a
       // two-element array per record costs more than the arithmetic at this count). P1 is
       // the same f as proj, so hit testing (st.sx) matches the drawn dot. Records outside
-      // the chosen years, which are not drawn or hovered, are skipped.
+      // the chosen years, which are not drawn or hovered, are skipped. A reused link layer
+      // already holds the dots. While the reader is turning the disc the pointer is not
+      // picking, so the per-record projection can wait; a resting pointer still needs it
+      // for hit testing and the ambient card.
       const trayOn = tray.size > 0;
+      const needRecordPx =
+        !reuse ||
+        emphasised ||
+        chordHov >= 0 ||
+        st.notes.length > 0 ||
+        assembling ||
+        partsOut > 0.001 ||
+        st.gesture === "none";
+      if (needRecordPx)
       for (let i = 0; i < records.length; i++) {
         if (ra[i]! <= 0) continue;
+        // Landed dots are already in the opening layer. With the pointer off the disc their
+        // screen position is not read (no hit test, no card), so only records still moving
+        // or still pulsing are projected. The frame that freezes the flat layer cache does
+        // need every dot, so the skip stays off while that snapshot is being taken.
+        if (
+          assembling &&
+          !cacheable &&
+          !st.pointer.inside &&
+          !(st.versions && newSince) &&
+          ra[i]! >= 0.999
+        ) {
+          const k = records[i]!.reveal;
+          const t0 =
+            A_RECORDS[0] +
+            ((A_RECORDS[1] - A_RECORDS[0] - RECORD_FLIGHT) * k) /
+              Math.max(1, records.length - 1);
+          const since = T - t0 - RECORD_FLIGHT;
+          if (since < 0 || since >= 0.6) continue;
+        }
         const X = rx[i]! * cr - ry[i]! * sr;
         const Y = rx[i]! * sr + ry[i]! * cr;
         const px = X * s;
@@ -1898,11 +2029,6 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         st.ky[i] = y;
       }
 
-      /* chords */
-      const chordA =
-        (assembling ? clamp((T - A_CLOSE[0]) / (A_CLOSE[1] - A_CLOSE[0]), 0, 1) : 1) *
-        (1 - spread * 0.7) *
-        (1 - diagram * 0.6);
       const dotBase = records.length > 2000 ? 1.2 : 1.55;
       const dotR = clamp(dotBase * Math.sqrt(st.zoom), 1.05, 3.4);
       // how many pixels one artist gets on the rim; below ~9px the rim switches to ticks
@@ -2047,7 +2173,24 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
             }
             return st2;
           };
-          for (let k = 0; k < records.length; k++) {
+          // During the opening the landed dots are already in the layer. Only the records still
+          // in flight, and the landing pulses (alpha and radius still easing), are walked here.
+          // The index ranges are widened by two so a record on the boundary is not dropped; the
+          // per-record tests below are unchanged.
+          const denomK = Math.max(1, records.length - 1);
+          const spanK = A_RECORDS[1] - A_RECORDS[0] - RECORD_FLIGHT;
+          const kAt = (t0: number) => ((t0 - A_RECORDS[0]) * denomK) / spanK;
+          let kStart = 0;
+          let kEnd = records.length - 1;
+          if (flyingOnly && !(st.versions && newSince)) {
+            const flyLo = Math.floor(kAt(T - 0.5 * RECORD_FLIGHT)) - 2;
+            const flyHi = Math.ceil(kAt(T)) + 2;
+            const pulseLo = Math.floor(kAt(T - RECORD_FLIGHT - 0.6)) - 2;
+            const pulseHi = Math.ceil(kAt(T - RECORD_FLIGHT)) + 2;
+            kStart = Math.max(0, Math.min(flyLo, pulseLo));
+            kEnd = Math.min(records.length - 1, Math.max(flyHi, pulseHi));
+          }
+          for (let k = kStart; k <= kEnd; k++) {
             const ri = revealOrder[k]!;
             const a = ra[ri]!;
             if (a <= 0) continue;
@@ -2108,6 +2251,7 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
          map, so the layer is not reused once the diagram opens. */
       const asmLayer =
         assembling &&
+        !cacheable &&
         T > A_RECORDS[0] &&
         spread < 1e-4 &&
         st.stageT < 1e-3 &&
@@ -2184,62 +2328,13 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         paintLinks(ctx, "flying");
       }
       /* Layer cache. While the disc lies flat (no spread, no exploded diagram, every mark at z=0),
-         turning it is one affine map of the whole picture, so these layers are painted once into an
-         offscreen canvas and re-stamped with a transform. Repainted when anything they depend on
-         changes, when the turn gets large, and shortly after motion settles (so it stays crisp).
-         P4. Perspective is not affine, so this copy is never reused while w > 0.001. */
-      const cacheable =
-        st.asmDone &&
-        spread < 1e-4 &&
-        st.stageT < 1e-3 &&
-        diagram <= 0.001 &&
-        partsOut < 1e-3 &&
-        cosT > 0.25;
-      // Scale and tilt are not in the key either: they only stretch the same picture, so the copy
-      // is re-stamped through them and repainted once the stretch grows enough to show (the marks
-      // themselves would be the wrong size or slightly oval past that).
-      const sig = cacheable
-        ? [
-            w,
-            h,
-            dpr,
-            ink,
-            paper,
-            accent,
-            // which artist is emphasised is deliberately NOT part of the key: the cached copy
-            // holds the unemphasised picture (dimmed while something is emphasised), so moving
-            // the pointer from artist to artist costs one small live pass, not a full repaint
-            emphasised ? 1 : 0,
-            lensRing,
-            liftChords ? 1 : 0,
-            st.yr0,
-            st.yr1,
-            st.versions ? 1 : 0,
-            chordA.toFixed(3),
-          ].join("|")
-        : "";
-      const dRot = st.rot - lc.rot;
-      const dScale = s / lc.s;
-      const dTilt = cosT / lc.cosT;
-      // "settled" means the reader stopped, not the slow idle spin: that never settles, and
-      // repainting the layer against it every 700 ms is a stutter for no gain (the rotated copy
-      // is repainted anyway once the turn passes the 0.5 rad limit below).
-      const settled =
-        st.gesture === "none" &&
-        Math.abs(st.vel) < 0.02 &&
-        st.targetRot == null &&
-        now - st.lastInput < 4000;
-      const stretched = dScale > 1.15 || dScale < 0.87 || dTilt > 1.15 || dTilt < 0.87;
-      const reuse =
-        cacheable &&
-        lc.sig === sig &&
-        Math.abs(dRot) < 0.5 &&
-        !stretched &&
-        !(
-          settled &&
-          now - lc.at > 700 &&
-          (Math.abs(dRot) > 1e-4 || cx !== lc.cx || cy !== lc.cy || dScale !== 1 || dTilt !== 1)
-        );
+         turning it is one affine map of the whole picture, so the chord, strand and record-dot
+         layers are painted once into an offscreen canvas and re-stamped with a transform.
+         Repainted when anything they depend on changes, when the turn gets large, and shortly
+         after motion settles (so it stays crisp). The validity test is `reuse`, above.
+         P4. Perspective is not affine, so this copy is never reused while w > 0.001.
+         Scale and tilt are not in the key either: they only stretch the same picture, so the copy
+         is re-stamped through them and repainted once the stretch grows enough to show. */
       if (reuse) {
         /* S = C + L (S_ref − C_ref) with
            L = Rscreen · D · R(dRot) · D_ref⁻¹ · Rscreen_ref⁻¹,  D = diag(s, s·cosT).
@@ -2327,10 +2422,15 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
 
       /* knots */
       const showNames = st.zoom > 1.75;
-      for (let i = 0; i < artists.length; i++) {
+      // Flat disc, no names: every ordinary knot is the same stroke, and one path of those
+      // ticks matches a stroke per artist (measured: no pixel differs). Emphasis, the needle's
+      // reading, hidden dashes and an open diagram stay individual strokes on top.
+      const batchKnots = diagram <= 0.001 && !showNames;
+      const knotTicks: Batch = new Map();
+      const knotRings: Batch = new Map();
+      const knotLate: number[] = [];
+      const paintKnotMark = (i: number) => {
         const a = artists[i]!;
-        const anyArrived = a.strand.some((ri) => ra[ri]! >= 0.999);
-        if (!anyArrived && a.strand.length > 0) continue;
         const x = st.kx[i]!;
         const y = st.ky[i]!;
         const emph = isEmphArtist(i);
@@ -2339,12 +2439,16 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         const col = emph ? accent : ink;
         const ang = Math.atan2(Math.sin(a.angle + st.rot) * cosT, Math.cos(a.angle + st.rot));
         const roomy = slotPx >= 9 || emph || isRead;
-        // A knot is a centre mark, so it takes f and fog like a dot. The name is a label.
         const dK = depthOf(a.x, a.y, zTop + gz(a.group));
         const fK = scaleOf(dK);
         const fogK = fogAt(dK, emph);
+        const knotStyle = withAlpha(col, (roomy ? alpha : alpha * 0.7) * fogK);
+        const ca = Math.cos(ang);
+        const sa = Math.sin(ang);
+        const t0 = roomy ? 4 : -2;
+        const t1 = roomy ? 9 : 5;
         ctx.lineWidth = 1;
-        ctx.strokeStyle = withAlpha(col, (roomy ? alpha : alpha * 0.7) * fogK);
+        ctx.strokeStyle = knotStyle;
         if (roomy) {
           ctx.beginPath();
           if (a.hidden) ctx.setLineDash([2, 2]);
@@ -2354,9 +2458,8 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
           ctx.setLineDash([]);
         }
         ctx.beginPath();
-        const t0 = roomy ? 4 : -2;
-        ctx.moveTo(x + Math.cos(ang) * t0, y + Math.sin(ang) * t0);
-        ctx.lineTo(x + Math.cos(ang) * (roomy ? 9 : 5), y + Math.sin(ang) * (roomy ? 9 : 5));
+        ctx.moveTo(x + ca * t0, y + sa * t0);
+        ctx.lineTo(x + ca * t1, y + sa * t1);
         ctx.stroke();
         if ((showNames || emph || (isRead && !st.needleOn)) && !a.hidden) {
           ctx.save();
@@ -2369,11 +2472,11 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
               Math.abs(shortAngle(a.angle + st.rot + Math.PI / 2)) < 0.22;
             if (atNeedle && st.focus === i) {
               ctx.restore();
-              continue;
+              return;
             }
-            const cx0 = Math.cos(ang);
-            let nx = x + Math.cos(ang) * 15;
-            let ny = y + Math.sin(ang) * 15;
+            const cx0 = ca;
+            let nx = x + ca * 15;
+            let ny = y + sa * 15;
             ctx.font = fontKo(12.5, 600);
             ctx.textAlign = atNeedle
               ? "left"
@@ -2382,7 +2485,7 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
                 : cx0 < -0.35
                   ? "right"
                   : "center";
-            ctx.textBaseline = atNeedle ? "middle" : Math.sin(ang) < 0 ? "bottom" : "top";
+            ctx.textBaseline = atNeedle ? "middle" : sa < 0 ? "bottom" : "top";
             if (atNeedle) {
               nx = x + 12;
               ny = y - 1;
@@ -2399,8 +2502,8 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
             ctx.fillStyle = col;
             ctx.fillText(label, nx, ny);
           } else {
-            const upside = Math.cos(ang) < 0;
-            ctx.translate(x + Math.cos(ang) * 13, y + Math.sin(ang) * 13);
+            const upside = ca < 0;
+            ctx.translate(x + ca * 13, y + sa * 13);
             ctx.rotate(ang + (upside ? Math.PI : 0));
             ctx.font = fontKo(10.5, 500);
             ctx.textAlign = upside ? "right" : "left";
@@ -2410,6 +2513,50 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
           }
           ctx.restore();
         }
+      };
+      for (let i = 0; i < artists.length; i++) {
+        const a = artists[i]!;
+        const anyArrived = a.strand.some((ri) => ra[ri]! >= 0.999);
+        if (!anyArrived && a.strand.length > 0) continue;
+        const x = st.kx[i]!;
+        const y = st.ky[i]!;
+        const emph = isEmphArtist(i);
+        const isRead = reading === i;
+        const alpha = emph ? 1 : emphasised ? 0.2 : isRead ? 0.95 : 0.72;
+        const col = emph ? accent : ink;
+        const ang = Math.atan2(Math.sin(a.angle + st.rot) * cosT, Math.cos(a.angle + st.rot));
+        const roomy = slotPx >= 9 || emph || isRead;
+        // A knot is a centre mark, so it takes f and fog like a dot. The name is a label.
+        const dK = depthOf(a.x, a.y, zTop + gz(a.group));
+        const fK = scaleOf(dK);
+        const fogK = fogAt(dK, emph);
+        const knotStyle = withAlpha(col, (roomy ? alpha : alpha * 0.7) * fogK);
+        const ca = Math.cos(ang);
+        const sa = Math.sin(ang);
+        const t0 = roomy ? 4 : -2;
+        const t1 = roomy ? 9 : 5;
+        if (batchKnots && !emph && !isRead && !a.hidden) {
+          const tp = pathIn(knotTicks, strokeKey(1, knotStyle));
+          tp.moveTo(x + ca * t0, y + sa * t0);
+          tp.lineTo(x + ca * t1, y + sa * t1);
+          if (roomy) {
+            const kr = 2.6 * fK;
+            const rp = pathIn(knotRings, strokeKey(1, knotStyle));
+            rp.moveTo(x + kr, y);
+            rp.arc(x, y, kr, 0, TAU);
+          }
+          continue;
+        }
+        if (batchKnots) {
+          knotLate.push(i);
+          continue;
+        }
+        paintKnotMark(i);
+      }
+      if (batchKnots) {
+        strokeBatch(ctx, knotTicks);
+        strokeBatch(ctx, knotRings);
+        for (const i of knotLate) paintKnotMark(i);
       }
 
       /* -- venue partners: where the chosen artist's curves land -- */
@@ -2820,6 +2967,10 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
       if (st.pointer.inside && st.gesture === "none") {
         const pxp = st.pointer.x;
         const pyp = st.pointer.y;
+        // A pointer that has not moved, over a disc that has not moved, picks the same mark.
+        const hitKey = `${pxp}|${pyp}|${st.rot}|${st.zoom}|${tilt}|${spread}|${diagram}|${st.yr0}|${st.yr1}`;
+        if (hitKey !== hitHold) {
+        hitHold = hitKey;
         let best: Hover = null;
         // nearest record: squared distances (no square root per record), and a box test first
         let bestD = 10;
@@ -2900,8 +3051,10 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         const overName =
           !!nb && pxp >= nb.x && pxp <= nb.x + nb.w && pyp >= nb.y && pyp <= nb.y + nb.h;
         canvas.style.cursor = overName || (best && best.kind !== "ring") ? "pointer" : "grab";
+        }
       } else if (!st.pointer.inside) {
         st.hover = null;
+        hitHold = "";
       }
 
       /* -- permalink (debounced) -- */

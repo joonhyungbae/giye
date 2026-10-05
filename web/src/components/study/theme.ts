@@ -1,16 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /** Drawing colours for the canvases: the sheet (paper), the line (ink) and the one accent. */
 
-// The canvases ask for the same few colours tens of thousands of times a frame; build each string once.
-const alphaCache = new Map<string, string>();
+// The canvases ask for the same few colours tens of thousands of times a frame. Alpha is
+// quantised to 1/256 (one 8-bit step) and each (colour, step) string is built once.
+const ALPHA_STEPS = 256;
+const alphaTables = new Map<string, Array<string | undefined>>();
 
 export function withAlpha(color: string, a: number): string {
-  const key = `${color}|${a}`;
-  const hit = alphaCache.get(key);
+  let table = alphaTables.get(color);
+  if (table === undefined) {
+    table = new Array(ALPHA_STEPS + 1);
+    alphaTables.set(color, table);
+  }
+  const q = a <= 0 ? 0 : a >= 1 ? ALPHA_STEPS : (a * ALPHA_STEPS + 0.5) | 0;
+  const hit = table[q];
   if (hit !== undefined) return hit;
-  const out = buildAlpha(color, a);
-  if (alphaCache.size > 20000) alphaCache.clear();
-  alphaCache.set(key, out);
+  const out = buildAlpha(color, q / ALPHA_STEPS);
+  table[q] = out;
   return out;
 }
 
