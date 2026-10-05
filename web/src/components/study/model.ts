@@ -666,56 +666,44 @@ export function buildStrata(layout: Layout, data: StudyData): Strata {
   const rMin = R * 0.14;
   const rMax = R * 0.86;
   const SETTLED = 0.05;
-  // The relaxed positions depend only on the payload (its stamp) and R. A browser that has
-  // relaxed this payload before reads its own result back from localStorage, bit for bit
-  // (the doubles are stored as raw bytes, keyed by the user agent so a different engine
-  // recomputes), and skips the passes below. Bump "v1" whenever the passes or their inputs change.
-  const cacheKey = `giye:piers:v1:${data.stamp}:${R}:${n}:${typeof navigator === "undefined" ? "" : navigator.userAgent}`;
-  const cached = readPiers(cacheKey, n);
-  if (cached) {
-    sx.set(cached.subarray(0, n));
-    sy.set(cached.subarray(n, 2 * n));
-  } else {
-    for (let it = 0; it < 90; it++) {
-      let shift = 0;
-      for (let a = 0; a < n; a++) {
-        const ax = sx[a]!;
-        const ay = sy[a]!;
-        const sa = ss[a]! + 9;
-        for (let b = a + 1; b < n; b++) {
-          const dx = sx[b]! - ax;
-          const dy = sy[b]! - ay;
-          const min = sa + ss[b]!;
-          if (dx >= min || -dx >= min || dy >= min || -dy >= min) continue;
-          const d2 = dx * dx + dy * dy;
-          if (d2 >= min * min) continue;
-          const d = Math.sqrt(d2) || 0.001;
-          const push = ((min - d) / d) * 0.5;
-          const px = dx * push;
-          const py = dy * push;
-          sx[a] = sx[a]! - px;
-          sy[a] = sy[a]! - py;
-          sx[b] = sx[b]! + px;
-          sy[b] = sy[b]! + py;
-          const m = Math.abs(px) + Math.abs(py);
-          if (m > shift) shift = m;
-        }
+  for (let it = 0; it < 90; it++) {
+    let shift = 0;
+    for (let a = 0; a < n; a++) {
+      const ax = sx[a]!;
+      const ay = sy[a]!;
+      const sa = ss[a]! + 9;
+      for (let b = a + 1; b < n; b++) {
+        const dx = sx[b]! - ax;
+        const dy = sy[b]! - ay;
+        const min = sa + ss[b]!;
+        if (dx >= min || -dx >= min || dy >= min || -dy >= min) continue;
+        const d2 = dx * dx + dy * dy;
+        if (d2 >= min * min) continue;
+        const d = Math.sqrt(d2) || 0.001;
+        const push = ((min - d) / d) * 0.5;
+        const px = dx * push;
+        const py = dy * push;
+        sx[a] = sx[a]! - px;
+        sy[a] = sy[a]! - py;
+        sx[b] = sx[b]! + px;
+        sy[b] = sy[b]! + py;
+        const m = Math.abs(px) + Math.abs(py);
+        if (m > shift) shift = m;
       }
-      for (let i = 0; i < n; i++) {
-        const rr = Math.hypot(sx[i]!, sy[i]!) || 0.001;
-        const clamped = rr < rMin ? rMin : rr > rMax ? rMax : rr;
-        if (clamped !== rr) {
-          const k = clamped / rr;
-          const before = Math.abs(sx[i]!) + Math.abs(sy[i]!);
-          sx[i] = sx[i]! * k;
-          sy[i] = sy[i]! * k;
-          const m = Math.abs(before - (Math.abs(sx[i]!) + Math.abs(sy[i]!)));
-          if (m > shift) shift = m;
-        }
-      }
-      if (shift < SETTLED) break;
     }
-    writePiers(cacheKey, sx, sy);
+    for (let i = 0; i < n; i++) {
+      const rr = Math.hypot(sx[i]!, sy[i]!) || 0.001;
+      const clamped = rr < rMin ? rMin : rr > rMax ? rMax : rr;
+      if (clamped !== rr) {
+        const k = clamped / rr;
+        const before = Math.abs(sx[i]!) + Math.abs(sy[i]!);
+        sx[i] = sx[i]! * k;
+        sy[i] = sy[i]! * k;
+        const m = Math.abs(before - (Math.abs(sx[i]!) + Math.abs(sy[i]!)));
+        if (m > shift) shift = m;
+      }
+    }
+    if (shift < SETTLED) break;
   }
   for (let i = 0; i < n; i++) {
     const nd = sources[i]!;
@@ -731,41 +719,4 @@ export function buildStrata(layout: Layout, data: StudyData): Strata {
     depthSources: R * 0.52,
     depthFrames: R * 0.96,
   };
-}
-
-/** Relaxed pier positions saved by an earlier visit (see buildStrata), or null. */
-function readPiers(key: string, n: number): Float64Array | null {
-  try {
-    if (typeof localStorage === "undefined") return null;
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    const bin = atob(raw);
-    if (bin.length !== n * 2 * 8) return null;
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return new Float64Array(bytes.buffer);
-  } catch {
-    return null;
-  }
-}
-
-function writePiers(key: string, sx: Float64Array, sy: Float64Array) {
-  try {
-    if (typeof localStorage === "undefined") return;
-    const all = new Float64Array(sx.length * 2);
-    all.set(sx, 0);
-    all.set(sy, sx.length);
-    const bytes = new Uint8Array(all.buffer);
-    let bin = "";
-    for (let i = 0; i < bytes.length; i += 0x8000)
-      bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    // one payload at a time: drop positions saved for older stamps
-    for (let i = localStorage.length - 1; i >= 0; i--) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith("giye:piers:") && k !== key) localStorage.removeItem(k);
-    }
-    localStorage.setItem(key, btoa(bin));
-  } catch {
-    /* storage full or blocked: recompute next time */
-  }
 }

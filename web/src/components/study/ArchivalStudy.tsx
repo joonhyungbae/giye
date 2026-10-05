@@ -824,22 +824,13 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
     // Not desynchronized: with a 2x device pixel ratio a desynchronized canvas left headless Chrome
     // unable to produce a frame (screenshots timed out), a risk for high-DPI screens that is not worth
     // the main-thread time it saves.
-    const ctx0 = canvas.getContext("2d");
-    if (!ctx0) return;
-    // the context drawing goes to; pointed at an offscreen copy while one is painted
-    let ctx: CanvasRenderingContext2D = ctx0;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
     // offscreen copy of the chord/strand/dot layers (see "Layer cache" in draw)
     const layer = document.createElement("canvas");
     const lctx = layer.getContext("2d")!;
-    // offscreen copy of the piers-to-rim block (see "Piers, year plates" in draw)
-    const blockLayer = document.createElement("canvas");
-    const blockCtx = blockLayer.getContext("2d")!;
-    // inputs of the last painted frame (see "unchanged frame" in draw)
-    const memo = { exact: [] as Array<number | string>, fine: [] as number[], px: [] as number[] };
-    // bumped whenever the canvas needs a fresh frame although no drawing input changed
-    let canvasEpoch = 0;
     // reference state the cached layer was painted in (see "Layer cache" in draw)
-    const lc = { sig: "", sigBase: "", rot: 0, cx: 0, cy: 0, at: 0, s: 1, cosT: 1, rc: 1, rs: 0 };
+    const lc = { sig: "", rot: 0, cx: 0, cy: 0, at: 0, s: 1, cosT: 1, rc: 1, rs: 0 };
     // opening: records that have landed are stamped into the same layer once each (see draw)
     const asm = {
       key: "",
@@ -858,7 +849,6 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
       st.w = Math.max(1, Math.floor(r.width));
       st.h = Math.max(1, Math.floor(r.height));
       st.dpr = Math.min(2, window.devicePixelRatio || 1);
-      canvasEpoch++;
       canvas.width = Math.floor(st.w * st.dpr);
       canvas.height = Math.floor(st.h * st.dpr);
       canvas.style.width = `${st.w}px`;
@@ -873,11 +863,6 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
       st.theme = readTheme();
     };
     mq.addEventListener?.("change", onTheme);
-    // a web font that finishes loading changes how the same text is drawn
-    const onFonts = () => {
-      canvasEpoch++;
-    };
-    document.fonts?.addEventListener?.("loadingdone", onFonts);
     const mo = new MutationObserver(onTheme);
     mo.observe(document.documentElement, {
       attributes: true,
@@ -929,24 +914,6 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
     const spy = new Float32Array(nS);
     const spz = new Float32Array(nS);
     const spa = new Float32Array(nS);
-    // the piers-to-rim block's inputs on the previous frame, and its offscreen copy's state
-    const blk = {
-      prev: [] as Array<number | string>,
-      spx: new Float32Array(nS),
-      spy: new Float32Array(nS),
-      spz: new Float32Array(nS),
-      spa: new Float32Array(nS),
-      painted: false,
-      state: null as null | {
-        font: string;
-        textAlign: CanvasTextAlign;
-        textBaseline: CanvasTextBaseline;
-        fillStyle: string | CanvasGradient | CanvasPattern;
-        strokeStyle: string | CanvasGradient | CanvasPattern;
-        lineWidth: number;
-      },
-      ringLabel: [] as Array<{ k: number; x: number; y: number; w: number; h: number }>,
-    };
     // depth and perspective scale of each visible record / source this frame (P1, P2, P3)
     const rd = new Float32Array(records.length);
     const rf = new Float32Array(records.length);
@@ -1295,105 +1262,6 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         }
       };
 
-      /* -- the needle reads whoever sits at twelve o'clock -- */
-      let reading = -1;
-      if (st.needleOn && st.asmDone) {
-        let best = unit * 0.55;
-        for (let i = 0; i < artists.length; i++) {
-          const d = Math.abs(shortAngle(artists[i]!.angle + st.rot + Math.PI / 2));
-          if (d < best) {
-            best = d;
-            reading = i;
-          }
-        }
-      }
-      st.reading = reading;
-      if (reading !== st.lastReading) {
-        if (reading >= 0 && st.tickOn && st.lastReading >= 0) {
-          const a = artists[reading]!;
-          const yr = a.strand.length ? Math.min(...a.strand.map((ri) => records[ri]!.year)) : 2020;
-          playTick(520 + (clamp(yr, 2011, 2026) - 2011) * 42, 0.03);
-        }
-        st.lastReading = reading;
-      }
-
-      /* -- unchanged frame -- */
-      // A frame whose every drawing input equals the last painted frame would paint the same
-      // pixels again; the canvas already holds them, so painting is skipped (state updates
-      // above and the hit test below still run). Inputs are compared exactly, except that the
-      // eased camera values, which approach their targets without ever settling exactly, may
-      // differ by less than 1e-7 (angles, scales, eases: under 0.001 px at this canvas size)
-      // or 1e-4 px (screen positions). While the flat link layer is in use the frame is only
-      // skipped if that layer was painted at exactly this view, so the crisp repaint that
-      // follows a settled turn still happens when it did. Never skipped during the opening,
-      // while a record sounds, or while a fresh frame is due for another reason (canvas
-      // cleared by a resize, a web font finished loading).
-      const flatCached =
-        st.asmDone &&
-        spread < 1e-4 &&
-        st.stageT < 1e-3 &&
-        diagram <= 0.001 &&
-        partsOut < 1e-3 &&
-        cosT > 0.25;
-      const hovNow = st.hover;
-      const memoExact = [
-        canvasEpoch,
-        w,
-        h,
-        dpr,
-        ink,
-        paper,
-        accent,
-        st.theme.dark ? 1 : 0,
-        hovNow ? hovNow.kind : "",
-        hovNow ? hovNow.idx : -1,
-        st.focus,
-        reading,
-        partsArtist,
-        String(st.legendFocus),
-        st.yr0,
-        st.yr1,
-        st.versions ? 1 : 0,
-        st.needleOn ? 1 : 0,
-        st.gesture,
-        st.stage,
-        st.vel === 0 ? 0 : Math.abs(st.vel) > 0.02 ? 2 : 1,
-        st.targetTilt != null ? 1 : 0,
-        st.targetZoom != null ? 1 : 0,
-        st.targetRot != null ? 1 : 0,
-        tray.size,
-        trayCell,
-        sheetRef.current ? sheetRef.current.artist : -1,
-        sheetRef.current ? (sheetRef.current.ord ?? -1) : -2,
-      ];
-      const memoFine = [st.rot, st.zoom, tilt, e, spread, st.stageT, s, cosT];
-      const memoPx = [cx, cy, st.sideW];
-      let skipPaint =
-        !assembling &&
-        st.notes.length === 0 &&
-        memo.exact.length === memoExact.length &&
-        memoExact.every((v, i) => v === memo.exact[i]);
-      if (skipPaint) {
-        const tolFine = flatCached ? 0 : 1e-7;
-        const tolPx = flatCached ? 0 : 1e-4;
-        for (let i = 0; i < memoFine.length && skipPaint; i++)
-          if (!(Math.abs(memoFine[i]! - memo.fine[i]!) <= tolFine)) skipPaint = false;
-        for (let i = 0; i < memoPx.length && skipPaint; i++)
-          if (!(Math.abs(memoPx[i]! - memo.px[i]!) <= tolPx)) skipPaint = false;
-        if (
-          skipPaint &&
-          flatCached &&
-          !(lc.sig !== "" && lc.rot === st.rot && lc.cx === cx && lc.cy === cy && lc.s === s && lc.cosT === cosT)
-        )
-          skipPaint = false;
-      }
-      if (!skipPaint) {
-        memo.exact = memoExact;
-        memo.fine = memoFine;
-        memo.px = memoPx;
-      }
-      paint: {
-      if (skipPaint) break paint;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.fillStyle = paper;
       ctx.fillRect(0, 0, w, h);
@@ -1535,6 +1403,28 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
       }
       st.revealCount = revealCount;
       posHold = posHoldKey;
+      }
+
+      /* -- the needle reads whoever sits at twelve o'clock -- */
+      let reading = -1;
+      if (st.needleOn && st.asmDone) {
+        let best = unit * 0.55;
+        for (let i = 0; i < artists.length; i++) {
+          const d = Math.abs(shortAngle(artists[i]!.angle + st.rot + Math.PI / 2));
+          if (d < best) {
+            best = d;
+            reading = i;
+          }
+        }
+      }
+      st.reading = reading;
+      if (reading !== st.lastReading) {
+        if (reading >= 0 && st.tickOn && st.lastReading >= 0) {
+          const a = artists[reading]!;
+          const yr = a.strand.length ? Math.min(...a.strand.map((ri) => records[ri]!.year)) : 2020;
+          playTick(520 + (clamp(yr, 2011, 2026) - 2011) * 42, 0.03);
+        }
+        st.lastReading = reading;
       }
 
       /* -- emphasis -- */
@@ -1832,37 +1722,6 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         strokeBatch(ctx, base);
         strokeBatch(ctx, top);
       }
-      /* Piers, year plates, year labels, programme dots and the rim arcs are drawn one after
-         another and change only with the view, the emphasis and the piers' own flight. When
-         all of those equal the previous frame (most of the opening, a settled stage), the
-         block is painted once into an offscreen copy and that copy is stamped 1:1 (identity
-         device transform). The first frame of a still view still paints it directly, so a
-         moving view never pays for the extra copy. */
-      const blockKey = [
-        canvasEpoch, w, h, dpr, ink, paper, accent, st.theme.dark ? 1 : 0, cx, cy, s, cosT, rc,
-        rs, st.rot, diagram, subSplit, spread, ringStep, e, dLo, dHi, emphasisSource,
-        emphasisArtist, emphasised ? 1 : 0, lensRing, st.zoom, assembling ? clamp((T - 0.2) / 0.8, 0, 1) : 1,
-        ctx.lineCap, ctx.lineJoin,
-      ];
-      let blockSame =
-        blk.prev.length === blockKey.length && blockKey.every((v, i) => v === blk.prev[i]);
-      for (let i = 0; i < nS && blockSame; i++)
-        if (
-          spx[i] !== blk.spx[i] ||
-          spy[i] !== blk.spy[i] ||
-          spz[i] !== blk.spz[i] ||
-          spa[i] !== blk.spa[i]
-        )
-          blockSame = false;
-      const blockFresh = !blockSame;
-      if (blockFresh) {
-        blk.prev = blockKey;
-        blk.spx.set(spx);
-        blk.spy.set(spy);
-        blk.spz.set(spz);
-        blk.spa.set(spa);
-      }
-      const paintStatic = () => {
       for (let i = 0; i < nS; i++) {
         const sn = sources[i]!;
         const a = spa[i]!;
@@ -2057,50 +1916,6 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
           ctx.restore();
         }
       });
-      };
-      if (blockFresh) {
-        blk.painted = false;
-        paintStatic();
-      } else {
-        if (!blk.painted) {
-          if (blockLayer.width !== canvas.width || blockLayer.height !== canvas.height) {
-            blockLayer.width = canvas.width;
-            blockLayer.height = canvas.height;
-          }
-          const main = ctx;
-          ctx = blockCtx;
-          ctx.setTransform(1, 0, 0, 1, 0, 0);
-          ctx.clearRect(0, 0, blockLayer.width, blockLayer.height);
-          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          ctx.lineCap = main.lineCap;
-          ctx.lineJoin = main.lineJoin;
-          ctx.globalAlpha = 1;
-          paintStatic();
-          ctx = main;
-          // the state the block leaves on the context, so later drawing starts from the same
-          blk.state = {
-            font: blockCtx.font,
-            textAlign: blockCtx.textAlign,
-            textBaseline: blockCtx.textBaseline,
-            fillStyle: blockCtx.fillStyle,
-            strokeStyle: blockCtx.strokeStyle,
-            lineWidth: blockCtx.lineWidth,
-          };
-          blk.ringLabel = st.ringLabel;
-          blk.painted = true;
-        }
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.drawImage(blockLayer, 0, 0);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        const bs = blk.state!;
-        ctx.font = bs.font;
-        ctx.textAlign = bs.textAlign;
-        ctx.textBaseline = bs.textBaseline;
-        ctx.fillStyle = bs.fillStyle;
-        ctx.strokeStyle = bs.strokeStyle;
-        ctx.lineWidth = bs.lineWidth;
-        st.ringLabel = blk.ringLabel.slice();
-      }
 
       /* chords — chordA is part of the layer-cache key, which decides whether screen
          positions of every record are needed this frame */
@@ -2140,27 +1955,6 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
             chordA.toFixed(3),
           ].join("|")
         : "";
-      // The cached copy is painted in the "base" phase, which reads neither the emphasis flag
-      // nor the lifted chords. So a copy painted at exactly this view with only those two
-      // entries different is pixel for pixel what a repaint would give: keep it (hovering a
-      // settled disc then costs no repaint).
-      const sigBase = cacheable
-        ? [w, h, dpr, ink, paper, accent, lensRing, st.yr0, st.yr1, st.versions ? 1 : 0, chordA.toFixed(3)].join("|")
-        : "";
-      if (
-        cacheable &&
-        lc.sig !== sig &&
-        lc.sig !== "" &&
-        lc.sigBase === sigBase &&
-        lc.rot === st.rot &&
-        lc.cx === cx &&
-        lc.cy === cy &&
-        lc.s === s &&
-        lc.cosT === cosT &&
-        lc.rc === rc &&
-        lc.rs === rs
-      )
-        lc.sig = sig;
       const dRot = st.rot - lc.rot;
       const dScale = s / lc.s;
       const dTilt = cosT / lc.cosT;
@@ -2598,7 +2392,6 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         lctx.lineJoin = "round";
         paintLinks(lctx, "base");
         lc.sig = sig;
-        lc.sigBase = sigBase;
         lc.rot = st.rot;
         lc.cx = cx;
         lc.cy = cy;
@@ -3174,8 +2967,6 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         });
       }
 
-      }
-
       /* -- hit test -- */
       if (st.pointer.inside && st.gesture === "none") {
         const pxp = st.pointer.x;
@@ -3309,7 +3100,6 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
       st.music = null;
       ro.disconnect();
       mq.removeEventListener?.("change", onTheme);
-      document.fonts?.removeEventListener?.("loadingdone", onFonts);
       mo.disconnect();
     };
   }, [layout, strata, data, lang, nameOf, reduced, st, t, total, lastRing, newSince, toggleMusic]);
