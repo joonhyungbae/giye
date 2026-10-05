@@ -5,15 +5,36 @@
 # just .output/ (the built server) and data/site/ (what the pages show). --data-only skips the
 # build and the restart: the server re-reads data/site/ when the files' modification times change.
 #
-# Usage: deploy/push.sh [--data-only]
-# Before a data push, refresh the snapshot: python3 scripts/preprocess/run.py && python3 scripts/build_site_dataset.py
+# Usage: deploy/push.sh [--rebuild] [--data-only]
+#
+# --rebuild first rebuilds data/site from the ledger with the package stages, the same commands
+# the scheduled run uses (docs/DEPLOY.md):
+#   giye normalize --config deploy/giye.production.toml   (data/processed; never edits the ledger)
+#   giye publish   --config deploy/giye.production.toml   (data/site)
+#   giye explore   --config deploy/giye.production.toml   (rim order)
+# GIYE_CONFIG names another config and GIYE_BIN another giye executable (default .venv/bin/giye).
 
 source "$(dirname "$0")/lib.sh"
 cd "$(dirname "$0")/.."
 HOST="$(remote_host)"
 DEST="$REMOTE_USER@$HOST:$REMOTE_ROOT"
 DATA_ONLY=0
-[[ "${1:-}" == "--data-only" ]] && DATA_ONLY=1
+REBUILD=0
+for arg in "$@"; do
+  case "$arg" in
+    --data-only) DATA_ONLY=1 ;;
+    --rebuild) REBUILD=1 ;;
+    *) die "usage: deploy/push.sh [--rebuild] [--data-only]" ;;
+  esac
+done
+
+if (( REBUILD )); then
+  CONFIG="${GIYE_CONFIG:-deploy/giye.production.toml}"
+  GIYE="${GIYE_BIN:-.venv/bin/giye}"
+  for stage in normalize publish explore; do
+    "$GIYE" "$stage" --config "$CONFIG" || die "giye $stage failed; nothing pushed"
+  done
+fi
 
 [[ -f data/site/artists.json ]] || die "data/site/ has no snapshot"
 # The site is built from the public package's web/ (giye.org runs the released code).

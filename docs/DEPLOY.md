@@ -51,8 +51,16 @@ deploy/push.sh         # type check, build, copy .output and data/site, restart,
 | Change | Command |
 |---|---|
 | Code | `deploy/push.sh` |
-| Data only (after `python3 scripts/preprocess/run.py && python3 scripts/build_site_dataset.py`) | `deploy/push.sh --data-only` (the server re-reads changed files without a restart) |
-| Self-reports | `deploy/pull_requests.sh` (also run daily at 06:10 by the home machine's crontab, log in `data/work/logs/pull_requests.log`), then `python3 scripts/import_requests.py` |
+| Data only | `deploy/push.sh --rebuild --data-only`: rebuilds the snapshot with the package (`giye normalize`, `giye publish`, `giye explore`, each with `--config deploy/giye.production.toml`), then copies `data/site` (the server re-reads changed files without a restart). Without `--rebuild` the snapshot already in `data/site` is pushed as it is. |
+| Self-reports | `deploy/pull_requests.sh` (also run daily at 06:10 by the home machine's crontab, log in `data/work/logs/pull_requests.log`), then the maintainer imports them into the ledger (a private step; see Schedule) |
+
+The site rebuild is these three package stages and nothing else:
+
+```bash
+giye normalize --config deploy/giye.production.toml   # data/processed; never edits the ledger
+giye publish   --config deploy/giye.production.toml   # data/site, the snapshot the server reads
+giye explore   --config deploy/giye.production.toml   # rim order of the home page
+```
 
 ## Schedule
 
@@ -63,9 +71,9 @@ The home machine runs the weekly pipeline and publishes the snapshot (`crontab -
 0 4 * * 1   $GIYE_HOME/deploy/scheduled.sh weekly
 ```
 
-`deploy/scheduled.sh` backs up the ledger, runs `scripts/pipeline.sh weekly` (every stage through the `giye` package with `deploy/giye.production.toml`: collect for programmes still publishing, extract as CV pull plus cache replay with no unattended model call, resolve, normalize, publish, explore; plus link checks, evidence capture and self-reports) and pushes `data/site` when the run succeeds. After that it commits the ledger to the private repository (when `./gitp` exists) and copies the data that cannot be rebuilt to the VPS (`deploy/backup.sh`). A lock file keeps two runs from writing the ledger at once; a run that finds the lock taken is skipped and logged. Logs are in `data/work/logs/`.
+`deploy/scheduled.sh` backs up the ledger and runs the maintainer's weekly pipeline script, which is kept in the private repository because the roster collectors it drives name real programmes. That script runs the package stages with `deploy/giye.production.toml`: `giye collect` for programmes still publishing, `giye extract` (CV pull plus cache replay, with no unattended model call), `giye resolve`, and the site rebuild above (`giye normalize`, `giye publish`, `giye explore`). It also runs three maintenance steps the package has no command for yet: the weekly link check, evidence capture for cited pages, and the import of self-reports. When the run succeeds, `deploy/scheduled.sh` pushes `data/site` with `deploy/push.sh --data-only`. After that it commits the ledger to the private repository (when `./gitp` exists) and copies the data that cannot be rebuilt to the VPS (`deploy/backup.sh`). A lock file keeps two runs from writing the ledger at once; a run that finds the lock taken is skipped and logged. Logs are in `data/work/logs/`.
 
-New editions are not polled. The maintainer works in the field and collects a new edition's roster when it is published (`scripts/pipeline.sh editions`, or the programme's collector), then runs `deploy/push.sh --data-only`. Rosters of ended editions are collected once and not again.
+New editions are not polled. The maintainer works in the field and collects a new edition's roster when it is published (`giye collect` with that programme's collector, then `giye resolve`), then runs `deploy/push.sh --rebuild --data-only`. Rosters of ended editions are collected once and not again.
 
 ## Operating notes
 

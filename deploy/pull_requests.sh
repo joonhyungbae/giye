@@ -4,10 +4,10 @@
 # Why: /request writes personal data (names, contact addresses) to data/work/requests.jsonl on
 # the VPS. It should sit on the server only until the next pull. The server file is renamed
 # first, so a report that arrives during the copy goes to a fresh file and is not lost. Rows are
-# appended to the local data/work/requests.jsonl that scripts/import_requests.py reads, and each
+# appended to the local data/work/requests.jsonl that the maintainer's import step reads, and each
 # pulled file is also kept as data/work/requests-remote/<name> (original bytes).
 #
-# Usage: deploy/pull_requests.sh   (run before scripts/import_requests.py; cron-friendly)
+# Usage: deploy/pull_requests.sh   (run before the self-report import; cron-friendly)
 
 source "$(dirname "$0")/lib.sh"
 cd "$(dirname "$0")/.."

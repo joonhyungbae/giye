@@ -33,7 +33,7 @@ collector_modules = [
   "../data/collectors/ape.py",
 ]
 
-# Stage 2. The replay cache holds the reference CV readings (scripts/import_reference_extractions.py).
+# Stage 2. The replay cache holds the reference CV readings, imported from the earlier pipeline.
 # model is part of the cache key and names who read the CV: an agent run, not an API model id, so
 # this config never sends it to an API. No key is stored here; a live call needs ANTHROPIC_API_KEY
 # in the environment and an explicit --model.

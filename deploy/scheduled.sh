@@ -7,10 +7,11 @@
 # scheduled run and a manual one never write the ledger at the same time. The site is pushed only
 # when the pipeline exits cleanly.
 #
-# What runs: the private scripts/pipeline.sh drives the giye package with deploy/giye.production.toml
-# for every stage (collect for programmes still publishing, extract = CV pull + cache replay with no
-# model call, resolve, normalize, publish, explore), plus the maintenance steps the package has no
-# command for yet (link check, evidence capture, self-report import).
+# What runs: the maintainer's pipeline script (private repository: it drives collectors that name
+# real programmes) runs the giye package with deploy/giye.production.toml: giye collect for programmes
+# still publishing, giye extract (CV pull + cache replay, no model call), giye resolve, and the site
+# rebuild giye normalize / publish / explore (docs/DEPLOY.md), plus the maintenance steps the package
+# has no command for yet (link check, evidence capture, self-report import).
 #
 # Usage: deploy/scheduled.sh weekly     (crontab line in docs/DEPLOY.md)
 #        deploy/scheduled.sh --offline weekly   (no network, no push: a dry run on kept pages)
