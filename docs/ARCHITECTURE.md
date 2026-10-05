@@ -98,7 +98,7 @@ Collection and CV extraction are the stages that use the network. The demo does 
 
 `giye resolve` does not fetch. It reads the ledger and, when present, `data/work/cv_extract/<ledger_id>.json` (the production extraction file: an `activities` list with `title`, `venue`, `year`). `[resolve] cv_dir` may point at local HTML CVs; those fill people who have no JSON yet, matched by `data-name-ko` and `data-name-en`. The match has to be unique.
 
-Team rows are expanded first: each name in `members=` (or a `; group;` credit) gets its own roster row, credited with the field file's team prefix. The team stays. A second run adds nothing. Those expanded membership rows are not A1–A6 attachments; the column stays empty.
+Team rows are expanded first: each name in `members=` (or a `; group;` credit) gets its own roster row, credited with the field file's team prefix. The team stays. A second run adds nothing. Those expanded membership rows are not A1–A6 attachments; their `attach_rule` is `team:<team ledger id>`.
 
 Then, in order:
 

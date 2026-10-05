@@ -319,8 +319,15 @@ def _ensure_frame_membership(
     frame: str,
     source: str,
     collected: str,
+    rule: str,
 ) -> bool:
-    """Add the member to this edition when they are not already on it. Returns whether a row was added."""
+    """Add the member to this edition when they are not already on it. Returns whether a row was added.
+
+    ``rule`` is written as ``attach_rule``: ``team:<team ledger id>``, so the
+    membership says it came from expanding that team's credit, as every other
+    membership names the rule that wrote it. A membership the member already
+    has on this edition is left as it is (re-collection does not rewrite).
+    """
     if any(item["ledger_id"] == ledger_id and item["frame_code"] == frame for item in membership):
         return False
     membership.append(
@@ -330,6 +337,7 @@ def _ensure_frame_membership(
             frame_code=frame,
             source_url=source,
             collected_at=collected,
+            attach_rule=rule,
         )
     )
     return True
@@ -455,7 +463,7 @@ def _place_member(
     # The credit note goes only on a record this run created (_create_member
     # writes it there). An existing person's note is curated text and a re-run
     # must leave it as it was (docs/FIELD.md, Re-collection).
-    if _ensure_frame_membership(membership, existing["ledger_id"], frame, source, collected):
+    if _ensure_frame_membership(membership, existing["ledger_id"], frame, source, collected, f"team:{team_lid}"):
         changed = True
     families.setdefault(existing["ledger_id"], set()).add(frame_family(frame, field))
     member_activities = row.get("activities") or []

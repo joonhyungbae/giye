@@ -72,9 +72,10 @@ LINKS_FIELDS = [
 
 # Who is on which programme. The key is (ledger_id, frame_code): editions of one
 # programme are activities, not extra membership rows.
-# attach_rule is `first` when this membership created the person row, and A1–A6
-# when the roster row joined someone already there. Empty on rows written
-# before the column existed.
+# attach_rule is `first` when this membership created the person row, A1–A6
+# when the roster row joined someone already there, and `team:<team ledger id>`
+# when team expansion put a named member on the team's edition. Empty on rows
+# written before the column existed.
 MEMBERSHIP_FIELDS = [
     "ledger_id",
     "frame_code",

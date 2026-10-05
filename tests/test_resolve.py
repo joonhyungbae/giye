@@ -612,6 +612,8 @@ def test_expand_teams_gives_a_name_only_member_a_new_record_and_queues_the_pair(
     membership = ledger.read("frame_membership")
     assert not any(row["ledger_id"] == "LED-other" and row["frame_code"] == "EXAMPLE-RESIDENCY" for row in membership)
     assert any(row["ledger_id"] == created[0] and row["frame_code"] == "EXAMPLE-RESIDENCY" for row in membership)
+    # The expanded membership names its rule and the team it came from.
+    assert {row["attach_rule"] for row in membership if row["ledger_id"] == created[0]} == {"team:LED-team"}
     queue = [row for row in ledger.read("review_queue") if row["reason"] == "possible_same_person"]
     assert [row["ledger_id"] for row in queue] == created
     assert "LED-other" in queue[0]["detail"] and "team member, name only" in queue[0]["detail"]
