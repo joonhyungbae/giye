@@ -38,8 +38,8 @@ That runs collect → extract (replay, no API key) → resolve → normalize →
 temporary directory. Nothing is fetched from the network: fixture pages are read locally, and
 `robots.txt` is still checked. The command prints how many people, roster rows, and activities
 were published, how many merges each identity rule made, how many pairs T1 blocked, how many
-review-queue items are open, how many institution merges V7, V8 and V9 made, and the output
-paths. `examples/demo/EXPECTED.md` lists the cases and the summary lines.
+review-queue items are open, how many institution merges V7, V8 and V9 made, how many
+co-presence ties each name-rule layer gives, and the output paths. `examples/demo/EXPECTED.md` lists the cases and the summary lines.
 
 ```bash
 giye demo --output /tmp/giye-demo
@@ -62,6 +62,7 @@ giye resolve --config examples/demo/giye.toml
 giye normalize --config examples/demo/giye.toml
 giye publish --config examples/demo/giye.toml
 giye explore --config examples/demo/giye.toml
+giye explore ties --config examples/demo/giye.toml --out ties.json --layers
 giye render --config examples/demo/giye.toml
 giye run --config examples/demo/giye.toml
 giye export warc --config examples/demo/giye.toml
@@ -69,7 +70,7 @@ giye export warc --config examples/demo/giye.toml --wacz
 giye export ro-crate --config examples/demo/giye.toml
 ```
 
-`giye explore` writes `<data>/site/rim_order.json`. With both `--assignment` (a JSON object of person id to group) and `--ties` (a JSON list of pairs) it also prints coverage, group count, lift, AUC, and stability. `giye run` runs collect, extract, resolve, normalize, publish, and explore. The ledger command only prints counts, so it is not one of those steps. Extract with no API key reads the replay cache.
+`giye explore` writes `<data>/site/rim_order.json`. With `--assignment` (a JSON object of person id to group) it also prints coverage, group count, lift, AUC, and stability against `--ties` (a JSON list of pairs), or, when `--ties` is omitted, against the roster-independent co-presence ties computed from the ledger. `giye explore ties` writes those ties (`--out`, a JSON list of ledger-id pairs; `--kind cv-listing` for the CV-listing definition) and, with `--layers [PATH]`, prints the institution entities and both tie counts with V7–V9 off and cumulatively on, plus the ties each rule added (V7a–d, V7e, V8, V9); a path also writes them as JSON. See [docs/EXPLORE.md](docs/EXPLORE.md). `giye run` runs collect, extract, resolve, normalize, publish, and explore. The ledger command only prints counts, so it is not one of those steps. Extract with no API key reads the replay cache.
 
 `giye export warc` writes the snapshot store as WARC 1.1. Each kept body is a response
 record with a reconstructed status line and `Content-Type`. Original response headers were
@@ -145,7 +146,7 @@ under a data-use agreement. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), "G
 ## Status
 
 Ported and tested: collection (F1–F5, RFC 9309 robots.txt, attachment A1–A6), WARC and RO-Crate export, the ledger, CV extraction with a replay cache,
-same-person resolution (E1–E4, T1, X1), normalisation (P1–P5, V1–V9), the site snapshot, the entry-generation rim and division scores (`giye explore`), the
+same-person resolution (E1–E4, T1, X1), normalisation (P1–P5, V1–V9), the site snapshot, the entry-generation rim, co-presence ties and division scores (`giye explore`), the
 offline demo, and the web front-end (`web/`). Feature embeddings and cluster descriptors (C1, C2) are not ported. Progress is tracked in
 [docs/ROADMAP.md](docs/ROADMAP.md).
 
