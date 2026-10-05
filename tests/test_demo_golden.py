@@ -72,7 +72,7 @@ def test_demo_snapshot_matches_golden(tmp_path: Path, monkeypatch):
     assert result.activities == len(got["site"]["activities.json"])
     assert result.roster_rows == 23
     assert result.people == 21
-    assert result.activities == 38
+    assert result.activities == 37
     assert "merges: E1 1, E2 1, E3 1, E4 1, X1+E2 1" in result.summary
     assert "blocked: T1 1" in result.summary
     assert "queue items: 4" in result.summary
@@ -85,7 +85,9 @@ def test_demo_snapshot_matches_golden(tmp_path: Path, monkeypatch):
     assert ">source</a>" in text
     assert "예시 레지던시" in text and "예시 워크숍" in text
     assert "서울시립미술관 외" in text and "서울시립미술관 《빛》" in text
-    assert "서울시립미술관 전시실" in text and "Seoul Museum of Art" in text
+    assert "서울시립미술관 전시실" in text
+    # X2: the English CV's "Signal — Seoul Museum of Art" is the same 2022 show as 신호 and is folded.
+    assert "Seoul Museum of Art" not in text and "Signal" not in text
     assert "EXAMPLE-RESIDENCY-2019" in text
     assert text.count("예시 미디어전") == 1
     # The forum's Kim Haneul is a separate record until a person decides (Latin name only).

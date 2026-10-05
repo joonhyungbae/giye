@@ -155,7 +155,7 @@ def test_demo_summary_does_not_depend_on_the_system_date(tmp_path: Path, monkeyp
     assert header == "run date: 2026-01-15 (fixed; this summary does not follow the system date)"
     assert "people: 21" in result.summary
     assert "roster rows: 23" in result.summary
-    assert "activities: 38" in result.summary
+    assert "activities: 37" in result.summary
 
 
 def _locate(crate: Path, entity_id: str) -> Path:

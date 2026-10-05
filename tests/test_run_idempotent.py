@@ -87,7 +87,7 @@ def test_two_runs_publish_the_same_snapshot(tmp_path: Path, monkeypatch: pytest.
     assert first_site == second_site
     assert _activity_rows(dest) == first_rows
     assert _SITE.findall(first_out) == _SITE.findall(second_out)
-    assert _SITE.findall(second_out) == [("21", "38")]
+    assert _SITE.findall(second_out) == [("21", "37")]
     assert "replay_miss=0" in second_out
     assert "replay miss " not in second_out
     assert "activities_added=0" in second_out

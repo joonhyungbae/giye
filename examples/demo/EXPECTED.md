@@ -11,11 +11,11 @@ directory, which is a new temporary directory when `--output` is omitted). The f
 the publish step; the summary follows, then the files written:
 
 ```
-site artists=21 activities=38 links=3 frames=4
+site artists=21 activities=37 links=3 frames=4
 run date: 2026-01-15 (fixed; this summary does not follow the system date)
 people: 21
 roster rows: 23
-activities: 38
+activities: 37
 merges: E1 1, E2 1, E3 1, E4 1, X1+E2 1
 blocked: T1 1
 queue items: 4
@@ -85,7 +85,7 @@ Attachment runs at collection. A later merge of two existing records is a separa
 | T1 | The person 배수아 and the team row 배수아 (members 김솔, 박솔) are not merged. The team row does not repeat `sua.example.org`: A6 would attach them at collection. T1 still blocks the merge because one side is a team. The summary line is `blocked: T1 1`. |
 | Queue | Four open `possible_same_person` items (`queue items: 4`). The two 최민수 rows are an exact same-script name with no evidence. The person 배수아 and the team 배수아 are the same kind of pair. 서지우 ~ Jiwoo Seo share a romanization key and have no evidence. Kim Haneul (forum, GY-000022) and 김하늘 / Haneul Kim (GY-000001) are the Latin-only pair A2 did not join (`latin name only`). Near-misses that E1–E4 later join (한별, 표은솔, 정다운, 문지호) are closed by the merge. |
 
-`GY-000001` lists the residency (`예시 레지던시 2019`) and the workshop (`예시 워크숍 2021`) under Roster. The forum row is not there: A2 did not attach it, so it is its own record, `GY-000022`. Under Activities the page lists those two roster rows and the CV lines from both languages. The two CVs are folded in that same run: one `예시 미디어전 (2024)` is published, and the English line `Example Residency (2019)` is not, because it restates the residency roster row. The same 2022 exhibition still appears twice, once from each CV (`Signal — Seoul Museum of Art` and `신호 — 서울시립미술관 외`): folding removes exact restatements and roster restatements, not a translation. Each published line links to its source. The page ends with `Open same-name review: GY-000022`, the open Latin-only pair, and `GY-000022` links back. The two 최민수 rows (`GY-000007`, `GY-000018`), the person and the team 배수아 (`GY-000008`, `GY-000019`), and 서지우 and Jiwoo Seo (`GY-000010`, `GY-000021`) each link to the other the same way.
+`GY-000001` lists the residency (`예시 레지던시 2019`) and the workshop (`예시 워크숍 2021`) under Roster. The forum row is not there: A2 did not attach it, so it is its own record, `GY-000022`. Under Activities the page lists those two roster rows and the CV lines from both languages. The two CVs are folded in that same run: one `예시 미디어전 (2024)` is published, and the English line `Example Residency (2019)` is not, because it restates the residency roster row. The 2022 exhibition written in both CVs (`신호 — 서울시립미술관 외` and `Signal — Seoul Museum of Art`) is published once: rule X2 reads the two venues as one institution (V7b, V9), the pair is the only one for that person, year, and type, and the archive's first language is Korean, so the English row is kept in the ledger with `publishable=no` and `superseded_by=<id of the Korean row>; rule=X2`. `work/cv_folds.csv` lists the fold. Each published line links to its source. The page ends with `Open same-name review: GY-000022`, the open Latin-only pair, and `GY-000022` links back. The two 최민수 rows (`GY-000007`, `GY-000018`), the person and the team 배수아 (`GY-000008`, `GY-000019`), and 서지우 and Jiwoo Seo (`GY-000010`, `GY-000021`) each link to the other the same way.
 
 Membership is `<FRAME>-<YYYY>`. The roster block names the programme and that edition (`예시 레지던시 2019`). The activity title is the membership code (`2019 — EXAMPLE-RESIDENCY-2019`).
 
@@ -101,11 +101,11 @@ The Korean CV and the English CV name one museum in several ways. Normalisation 
 
 The bare spelling `서울시립미술관` is on the Korean CV so the entity's display name is the museum. Production ranks an untrimmed full name ahead of a trimmed spelling and ahead of a hall. The audit's V7e section is empty.
 
-`GY-000001` shows the Korean lines and `Signal — Seoul Museum of Art` from the English CV.
+`GY-000001` shows the Korean lines. `Signal — Seoul Museum of Art` from the English CV is folded into `신호` by X2 and is not on the page; the institution table still reads its spelling, because venue resolution reads every ledger row.
 
 ## Co-presence ties
 
-Two more fictitious CVs (`cvs/seoyeon-ko.html` for 박서연, `cvs/seoyeon-kim-en.html` for Kim Seoyeon, three rows in all) give `giye.explore.ties` something to count. They are why the activity count is 38, not 35. The golden file stores the whole layer report under `ties`.
+Two more fictitious CVs (`cvs/seoyeon-ko.html` for 박서연, `cvs/seoyeon-kim-en.html` for Kim Seoyeon, three rows in all) give `giye.explore.ties` something to count. They are why the activity count is 37, not 34. The golden file stores the whole layer report under `ties`.
 
 | Pair | Row | CV listing | Roster independent |
 |---|---|---|---|

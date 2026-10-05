@@ -24,6 +24,13 @@
 - An extraction file whose ledger id is no longer an artist is skipped when a
   live artist's file already covers the same sources. Applying both would let
   file order decide which reading survives.
+- Rule X2 runs after every file is applied (``giye.extract.crosslang``): the
+  Korean and the English copy of one CV event in two CV documents, matched by
+  year, type, and an institution the venue rules read as the same (V7, V9),
+  one to one, fold. The
+  copy not in the archive's first language gets ``publishable=no`` and
+  ``superseded_by=<kept id>; rule=X2``. Marks are cleared at the start of each
+  apply and recomputed, and every fold is listed in ``work/cv_folds.csv``.
 - Activity ids come from ``giye.ledger`` (uuid5 of the ledger id, source,
   title, year, type, and venue). Applying the same reading again rewrites
   those ids; that rewrite is not a new activity.
@@ -37,6 +44,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+from giye.extract.crosslang import RULE as CROSS_LANGUAGE_RULE
+from giye.extract.crosslang import Fold, clear_marks, fold_cross_language
 from giye.ledger.ids import (
     activity_id_key,
     cv_activity_key,
@@ -47,6 +56,7 @@ from giye.ledger.ids import (
 )
 from giye.ledger.io import write_csv
 from giye.ledger.ledger import Ledger, repoint_cv_activities
+from giye.normalize.language import language_for
 
 TYPES = {
     "solo_exhibition",
@@ -81,6 +91,7 @@ class ApplyStats:
     skipped_stale: list[str] = field(default_factory=list)
     closed_reviews: int = 0
     id_changes: int = 0
+    folds: list[Fold] = field(default_factory=list)
 
 
 def self_reported(row: dict[str, str]) -> bool:
@@ -127,6 +138,9 @@ def apply_extractions(ledger: Ledger, *, today: date | None = None) -> ApplyStat
     frame_origins = {row["frame_code"] for row in ledger.read("frame_membership") if row.get("frame_code")}
     id_changes = reissue_frame_activity_ids(activities, frame_origins)
     stats.repointed = repoint_cv_activities(activities, registry.values())
+    # X2 is decided again from scratch. Cleared before the files are applied, so
+    # a row an earlier X2 hid can still be superseded by a CV of its own language.
+    clear_marks(activities)
 
     extract_dir = config.work / "cv_extract"
     files = sorted(extract_dir.glob("*.json")) if extract_dir.is_dir() else []
@@ -166,6 +180,11 @@ def apply_extractions(ledger: Ledger, *, today: date | None = None) -> ApplyStat
         seen.add(row["activity_id"])
     if duplicate_ids:
         raise SystemExit(f"duplicate activity_id rows={duplicate_ids}")
+
+    # X2 after every file: a merge has already put both CVs under one owner.
+    keep_korean = bool(config.languages) and config.languages[0] == "ko"
+    stats.folds = fold_cross_language(activities, lang=language_for(config), keep_korean=keep_korean)
+    _write_fold_log(ledger, stats.folds)
 
     stats.id_changes = len(id_changes)
     if id_changes:
@@ -381,5 +400,42 @@ def _write_id_map(ledger: Ledger, id_changes: list[tuple[str, str, str, str]]) -
         rows=[
             {"old_activity_id": old, "new_activity_id": new, "ledger_id": lid, "origin": origin}
             for old, new, lid, origin in id_changes
+        ],
+    )
+
+
+FOLD_FIELDS = [
+    "rule",
+    "ledger_id",
+    "year",
+    "activity_type",
+    "kept_activity_id",
+    "kept_title",
+    "kept_venue",
+    "folded_activity_id",
+    "folded_title",
+    "folded_venue",
+]
+
+
+def _write_fold_log(ledger: Ledger, folds: list[Fold]) -> None:
+    """Every X2 fold standing after this apply, one row each, with the rule id. Rewritten each apply."""
+    write_csv(
+        path=ledger.config.work / "cv_folds.csv",
+        fields=FOLD_FIELDS,
+        rows=[
+            {
+                "rule": CROSS_LANGUAGE_RULE,
+                "ledger_id": fold.ledger_id,
+                "year": fold.year,
+                "activity_type": fold.activity_type,
+                "kept_activity_id": fold.kept["activity_id"],
+                "kept_title": fold.kept.get("title") or "",
+                "kept_venue": fold.kept.get("venue") or "",
+                "folded_activity_id": fold.folded["activity_id"],
+                "folded_title": fold.folded.get("title") or "",
+                "folded_venue": fold.folded.get("venue") or "",
+            }
+            for fold in folds
         ],
     )

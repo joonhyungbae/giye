@@ -93,19 +93,6 @@
         "created_at": "TIMESTAMP"
       },
       {
-        "id": "26b13e3a-7885-54e7-8a44-0e20fb7da97a",
-        "artist_id": "GY-000001",
-        "title": "Signal",
-        "venue": "Seoul Museum of Art",
-        "year": 2022,
-        "activity_type": "group_exhibition",
-        "role": null,
-        "source_url": "https://cv.example.org/haneul-en",
-        "source_type": "SELF_SUBMITTED",
-        "collected_at": "DATE",
-        "created_at": "TIMESTAMP"
-      },
-      {
         "id": "3a12034a-6fc0-5c61-9303-09df666f6356",
         "artist_id": "GY-000001",
         "title": "신호",

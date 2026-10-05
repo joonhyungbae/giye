@@ -121,7 +121,8 @@ def _extract(args: argparse.Namespace) -> int:
         print(
             f"activities_added={applied.added} repointed={applied.repointed} "
             f"superseded_files={applied.superseded_files} "
-            f"self_reported_superseded={applied.superseded_rows}"
+            f"self_reported_superseded={applied.superseded_rows} "
+            f"cross_language_folded={len(applied.folds)}"
         )
     # Every model call failed (an unreachable server, a bad key): the stage did not
     # run, so the command fails. Some failures beside real extractions are reported
