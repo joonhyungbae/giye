@@ -807,7 +807,10 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
     // The frame's bitmap is snapshotted for the compositor after the draw. With the software
     // rasterizer that copy sat on the main thread (~40 ms) and made every assembly frame a long
     // task. Desynchronizing the paint cycle takes that copy off the task; the bitmap is the same.
-    const ctx = canvas.getContext("2d", { desynchronized: true });
+    // Not desynchronized: with a 2x device pixel ratio a desynchronized canvas left headless Chrome
+    // unable to produce a frame (screenshots timed out), a risk for high-DPI screens that is not worth
+    // the main-thread time it saves.
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
     // offscreen copy of the chord/strand/dot layers (see "Layer cache" in draw)
     const layer = document.createElement("canvas");
