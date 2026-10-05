@@ -839,7 +839,7 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
     // bumped whenever the canvas needs a fresh frame although no drawing input changed
     let canvasEpoch = 0;
     // reference state the cached layer was painted in (see "Layer cache" in draw)
-    const lc = { sig: "", rot: 0, cx: 0, cy: 0, at: 0, s: 1, cosT: 1, rc: 1, rs: 0 };
+    const lc = { sig: "", sigBase: "", rot: 0, cx: 0, cy: 0, at: 0, s: 1, cosT: 1, rc: 1, rs: 0 };
     // opening: records that have landed are stamped into the same layer once each (see draw)
     const asm = {
       key: "",
@@ -2140,6 +2140,27 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
             chordA.toFixed(3),
           ].join("|")
         : "";
+      // The cached copy is painted in the "base" phase, which reads neither the emphasis flag
+      // nor the lifted chords. So a copy painted at exactly this view with only those two
+      // entries different is pixel for pixel what a repaint would give: keep it (hovering a
+      // settled disc then costs no repaint).
+      const sigBase = cacheable
+        ? [w, h, dpr, ink, paper, accent, lensRing, st.yr0, st.yr1, st.versions ? 1 : 0, chordA.toFixed(3)].join("|")
+        : "";
+      if (
+        cacheable &&
+        lc.sig !== sig &&
+        lc.sig !== "" &&
+        lc.sigBase === sigBase &&
+        lc.rot === st.rot &&
+        lc.cx === cx &&
+        lc.cy === cy &&
+        lc.s === s &&
+        lc.cosT === cosT &&
+        lc.rc === rc &&
+        lc.rs === rs
+      )
+        lc.sig = sig;
       const dRot = st.rot - lc.rot;
       const dScale = s / lc.s;
       const dTilt = cosT / lc.cosT;
@@ -2577,6 +2598,7 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         lctx.lineJoin = "round";
         paintLinks(lctx, "base");
         lc.sig = sig;
+        lc.sigBase = sigBase;
         lc.rot = st.rot;
         lc.cx = cx;
         lc.cy = cy;
