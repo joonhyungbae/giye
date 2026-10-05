@@ -381,7 +381,9 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
 
   /* Mutable render state — never React state. */
   const st = useRef({
-    rot: initial?.r ?? 0,
+    // Without a shared view in the URL, the disc starts at a random turn so the needle reads a
+    // different person on each visit (author, 2026-10-05); a permalink keeps its own turn.
+    rot: initial?.r ?? Math.random() * Math.PI * 2,
     vel: 0,
     zoom: 1,
     panX: 0,
