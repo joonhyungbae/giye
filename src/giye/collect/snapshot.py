@@ -16,7 +16,9 @@ objects can share it). A file that only shares that prefix is not reused.
 New lines always record ``status``, ``final_url``, ``content_type``, and ``robots``
 (``allowed``, ``unavailable_allowed``, ``disallowed``, ``unreachable_disallowed``,
 or ``not_checked``). ``not_checked`` is only for bytes the caller already holds and
-did not just fetch. A refused hop is not stored: there are no bytes.
+did not just fetch. A refused hop is not stored: there are no bytes. A host
+whose terms forbid collection is the same. ``Fetcher`` raises before
+robots.txt, and this store gets no line.
 
 Manifest version 1 does not keep the original response headers. Version 2 would be
 the first to store them. Until then a WARC export reconstructs a status line and

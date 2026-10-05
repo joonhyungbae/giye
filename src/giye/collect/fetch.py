@@ -4,6 +4,11 @@
 Ported from ``scripts/collectors/robots.py`` (``decide``, ``guarded_request``) and the
 per-host pause collectors used around the evidence keeper. Decisions kept from production:
 
+- A host whose terms forbid collection (``SOCIAL_HOSTS``) is refused before
+  robots.txt is fetched and before the request is sent. Roster collectors, CV
+  pulls, and the evidence keeper all use this fetcher, so the block is not
+  special to one caller. The refusal is logged and is not a manifest line:
+  there are no bytes, the same as a robots refusal.
 - robots.txt is judged by RFC 9309 fetch status, not by ``urllib.robotparser``. HTTP 2xx is
   parsed. HTTP 4xx, including 404 and 403, is ``unavailable_allowed`` (the URL may be fetched).
   HTTP 5xx, a timeout, or a network error is ``unreachable_disallowed`` for this process only:
@@ -27,6 +32,7 @@ not fall back to the Internet Archive for that refusal (see ``giye.collect.evide
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,16 +53,61 @@ from giye.collect.robots import (
 )
 
 __all__ = [
+    "SOCIAL_HOSTS",
     "Fetcher",
     "Page",
     "RobotsDisallowed",
     "RobotsRefused",
+    "TermsRefused",
     "fetcher_from_config",
+    "is_social",
     "require_contact",
 ]
 
+log = logging.getLogger(__name__)
+
 # Used when a session has no max_redirects. 30 is requests' own default.
 _PAGE_REDIRECT_LIMIT = 30
+
+# Production list. Their terms forbid automated collection. The evidence keeper
+# used to apply this on its own; every request now goes through ``Fetcher.get``.
+SOCIAL_HOSTS = (
+    "instagram.com",
+    "facebook.com",
+    "linkedin.com",
+    "x.com",
+    "twitter.com",
+    "threads.net",
+    "tiktok.com",
+)
+
+# Same verdict string the evidence status uses. It is not a robots.txt verdict.
+TERMS_VERDICT = "platform_excluded"
+
+
+class TermsRefused(Exception):
+    """A host whose terms forbid collection. The request was not sent.
+
+    robots.txt is not fetched either. Callers record this the way they record
+    a robots refusal: the log line is the record, and no snapshot bytes are
+    written. Evidence keeps the status ``platform_excluded``.
+    """
+
+    def __init__(self, url: str) -> None:
+        self.url = url
+        self.verdict = TERMS_VERDICT
+        super().__init__(f"not fetched ({TERMS_VERDICT}): {url}")
+        log.warning("refusing fetch (%s): %s", self.verdict, url)
+
+
+def is_social(url: str) -> bool:
+    """True when ``url``'s host is a platform whose terms forbid collection.
+
+    The match is the hostname, so a port or userinfo cannot bypass it. A
+    lookalike such as ``instagram.com.example.org`` does not match.
+    """
+    host = (urlparse(url).hostname or "").lower().rstrip(".")
+    return any(host == suffix or host.endswith("." + suffix) for suffix in SOCIAL_HOSTS)
 
 
 @dataclass
@@ -155,6 +206,9 @@ class Fetcher:
         robots_tls = False
 
         for followed in range(limit + 1):
+            # Terms of service before robots.txt, on every hop including a redirect.
+            if is_social(current):
+                raise TermsRefused(current)
             decision = decide(
                 current,
                 self.user_agent,

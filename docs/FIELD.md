@@ -127,7 +127,7 @@ Optional keys the loader drops and the snapshot still copies when present: `stag
 
 | Key | Type | Required | Rule |
 |---|---|---|---|
-| `decision` | string | yes | One of `included`, `excluded`, `adjacent`, `planned`, `no_public_roster`. The loader checks the word and does not branch on it. |
+| `decision` | string | yes | One of `included`, `excluded`, `adjacent`, `planned`, `no_public_roster`. The loader checks the word and does not re-decide F1–F5. Collection and publication admit only `included` and `adjacent`. |
 | `f1_purpose` | string | yes | The programme's own public text states a purpose in the field. The document is the evidence, not the institution's reputation. |
 | `f2_cohort` | string | yes | Participants are fixed by an open call, jury, selection, award, or residency. A curated or rented exhibition does not qualify. |
 | `f3_territory` | string | yes | The programme is held in the archive's territory. `f3_korea` is accepted as an alias and stored as `f3_territory`. The sentence is not compared to `[archive] territory`. |
@@ -136,9 +136,11 @@ Optional keys the loader drops and the snapshot still copies when present: `stag
 | `note` | string | no | Why the decision is what it is. The demo uses it when a frame is adjacent or excluded. |
 | `judged_at` | string | no | Stored. Not checked. |
 
-`included`, `excluded`, and `adjacent` are the decisions the demo records. `planned` and `no_public_roster` are accepted because the production sampling-frame page publishes them. This package does not add behaviour for those two words.
+`included` and `adjacent` are collected and published. An `adjacent` frame is published as an adjacent strand: its memberships stay on the site, and `eligibility.decision` stays `adjacent`. `excluded`, `planned`, `no_public_roster`, and any other value are not collected. A collector for that frame is skipped with one notice and does not fetch. Publish omits that frame's memberships. `frames.json` and `coverage.json` still list every frame; `frames.json` keeps `eligibility.decision`.
 
-The five criteria were fixed before any candidate programme was examined. Inclusion is the text recorded here, not a decision the software makes after seeing who was selected.
+`planned` and `no_public_roster` are accepted because the production sampling-frame page publishes them. They are not a third admission state.
+
+The five criteria were fixed before any candidate programme was examined. Inclusion is the text recorded here, not a decision the software makes after seeing who was selected. The admission set is which of those recorded words are collected.
 
 ## Writing an extraction prompt
 

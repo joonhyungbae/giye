@@ -13,7 +13,7 @@ from __future__ import annotations
 from giye.config import GiyeError
 from giye.ledger.ledger import Ledger
 from giye.normalize.language import language_for
-from giye.resolve.candidates import explicit_decision
+from giye.resolve.candidates import evidence_rule_id, explicit_decision, set_evidence_snapshot
 from giye.resolve.cv import fold_merged_cvs, move_extract_file
 from giye.resolve.teams import team_person_mismatch
 
@@ -40,10 +40,13 @@ def decide_queue(
 
     ``merge`` joins the two ledger ids the item names. Evidence is required,
     because ``Ledger.merge`` refuses an empty string. ``distinct`` records
-    ``decided=different`` and does not merge, so a later resolve does not
-    reopen the item. ``dismiss`` sets the status to ``dismissed``. That is not
-    ``done``, so the reopen check (which only looks at ``done``) leaves it closed,
-    and the pair is already named so it is not queued again.
+    ``decided=different`` and does not merge. ``dismiss`` records
+    ``decided=dismissed`` and sets the status to ``dismissed``. Either decision
+    stays on that pair: a later resolve does not open a new item for the same
+    unordered pair, including after a merge absorbs one side. The detail also
+    records ``evidence_at_decision=`` for the E-rules that already hold. An
+    E-rule that did not hold then reopens this same item; it does not merge
+    over the decision.
     """
     if decision not in ("merge", "distinct", "dismiss"):
         raise GiyeError("decision must be merge, distinct, or dismiss")
@@ -60,6 +63,9 @@ def decide_queue(
         _mark(item, decision="different", note=note, status="done")
     else:
         _mark(item, decision="", note=note, status="dismissed")
+        if "decided=dismissed" not in (item.get("detail") or ""):
+            item["detail"] = f"{item.get('detail') or ''}; decided=dismissed".strip("; ")
+    _stamp_evidence(ledger, item)
     ledger.write("review_queue", review, task="decide")
     return item
 
@@ -133,6 +139,20 @@ def _decide_merge(ledger: Ledger, item: dict[str, str], *, evidence: str, note: 
     _mark(current, decision="same", note=note, status="done")
     ledger.write("review_queue", review, task="decide")
     item.update(current)
+
+
+def _stamp_evidence(ledger: Ledger, item: dict[str, str]) -> None:
+    """Record the E-rules that already hold, so a later one can reopen this item."""
+    from giye.resolve.service import evidence_for_pair
+
+    others = _other_ids(item)
+    rules: set[str] = set()
+    left = item.get("ledger_id") or ""
+    if left and len(others) == 1:
+        rule = evidence_rule_id(evidence_for_pair(ledger, left, others[0]))
+        if rule:
+            rules.add(rule)
+    item["detail"] = set_evidence_snapshot(item.get("detail") or "", rules)
 
 
 def _mark(item: dict[str, str], *, decision: str, note: str, status: str) -> None:

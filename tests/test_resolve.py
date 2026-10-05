@@ -448,6 +448,92 @@ def test_x1_queues_without_evidence_and_merges_with_e1(tmp_path: Path):
     assert len(shared.read("artists")) == 1
 
 
+def test_distinct_x1_decision_is_not_queued_again(tmp_path: Path):
+    """A distinct decision stays decided across two resolves. No second queue item."""
+    from giye.resolve.decide import decide_queue
+
+    ledger = _ledger(tmp_path)
+    _seed(
+        ledger,
+        [_artist("LED-ko", "GY-000001", "서지우"), _artist("LED-en", "GY-000002", "Jiwoo Seo", "Jiwoo Seo")],
+        [_act("LED-ko", "EXAMPLE-RESIDENCY", 2019), _act("LED-en", "EXAMPLE-WORKSHOP", 2022)],
+        [_mem("LED-ko", "EXAMPLE-RESIDENCY"), _mem("LED-en", "EXAMPLE-WORKSHOP")],
+    )
+    resolve_ledger(ledger)
+    item = ledger.read("review_queue")[0]
+    decide_queue(ledger, item["queue_id"], "distinct")
+    assert "decided=different" in ledger.read("review_queue")[0]["detail"]
+    assert "evidence_at_decision=none" in ledger.read("review_queue")[0]["detail"]
+    first = resolve_ledger(ledger)
+    second = resolve_ledger(ledger)
+    assert not first.queued and not second.queued
+    assert not first.merges and not second.merges
+    rows = ledger.read("review_queue")
+    assert len(rows) == 1
+    assert rows[0]["queue_id"] == item["queue_id"]
+    assert rows[0]["status"] == "done"
+    assert "reopened=" not in rows[0]["detail"]
+
+
+def test_a_decision_covers_the_row_that_absorbed_one_side(tmp_path: Path):
+    """A decision on A–B covers D after D absorbs B. Resolve does not open A–D."""
+    from giye.resolve.decide import decide_queue
+
+    ledger = _ledger(tmp_path)
+    _seed(
+        ledger,
+        [_artist("LED-ko", "GY-000001", "서지우"), _artist("LED-en", "GY-000002", "Jiwoo Seo", "Jiwoo Seo")],
+        [_act("LED-ko", "EXAMPLE-RESIDENCY", 2019), _act("LED-en", "EXAMPLE-WORKSHOP", 2022)],
+        [_mem("LED-ko", "EXAMPLE-RESIDENCY"), _mem("LED-en", "EXAMPLE-WORKSHOP")],
+    )
+    resolve_ledger(ledger)
+    item = ledger.read("review_queue")[0]
+    decide_queue(ledger, item["queue_id"], "distinct")
+    artists = ledger.read("artists")
+    artists.append(_artist("LED-d", "GY-000003", "Ada Example", ""))
+    ledger.write("artists", artists, task="test")
+    ledger.merge("LED-d", "LED-en", evidence="the English row was absorbed", rule="manual")
+    assert "merged LED-en" in next(row["reviewer_note"] for row in ledger.read("artists") if row["ledger_id"] == "LED-d")
+    first = resolve_ledger(ledger)
+    second = resolve_ledger(ledger)
+    assert not first.queued and not second.queued
+    rows = ledger.read("review_queue")
+    assert [row["queue_id"] for row in rows] == [item["queue_id"]]
+    assert rows[0]["status"] == "done"
+
+
+def test_new_evidence_reopens_a_decided_pair_without_a_second_item(tmp_path: Path):
+    from giye.resolve.decide import decide_queue
+
+    ledger = _ledger(tmp_path)
+    _seed(
+        ledger,
+        [_artist("LED-ko", "GY-000001", "서지우"), _artist("LED-en", "GY-000002", "Jiwoo Seo", "Jiwoo Seo")],
+        [_act("LED-ko", "EXAMPLE-RESIDENCY", 2019), _act("LED-en", "EXAMPLE-WORKSHOP", 2022)],
+        [_mem("LED-ko", "EXAMPLE-RESIDENCY"), _mem("LED-en", "EXAMPLE-WORKSHOP")],
+    )
+    resolve_ledger(ledger)
+    item = ledger.read("review_queue")[0]
+    decide_queue(ledger, item["queue_id"], "distinct")
+    ledger.write(
+        "links",
+        [_link("LED-ko", "https://jiwoo.example.org"), _link("LED-en", "https://jiwoo.example.org")],
+        task="test",
+    )
+    result = resolve_ledger(ledger)
+    assert not result.merges
+    rows = ledger.read("review_queue")
+    assert len(rows) == 1
+    assert rows[0]["queue_id"] == item["queue_id"]
+    assert rows[0]["status"] == "open"
+    assert "reopened=new_evidence (E1)" in rows[0]["detail"]
+    assert "decided=different" in rows[0]["detail"]
+    again = resolve_ledger(ledger)
+    assert not again.merges
+    assert len(ledger.read("review_queue")) == 1
+    assert ledger.read("review_queue")[0]["detail"].count("reopened=new_evidence") == 1
+
+
 def test_x1_same_frame_is_not_queued(tmp_path: Path):
     ledger = _ledger(tmp_path)
     _seed(
@@ -650,18 +736,26 @@ def test_demo_resolve_fires_each_rule(tmp_path: Path, monkeypatch: pytest.Monkey
     assert "rule=E4" in notes
     assert len(rows_named("최민수")) == 2
     assert len(rows_named("배수아")) == 2
-    # The forum row attaches to the workshop spelling (A2) before resolve.
-    # That row then has the extra roster activity, so X1+E2 keeps it.
-    # The demo path keeps 김하늘 because the Korean CV is applied first.
-    assert len(rows_named("김하늘")) == 0
-    haneul = rows_named("Haneul Kim")[0]
-    assert haneul["name_en"] == "Haneul Kim"
-    assert "rule=X1+E2" in (haneul.get("reviewer_note") or "")
-    assert not any(row["name_ko"] == "Kim Haneul" for row in artists)
+    # Haneul Kim on the workshop is a different spelling of 김하늘. The English
+    # CV names the residency, so X1+E2 keeps the residency row. Kim Haneul on
+    # the forum is a Latin personal name in another programme: A2 does not join
+    # it, and the pair stays on the review queue.
+    kept = rows_named("김하늘")
+    assert len(kept) == 1
+    assert kept[0]["name_en"] == "Haneul Kim"
+    assert "rule=X1+E2" in (kept[0].get("reviewer_note") or "")
+    assert len(rows_named("Kim Haneul")) == 1
     forum = [
         row for row in ledger.read("frame_membership") if row["frame_code"] == "EXAMPLE-FORUM-2023"
     ]
-    assert forum and forum[0]["attach_rule"] == "A2"
+    assert forum and forum[0]["attach_rule"] == "first"
+    latin = [
+        row
+        for row in ledger.read("review_queue")
+        if row["status"] == "open" and "latin name only" in (row.get("detail") or "")
+    ]
+    assert len(latin) == 1
+    assert kept[0]["ledger_id"] in latin[0]["detail"]
     assert "X1+E2" in out and "EXAMPLE-RESIDENCY-2019" in out
     assert any(row["name_ko"] == "노을 스튜디오" for row in artists)
     assert any(row["name_ko"] == "김바다" for row in artists)

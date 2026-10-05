@@ -10,6 +10,9 @@ Order, matching production ``resolve_same_person.py``:
    team/person mismatch. Both rows must be on a roster.
 4. X1 candidates. E1–E4 still have to hold. The evidence is prefixed ``X1+``.
    No evidence queues the pair. A shared frame, a team row, or a pin drops it.
+   A pair a person already decided (distinct or dismiss) is not queued again.
+   The ids follow merges. An E-rule that did not fire at decision time reopens
+   that item and is recorded; it does not merge over the decision.
 5. Reopen review items a merge closed without joining that pair.
 6. Queue same-script pairs no rule decided.
 
@@ -28,12 +31,15 @@ from giye.config import Config
 from giye.ledger.ledger import Ledger
 from giye.ledger.schemas import split_pipe
 from giye.resolve.candidates import (
+    decision_blocks,
     identity_keys,
     new_queue_item,
     pinned_apart,
+    point_review_at_survivors,
+    queue_pair_keys,
     reopen_wrongly_closed,
-    review_id_set,
     same_script_pairs,
+    survivor_pair,
     undecided_same_script,
     x1_candidates,
     x1_detail,
@@ -83,7 +89,7 @@ def resolve_ledger(ledger: Ledger, *, dry_run: bool = False) -> ResolveResult:
     if not dry_run:
         state.reload()
     review = ledger.read("review_queue") if ledger.path("review_queue").exists() else []
-    result.reopened = reopen_wrongly_closed(review, state.artists)
+    result.reopened.extend(reopen_wrongly_closed(review, state.artists))
     queued = undecided_same_script(
         state.artists,
         review,
@@ -162,6 +168,39 @@ class _State:
             self.cvs[keep] = dropped
         else:
             self.cvs[keep] = [*self.cvs[keep], *dropped]
+
+
+def evidence_for_pair(ledger: Ledger, left: str, right: str) -> str | None:
+    """E1, or the first of E2–E4, for two living rows. Empty when none holds.
+
+    Used when a person decides a queue item, so the decision can record which
+    evidence rules already fired. A later rule is what may reopen the item.
+    """
+    return _evidence(_State(ledger), left, right)
+
+
+def _review(state: _State) -> list[dict]:
+    path = state.ledger.path("review_queue")
+    return state.ledger.read("review_queue") if path.exists() else []
+
+
+def _blocks_merge(
+    state: _State,
+    result: ResolveResult,
+    left: str,
+    right: str,
+    evidence: str | None,
+    *,
+    dry_run: bool,
+) -> bool:
+    """A human split covers this pair. New evidence reopens the same item."""
+    review = _review(state)
+    blocked, reopened = decision_blocks(review, state.artists, left, right, evidence)
+    if reopened:
+        result.reopened.extend(reopened)
+        if not dry_run:
+            state.ledger.write("review_queue", review, task="resolve")
+    return blocked
 
 
 def _evidence(state: _State, left: str, right: str) -> str | None:
@@ -244,6 +283,15 @@ def _merge_by_website(state: _State, result: ResolveResult, *, dry_run: bool) ->
                             result.blocked_team.append(tuple(sorted((lid, group[0]))))
                         continue
                     if _names(person) & set().union(*(_names(state.by_id[other]) for other in group)):
+                        if _blocks_merge(
+                            state,
+                            result,
+                            lid,
+                            group[0],
+                            f"E1 same website {key}",
+                            dry_run=dry_run,
+                        ):
+                            continue
                         group.append(lid)
                         placed = True
                         break
@@ -288,6 +336,8 @@ def _merge_same_script(state: _State, result: ResolveResult, *, dry_run: bool) -
             evidence = _evidence(state, left, right)
             if not evidence:
                 continue
+            if _blocks_merge(state, result, left, right, evidence, dry_run=dry_run):
+                continue
             keep, drop = _keep_drop(state, left, right)
             _apply(state, result, keep, [drop], evidence, dry_run=dry_run)
             progressed = True
@@ -301,9 +351,7 @@ def _merge_or_queue_x1(state: _State, result: ResolveResult, *, dry_run: bool) -
     """X1 waives only the same-name check. E1–E4 still decide. Otherwise queue."""
     if not dry_run:
         state.reload()
-    review = state.ledger.read("review_queue") if state.ledger.path("review_queue").exists() else []
-    open_sets = [review_id_set(item) for item in review if item.get("status") == "open"]
-    fresh: list[dict] = []
+    deferred: list[tuple[str, str]] = []
     for ko_id, en_id in x1_candidates(state.artists, state.language):
         if ko_id not in state.by_id or en_id not in state.by_id:
             continue
@@ -317,21 +365,40 @@ def _merge_or_queue_x1(state: _State, result: ResolveResult, *, dry_run: bool) -
             continue
         evidence = _evidence(state, ko_id, en_id)
         if evidence:
+            if _blocks_merge(state, result, ko_id, en_id, evidence, dry_run=dry_run):
+                continue
             evidence = f"X1+{evidence}"
             keep, drop = _keep_drop(state, ko_id, en_id)
             _apply(state, result, keep, [drop], evidence, dry_run=dry_run)
             continue
-        if any({ko_id, en_id} <= ids for ids in open_sets):
+        deferred.append((ko_id, en_id))
+    # Merges above can absorb one side of a pair that attachment already queued.
+    # Point that item at the survivor before deciding whether a second item is new.
+    if not dry_run:
+        state.reload()
+    review = _review(state)
+    rewritten = point_review_at_survivors(review, state.artists)
+    known = queue_pair_keys(review, state.artists)
+    fresh: list[dict] = []
+    for ko_id, en_id in deferred:
+        covered = survivor_pair(ko_id, en_id, state.artists)
+        if covered[0] == covered[1] or covered in known:
             continue
-        if any({ko_id, en_id} <= review_id_set(item) for item in fresh):
+        if covered[0] not in state.by_id or covered[1] not in state.by_id:
             continue
-        item = new_queue_item(ko_id, x1_detail(state.by_id[ko_id], state.by_id[en_id]))
+        left, right = (ko_id, en_id) if ko_id in state.by_id and en_id in state.by_id else covered
+        rows = (state.by_id[left], state.by_id[right])
+        if any(team_like(row, words=state.team_words, language=state.language) for row in rows):
+            continue
+        if pinned_apart(state.identities.get(left, []), state.identities.get(right, [])):
+            continue
+        if state.frames.get(left, set()) & state.frames.get(right, set()):
+            continue
+        item = new_queue_item(left, x1_detail(state.by_id[left], state.by_id[right]))
         fresh.append(item)
-        open_sets.append({ko_id, en_id})
+        known.add(covered)
     result.queued.extend(fresh)
-    if fresh and not dry_run:
-        review = state.ledger.read("review_queue") if state.ledger.path("review_queue").exists() else []
-        # A merge above may have closed items. Append only the new X1 rows.
+    if (fresh or rewritten) and not dry_run:
         review.extend(fresh)
         state.ledger.write("review_queue", review, task="resolve")
 

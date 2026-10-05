@@ -347,6 +347,10 @@ class Ledger:
                 links_added = True
             if decision.ambiguous and not attached:
                 detail = f"{raw_ko or raw_en or stored_ko} ({frame}) shares a name with {', '.join(decision.ambiguous)}"
+                # ``miss`` is the attachment rule's reason (Latin personal names).
+                # Empty keeps the Korean homonym sentence unchanged.
+                if decision.miss:
+                    detail = f"{detail} ({decision.miss})"
                 key = (lid, "possible_same_person", detail)
                 if key not in open_review:
                     review.append(

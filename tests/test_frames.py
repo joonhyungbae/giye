@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from giye.collect.frames import coverage, load_frames, validate_transcribed_membership
+from giye.collect.frames import coverage, is_admitted, load_frames, validate_transcribed_membership
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 DEMO = Path(__file__).resolve().parents[1] / "examples" / "demo" / "frames.yml"
@@ -83,6 +83,14 @@ def test_empty_frame_url_is_rejected_unless_the_collector_is_transcribed(tmp_pat
     path.write_text(text, encoding="utf-8")
     with pytest.raises(ValueError, match="source_url must be an http"):
         load_frames(path)
+
+
+def test_only_included_and_adjacent_are_admitted():
+    """Any other recorded word, including one the loader would reject, is not admitted."""
+    assert is_admitted("included")
+    assert is_admitted("adjacent")
+    for decision in ("excluded", "planned", "no_public_roster", "maybe", ""):
+        assert not is_admitted(decision)
 
 
 def test_unknown_decision_is_rejected(tmp_path: Path):

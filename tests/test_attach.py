@@ -139,6 +139,80 @@ def test_a6_a_unique_website_joins_a_different_spelling(tmp_path: Path) -> None:
     assert _rules(ledger)[1][1] == "A6"
 
 
+def test_latin_personal_names_in_different_programmes_stay_apart(tmp_path: Path) -> None:
+    """Two Latin homonyms are two people and one queue item. The name is not evidence."""
+    from giye.normalize.language import default_language
+
+    assert default_language().personal_name("Bert Sample")
+    assert not default_language().personal_name("Bert")
+    ledger = _ledger(tmp_path)
+    person = _row("", "Bert Sample")
+    ledger.apply_roster("NORTH-2019", [person], task="collect")
+    ledger.apply_roster("SOUTH-2021", [person], task="collect")
+    assert len(ledger.read("artists")) == 2
+    assert [rule for _code, rule in _rules(ledger)] == ["first", "first"]
+    queued = ledger.read("review_queue")
+    assert len(queued) == 1
+    assert queued[0]["reason"] == "possible_same_person"
+    assert queued[0]["status"] == "open"
+    assert "latin name only" in queued[0]["detail"]
+
+
+def test_latin_personal_names_in_one_series_join_by_a1(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    person = _row("", "Bert Sample")
+    ledger.apply_roster("NORTH-2019", [person], task="collect")
+    ledger.apply_roster("NORTH-2021", [person], task="collect")
+    assert len(ledger.read("artists")) == 1
+    assert _rules(ledger) == [("NORTH-2019", "first"), ("NORTH-2021", "A1")]
+    assert ledger.read("review_queue") == []
+
+
+def test_a_latin_group_name_still_joins_by_a3(tmp_path: Path) -> None:
+    """A team word in the field file keeps A3 even when the token shape looks personal."""
+    from giye.normalize.language import default_language
+
+    assert default_language().personal_name("Sample Studio")
+    ledger = _ledger(tmp_path)
+    ledger.apply_roster("NORTH-2019", [_row("Sample Studio")], task="collect")
+    ledger.apply_roster("SOUTH-2021", [_row("Sample Studio")], task="collect")
+    assert len(ledger.read("artists")) == 1
+    assert _rules(ledger)[1][1] == "A3"
+    assert ledger.read("review_queue") == []
+
+
+def test_latin_personal_names_with_the_same_website_join_by_a6(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    person = _row("", "Bert Sample", website="https://bert.example.org")
+    ledger.apply_roster("NORTH-2019", [person], task="collect")
+    ledger.apply_roster("SOUTH-2021", [person], task="collect")
+    assert len(ledger.read("artists")) == 1
+    assert _rules(ledger)[1][1] == "A6"
+
+
+def test_latin_block_follows_the_language_module(tmp_path: Path) -> None:
+    """A module whose personal_name rejects the string still joins it. The block is not hard-coded."""
+    path = tmp_path / "giye.toml"
+    path.write_text(
+        f"""
+[archive]
+name = "Toy attachment"
+id_prefix = "GY"
+[paths]
+data = "{(tmp_path / "data").as_posix()}"
+frames = "{(ROOT / "examples" / "demo" / "frames.yml").as_posix()}"
+[normalize]
+language_module = "tests.toy_language:Toy"
+""",
+        encoding="utf-8",
+    )
+    ledger = Ledger.open(load(path))
+    person = _row("", "Bert Sample")
+    ledger.apply_roster("NORTH-2019", [person], task="collect")
+    ledger.apply_roster("SOUTH-2021", [person], task="collect")
+    assert len(ledger.read("artists")) == 1
+
+
 def test_same_personal_name_on_another_programme_does_not_attach(tmp_path: Path) -> None:
     ledger = _ledger(tmp_path)
     ledger.apply_roster("NORTH-2019", [_row("김하늘")], task="collect")

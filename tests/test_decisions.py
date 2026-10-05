@@ -70,7 +70,8 @@ def test_queue_merge_hide_and_evidence(tmp_path: Path, monkeypatch: pytest.Monke
 
     assert main(["queue", "list", "--config", config, "--status", "open"]) == 0
     listed = [line for line in capsys.readouterr().out.splitlines() if "\topen\t" in line]
-    assert len(listed) == 3
+    assert len(listed) == 4
+    assert any("latin name only" in line for line in listed)
 
     live = {row["ledger_id"] for row in artists}
     open_items = [row for row in _queue(dest) if row["status"] == "open" and row["reason"] == "possible_same_person"]
@@ -151,10 +152,17 @@ def test_queue_merge_hide_and_evidence(tmp_path: Path, monkeypatch: pytest.Monke
     assert any((dest / "data" / "work" / "backups").glob("artists-*-before-merge.csv"))
     assert main(["resolve", "--config", config]) == 0
     capsys.readouterr()
-    after = {row["queue_id"]: row for row in _queue(dest)}
+    assert main(["resolve", "--config", config]) == 0
+    capsys.readouterr()
+    after_rows = _queue(dest)
+    after = {row["queue_id"]: row for row in after_rows}
     assert after[distinct["queue_id"]]["status"] == "done"
     assert "decided=different" in after[distinct["queue_id"]]["detail"]
     assert after[dismiss["queue_id"]]["status"] == "dismissed"
+    assert "decided=dismissed" in after[dismiss["queue_id"]]["detail"]
+    # A decided X1 pair is not opened again. Two resolves add no second item.
+    assert [row["queue_id"] for row in after_rows].count(distinct["queue_id"]) == 1
+    assert not any(row["status"] == "open" and "서지우" in (row.get("detail") or "") for row in after_rows)
 
     hidden = next(row for row in _artists(dest) if row.get("status") != "MERGED" and row.get("name_ko"))
     gy = hidden["gy_id"]

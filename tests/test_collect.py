@@ -14,6 +14,7 @@ from giye.cli import main
 from giye.collect.base import load_collectors, run_configured
 from giye.collect.fetch import Fetcher, RobotsDisallowed
 from giye.config import load
+from giye.ledger.ledger import Ledger
 from tests.conftest import serve
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -137,3 +138,190 @@ def test_demo_fixtures_are_served_locally_and_still_obey_robots():
     paths = [hit[0] for hit in server.hits]
     assert "/private/secret.html" not in paths
     assert paths.count("/robots.txt") == 1
+
+
+def _frame_entry(code: str, decision: str) -> str:
+    return f"""
+  - code: {code}
+    name_en: {code} programme
+    source_url: https://example.org/{code.lower()}
+    roster_count: 1
+    eligibility:
+      decision: {decision}
+      f1_purpose: States the field.
+      f2_cohort: A jury selects a cohort.
+      f3_territory: Held in the configured territory.
+      f4_roster: A public page lists the participants.
+      f5_period: Two editions.
+"""
+
+
+def _admission_config(tmp_path: Path, decisions: dict[str, str]) -> Path:
+    frames = tmp_path / "frames.yml"
+    body = "version: 1\nframes:" + "".join(_frame_entry(code, decision) for code, decision in decisions.items())
+    frames.write_text(body, encoding="utf-8")
+    classes = []
+    for code in decisions:
+        classes.append(
+            f"""
+class Collect{code}(RosterCollector):
+    frame = {code!r}
+
+    def editions(self):
+        raise AssertionError({code!r} + " was collected")
+"""
+        )
+    module = tmp_path / "collectors.py"
+    module.write_text(
+        "from giye.collect.base import Edition, Person, RosterCollector\n" + "\n".join(classes),
+        encoding="utf-8",
+    )
+    path = tmp_path / "giye.toml"
+    path.write_text(
+        f"""
+[archive]
+name = "Synthetic admission field"
+
+[paths]
+data = "{(tmp_path / "data").as_posix()}"
+frames = "{frames.as_posix()}"
+
+[collect]
+user_agent = "{UA}"
+min_delay_s = 0.0
+collector_modules = ["{module.as_posix()}"]
+""",
+        encoding="utf-8",
+    )
+    return path
+
+
+def _yielding_collector(tmp_path: Path, code: str, decision: str, name: str) -> Path:
+    """One collector that yields a row without fetching, under ``decision``."""
+    frames = tmp_path / "frames.yml"
+    frames.write_text("version: 1\nframes:" + _frame_entry(code, decision), encoding="utf-8")
+    module = tmp_path / "collectors.py"
+    module.write_text(
+        f"""
+from giye.collect.base import Edition, Person, RosterCollector
+
+class Collect{code}(RosterCollector):
+    frame = {code!r}
+
+    def editions(self):
+        yield Edition(year=2019, people=[Person(name={name!r})], source_url="https://example.org/{code.lower()}")
+""",
+        encoding="utf-8",
+    )
+    path = tmp_path / "giye.toml"
+    path.write_text(
+        f"""
+[archive]
+name = "Synthetic admission field"
+
+[paths]
+data = "{(tmp_path / "data").as_posix()}"
+frames = "{frames.as_posix()}"
+
+[collect]
+user_agent = "{UA}"
+min_delay_s = 0.0
+collector_modules = ["{module.as_posix()}"]
+""",
+        encoding="utf-8",
+    )
+    return path
+
+
+@pytest.mark.parametrize("decision", ["excluded", "planned", "no_public_roster"])
+def test_non_admitted_frame_is_skipped_with_one_notice(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], decision: str
+):
+    def boom(self, url, *args, **kwargs):
+        raise AssertionError(f"network used: {url}")
+
+    monkeypatch.setattr(requests.Session, "get", boom)
+    config = load(_admission_config(tmp_path, {"DROPPED": decision}))
+    assert run_configured(config, collected_at="2026-10-04", run_id="2026-10-04T00:00:00Z") == []
+    notice = capsys.readouterr().err.splitlines()
+    assert notice == [f"skip DROPPED: eligibility.decision is {decision}; not collected"]
+    assert not (tmp_path / "data" / "ledger").exists()
+    assert not (tmp_path / "data" / "work" / "rosters" / "DROPPED.csv").exists()
+    assert list((tmp_path / "data").rglob("manifest.jsonl")) == []
+
+
+def test_included_and_adjacent_are_collected_and_the_other_frame_is_not(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    def boom(self, url, *args, **kwargs):
+        raise AssertionError(f"network used: {url}")
+
+    monkeypatch.setattr(requests.Session, "get", boom)
+    frames = tmp_path / "frames.yml"
+    frames.write_text(
+        "version: 1\nframes:"
+        + _frame_entry("KEPT", "included")
+        + _frame_entry("NEAR", "adjacent")
+        + _frame_entry("DROPPED", "excluded"),
+        encoding="utf-8",
+    )
+    module = tmp_path / "collectors.py"
+    module.write_text(
+        """
+from giye.collect.base import Edition, Person, RosterCollector
+
+class CollectKept(RosterCollector):
+    frame = "KEPT"
+
+    def editions(self):
+        yield Edition(year=2019, people=[Person(name="김하늘")], source_url="https://example.org/kept")
+
+class CollectNear(RosterCollector):
+    frame = "NEAR"
+
+    def editions(self):
+        yield Edition(year=2021, people=[Person(name="한별")], source_url="https://example.org/near")
+
+class CollectDropped(RosterCollector):
+    frame = "DROPPED"
+
+    def editions(self):
+        raise AssertionError("excluded frame was collected")
+""",
+        encoding="utf-8",
+    )
+    path = tmp_path / "giye.toml"
+    path.write_text(
+        f"""
+[archive]
+name = "Synthetic admission field"
+
+[paths]
+data = "{(tmp_path / "data").as_posix()}"
+frames = "{frames.as_posix()}"
+
+[collect]
+user_agent = "{UA}"
+min_delay_s = 0.0
+collector_modules = ["{module.as_posix()}"]
+""",
+        encoding="utf-8",
+    )
+    results = run_configured(load(path), collected_at="2026-10-04", run_id="2026-10-04T00:00:00Z")
+    assert [frame for frame, _rows, _path in results] == ["KEPT", "NEAR"]
+    by_frame = {frame: rows for frame, rows, _path in results}
+    assert [row["name"] for row in by_frame["KEPT"]] == ["김하늘"]
+    assert [row["name"] for row in by_frame["NEAR"]] == ["한별"]
+    assert capsys.readouterr().err.splitlines() == ["skip DROPPED: eligibility.decision is excluded; not collected"]
+    membership = Ledger.open(load(path)).read("frame_membership")
+    assert {row["frame_code"] for row in membership} == {"KEPT-2019", "NEAR-2021"}
+    assert not (tmp_path / "data" / "work" / "rosters" / "DROPPED.csv").exists()
+
+
+def test_direct_run_skips_a_frame_that_is_not_admitted(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    """``run`` is the check a caller that does not use ``run_configured`` still hits."""
+    config = load(_yielding_collector(tmp_path, "DROPPED", "excluded", "김하늘"))
+    classes = load_collectors(config)
+    assert classes[0](config).run(collected_at="2026-10-04") == []
+    assert capsys.readouterr().err.splitlines() == ["skip DROPPED: eligibility.decision is excluded; not collected"]
+    assert not (tmp_path / "data" / "ledger").exists()

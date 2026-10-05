@@ -249,12 +249,12 @@ def test_demo_ledger_rim_matches_the_published_people(tmp_path: Path, monkeypatc
     assert sum(row["n"] for row in doc["families"]) == len(doc["artists"])
     # Demo memberships are <FRAME>-<YYYY>, so R1 dates everyone. 2019 is GEN-2015;
     # 2020–2023 is GEN-2020. Nobody is left without a year on the code.
-    # A1 and A2 each remove one person from GEN-2020 (same-programme spellings,
-    # and the forum row whose English tokens agree).
-    assert [(row["code"], row["n"]) for row in doc["families"]] == [("GEN-2015", 12), ("GEN-2020", 8)]
+    # A1 removes one person from GEN-2020 (same-programme spellings). The forum's
+    # Kim Haneul stays its own record (Latin name only), entering in 2023.
+    assert [(row["code"], row["n"]) for row in doc["families"]] == [("GEN-2015", 12), ("GEN-2020", 9)]
     assert all(row["linked"] is True for row in doc["families"])
     # A2 attaches the 2023 forum row, so no published person has 2023 as an entry year.
-    assert {row["year"] for row in doc["artists"]} == {2019, 2020, 2021, 2022}
+    assert {row["year"] for row in doc["artists"]} == {2019, 2020, 2021, 2022, 2023}
     assert doc["boundaries"][-1]["seam"] is True
     assert doc["boundaries"][-1]["a"] == "GEN-2020" and doc["boundaries"][-1]["b"] == "GEN-2015"
     assert {row["code"] for row in doc["programmes"]} >= {"EXAMPLE-FORUM", "EXAMPLE-RESIDENCY", "EXAMPLE-WORKSHOP"}

@@ -4,7 +4,9 @@
 Ported from ``scripts/archive_evidence.py``. For each cited URL:
 
 1. Social platforms whose terms forbid collection (Instagram, Facebook, LinkedIn,
-   X, Threads, TikTok) are not requested. Status ``platform_excluded``.
+   X, Threads, TikTok) are refused by ``Fetcher`` before robots.txt. Status
+   ``platform_excluded``. No bytes are stored. The log line is the record, the
+   same as a robots refusal, so the snapshot manifest gains no line.
 2. Otherwise the URL is fetched through ``Fetcher`` (robots.txt, delay, TLS retry).
    A successful body is stored with ``via=direct``.
 3. When the page is gone — HTTP 404 or 410, or the connection fails — an existing
@@ -28,25 +30,14 @@ import json
 import re
 from collections.abc import Iterable, Mapping
 from pathlib import Path
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlencode
 
 import requests
 import yaml
 
-from giye.collect.fetch import Fetcher, Page, fetcher_from_config
+from giye.collect.fetch import Fetcher, Page, TermsRefused, fetcher_from_config
 from giye.collect.robots import VERDICT_UNREACHABLE, RobotsRefused
 from giye.collect.snapshot import MAX_BYTES, SnapshotStore, servable_rows, utc_now
-
-# Production list. Their terms forbid automated collection.
-SOCIAL_HOSTS = (
-    "instagram.com",
-    "facebook.com",
-    "linkedin.com",
-    "x.com",
-    "twitter.com",
-    "threads.net",
-    "tiktok.com",
-)
 
 # Availability API, then the raw capture. There is no Save Page Now URL in this module.
 WAYBACK_AVAILABLE = "https://archive.org/wayback/available"
@@ -66,11 +57,6 @@ SETTLED = frozenset(
 _TIMESTAMP = re.compile(r"\d{1,20}")
 
 
-def is_social(url: str) -> bool:
-    host = urlparse(url).netloc.lower()
-    return any(host == suffix or host.endswith("." + suffix) for suffix in SOCIAL_HOSTS)
-
-
 def settle_url(
     url: str,
     *,
@@ -82,17 +68,21 @@ def settle_url(
 ) -> dict:
     """Fetch ``url`` or an existing Archive capture. Never requests a new capture.
 
-    A host whose robots.txt disallows the URL is link-only: the availability
-    API may run, and the capture URL and timestamp are recorded. The ``id_``
-    raw URL is not requested and no body is stored.
+    A host whose terms forbid collection is ``platform_excluded``: the fetcher
+    raises before robots.txt, and nothing is stored. A host whose robots.txt
+    disallows the URL is link-only: the availability API may run, and the
+    capture URL and timestamp are recorded. The ``id_`` raw URL is not
+    requested and no body is stored.
     """
     now = utc_now()
-    if is_social(url):
-        return {"status": "platform_excluded", "at": now}
     reason = ""
     page: Page | None
     try:
         page = fetcher.get(url)
+    except TermsRefused as exc:
+        # Same shape as a robots refusal: a status, a reason, the verdict.
+        # No archive lookup and no stored bytes.
+        return {"status": "platform_excluded", "at": now, "reason": "terms", "robots": exc.verdict}
     except RobotsRefused as exc:
         # A parsed disallow records the capture link and does not download it.
         # An unreachable robots.txt is not sent to the Archive.

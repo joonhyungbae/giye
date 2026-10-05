@@ -443,10 +443,11 @@ def test_demo_collectors_fill_the_ledger_and_keep_ids(tmp_path: Path, monkeypatc
     run_configured(config, collected_at="2026-10-04", run_id="2026-10-04T00:00:00Z")
     ledger = Ledger.open(config)
     artists = ledger.read("artists")
-    # A1 joins the two Lee/Haru spellings in one programme; A2 joins the forum
-    # row whose English tokens agree. 23 roster rows, 21 people.
-    assert len(artists) == 21
-    assert [row["gy_id"] for row in artists] == [f"GY-{number:06d}" for number in range(1, 22)]
+    # A1 joins the two Lee/Haru spellings in one programme. The forum's Kim Haneul is a
+    # Latin-only personal name in another programme, so it is not joined on name alone
+    # and opens its own record. 23 roster rows, 22 records before resolve.
+    assert len(artists) == 22
+    assert [row["gy_id"] for row in artists] == [f"GY-{number:06d}" for number in range(1, 23)]
     assert {row["source_url"] for row in artists} <= {
         "https://example.org/residency/alumni",
         "https://example.org/workshop/fellows",
@@ -458,7 +459,7 @@ def test_demo_collectors_fill_the_ledger_and_keep_ids(tmp_path: Path, monkeypatc
     assert ("Haneul Kim", "Haneul Kim") in names
     assert ("Lee Haru", "Lee Haru") in names
     assert ("이하루", "") in names
-    assert ("Kim Haneul", "Kim Haneul") not in names
+    assert ("Kim Haneul", "Kim Haneul") in names
     membership = ledger.read("frame_membership")
     assert len(membership) == 23
     edition_codes = {

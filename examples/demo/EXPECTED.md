@@ -10,12 +10,12 @@ The summary (paths omitted; they depend on `--output`) is:
 
 ```
 run date: 2026-01-15 (fixed; this summary does not follow the system date)
-people: 20
+people: 21
 roster rows: 23
 activities: 38
 merges: E1 1, E2 1, E3 1, E4 1, X1+E2 1
 blocked: T1 1
-queue items: 3
+queue items: 4
 institution merges: V7 2, V8 1, V9 1
 co-presence ties, CV listing: base 1, V7 1, V7+V8 1, V7+V8+V9 2
 co-presence ties, roster independent: base 0, V7 0, V7+V8 1, V7+V8+V9 2
@@ -28,7 +28,7 @@ Attachment runs at collection. A later merge of two existing records is a separa
 | Rule | What the fixtures do |
 |---|---|
 | A1 | Lee Haru (workshop 2021) and Haru Lee (workshop 2022) share the workshop family. The 2022 membership records `attach_rule` `A1`. The stored name stays Lee Haru. That person and 이하루 (workshop 2021) then share an edition code, so X1 does not queue them. |
-| A2 | Kim Haneul on the forum agrees in English tokens with Haneul Kim on the workshop. The forum membership records `A2`. There is no separate Kim Haneul person. |
+| A2 (not applied) | Kim Haneul on the forum and Haneul Kim on the workshop are Latin-only personal names in different programmes. A2 does not join them on name alone: the forum row opens its own record (GY-000022) and the pair waits in the review queue with reason `latin name only`. |
 | A5 | The two 정다운 rows carry different identity keys (`demo:dawoon-a`, `demo:dawoon-b`). A miss does not fall through, so A6 does not attach them on the shared site. |
 | E1 | Those two rows still share `dawoon.example.org`. E1 merges them, and the attachment queue item is closed. |
 | E2 | 표은솔's CV names Example Workshop in 2021, the other row's roster year. The rows are different programmes, so A1 does not attach them. |

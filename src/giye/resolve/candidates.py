@@ -14,6 +14,13 @@ the pair. Sharing a frame code drops the pair.
 Same-script exact names (spaces removed, case folded) that no rule accepts, that
 are not pinned apart, that are not a team paired with a person, and that do not
 share a frame, are queued the same way. Similarity is not a merge.
+
+A person's decision on a ``possible_same_person`` pair stays decided. Distinct
+(``decided=different``) and dismiss (``decided=dismissed`` or status
+``dismissed``) cover the unordered pair after merges: a row that absorbed
+either id is the same pair. A later run does not open a second item. An E-rule
+that did not fire at decision time reopens that same item and records the rule.
+It does not merge over the decision.
 """
 
 from __future__ import annotations
@@ -36,6 +43,9 @@ _LATIN = re.compile(r"[A-Za-z]")
 _LEDGER_ID = re.compile(r"(?:CAND|LED)-[0-9A-Za-z]+")
 _MERGED_ID = re.compile(r"^merged\s+((?:LED|CAND)-[0-9A-Za-z]+)$")
 _DECISION = re.compile(r"decided=(same|different)\b")
+_SPLIT = re.compile(r"decided=(different|dismissed)\b")
+_EVIDENCE_AT = re.compile(r"evidence_at_decision=([A-Za-z0-9+|]+)")
+_RULE_ID = re.compile(r"E[1-4]")
 _REOPEN = "reopened=wrong_close"
 _REOPEN_WHY = {
     "closed_by_another_merge": (
@@ -132,7 +142,9 @@ def x1_candidates(artists: list[dict], language: LanguageModule | None = None) -
         ko = row.get("name_ko") or ""
         en = row.get("name_en") or ""
         lid = row["ledger_id"]
-        if person_like(ko, language):
+        # personal_name is also true for a Latin personal name. That row is the
+        # English side of X1, not the Hangul side. Hangul is what makes a row Korean.
+        if _HANGUL.search(ko) and person_like(ko, language):
             ko_rows.append(row)
         elif not _HANGUL.search(ko):
             keys = latin_name_keys(en)
@@ -167,16 +179,171 @@ def review_id_set(item: dict) -> set[str]:
     return {item.get("ledger_id") or "", *_LEDGER_ID.findall(item.get("detail") or "")} - {""}
 
 
-def queue_pair_keys(items: list[dict]) -> set[tuple[str, str]]:
+def absorption_map(artists: list[dict]) -> dict[str, str]:
+    """Dropped ledger id → the living row that absorbed it, chains followed.
+
+    The kept row's note records ``merged <ledger id>`` for each row it absorbed
+    directly. ``_move_review`` already rewrites a queue item's own ``ledger_id``
+    along a chain; this map is what follows an id that appears only in the detail.
+    """
+    parent: dict[str, str] = {}
+    for survivor, dropped in merged_drop_ids(artists).items():
+        for item in dropped:
+            parent[item] = survivor
+
+    def canon(item: str) -> str:
+        seen: set[str] = set()
+        while item in parent and item not in seen:
+            seen.add(item)
+            item = parent[item]
+        return item
+
+    return {key: canon(key) for key in parent}
+
+
+def _canon(item: str, absorbed: dict[str, str]) -> str:
+    return absorbed.get(item, item) if item else ""
+
+
+def point_review_at_survivors(review: list[dict], artists: list[dict]) -> bool:
+    """Replace a dropped ledger id in a queue detail with the row that absorbed it.
+
+    The item stays one item. After the rewrite it names the living pair, so a
+    later pass does not open a second item for the survivor.
+    """
+    absorbed = absorption_map(artists)
+    if not absorbed:
+        return False
+    changed = False
+    for item in review:
+        detail = item.get("detail") or ""
+        updated = detail
+        for dropped, survivor in absorbed.items():
+            if not dropped or dropped == survivor or survivor in updated:
+                continue
+            token = re.compile(rf"(?<![0-9A-Za-z]){re.escape(dropped)}(?![0-9A-Za-z])")
+            if not token.search(updated):
+                continue
+            updated = token.sub(survivor, updated)
+        if updated != detail:
+            item["detail"] = updated
+            changed = True
+    return changed
+
+
+def survivor_pair(left: str, right: str, artists: list[dict]) -> tuple[str, str]:
+    """Unordered pair after following merges. An id with no survivor stays itself."""
+    absorbed = absorption_map(artists)
+    return tuple(sorted((_canon(left, absorbed), _canon(right, absorbed))))
+
+
+def queue_pair_keys(items: list[dict], artists: list[dict] | None = None) -> set[tuple[str, str]]:
+    """Unordered pairs already named by a ``possible_same_person`` item, any status.
+
+    When ``artists`` is given, a dropped id is read as the row that absorbed it,
+    so a decision on A–B also covers the survivor of A or of B.
+    """
+    absorbed = absorption_map(artists or [])
     keys: set[tuple[str, str]] = set()
     for item in items:
         if item.get("reason") != "possible_same_person":
             continue
-        lid = item.get("ledger_id") or ""
-        others = set(_LEDGER_ID.findall(item.get("detail") or "")) - {lid}
+        lid = _canon(item.get("ledger_id") or "", absorbed)
+        others = {_canon(other, absorbed) for other in _LEDGER_ID.findall(item.get("detail") or "")} - {lid, ""}
         for other in others:
-            keys.add(tuple(sorted((lid, other))))
+            if other and other != lid:
+                keys.add(tuple(sorted((lid, other))))
     return keys
+
+
+def evidence_rule_id(evidence: str | None) -> str:
+    """``E1`` … ``E4`` from an evidence string, ignoring an ``X1+`` prefix."""
+    token = (evidence or "").split(" ", 1)[0].removeprefix("X1+")
+    return token if _RULE_ID.fullmatch(token) else ""
+
+
+def rules_at_decision(detail: str) -> set[str]:
+    """E-rules recorded when a person decided. Missing marker and ``none`` are empty."""
+    match = _EVIDENCE_AT.search(detail or "")
+    if not match or match.group(1) == "none":
+        return set()
+    return {part for part in match.group(1).split("+") if _RULE_ID.fullmatch(part)}
+
+
+def set_evidence_snapshot(detail: str, rules: set[str]) -> str:
+    """Record which E-rules held when the person decided. ``none`` when nothing did."""
+    token = "+".join(sorted(rules)) if rules else "none"
+    marker = f"evidence_at_decision={token}"
+    if _EVIDENCE_AT.search(detail or ""):
+        return _EVIDENCE_AT.sub(marker, detail or "")
+    return f"{detail}; {marker}".strip("; ")
+
+
+def _reopen_new_evidence(item: dict, rule: str) -> bool:
+    """Reopen one decided item because ``rule`` did not fire at decision time.
+
+    The decision markers stay, so a later run still will not merge the pair or
+    open a second item. Returns whether the row changed.
+    """
+    detail = item.get("detail") or ""
+    marker = f"reopened=new_evidence ({rule})"
+    changed = False
+    if marker not in detail:
+        sentence = f"{marker}: evidence rule {rule} did not fire at decision time"
+        item["detail"] = f"{detail}; {sentence}".strip("; ")
+        changed = True
+    if item.get("status") != "open":
+        item["status"] = "open"
+        changed = True
+    return changed
+
+
+def is_human_split(item: dict) -> bool:
+    """Distinct or dismiss. ``decided=same`` is a merge, not a split."""
+    if item.get("reason") != "possible_same_person":
+        return False
+    detail = item.get("detail") or ""
+    if _SPLIT.search(detail):
+        return True
+    return item.get("status") == "dismissed"
+
+
+def decision_blocks(
+    review: list[dict],
+    artists: list[dict],
+    left: str,
+    right: str,
+    evidence: str | None,
+) -> tuple[bool, list[str]]:
+    """Whether a human split covers this pair, and queue ids reopened for new evidence.
+
+    Mutates ``review`` when an E-rule fires that was not recorded at decision
+    time. The pair is still blocked: new evidence reopens the item, it does not
+    merge and it does not open a second item.
+    """
+    pair = survivor_pair(left, right, artists)
+    if not pair[0] or not pair[1] or pair[0] == pair[1]:
+        return False, []
+    known = queue_pair_keys(review, artists)
+    if pair not in known:
+        return False, []
+    rule = evidence_rule_id(evidence)
+    blocked = False
+    reopened: list[str] = []
+    absorbed = absorption_map(artists)
+    for item in review:
+        if not is_human_split(item):
+            continue
+        lid = _canon(item.get("ledger_id") or "", absorbed)
+        others = {_canon(other, absorbed) for other in _LEDGER_ID.findall(item.get("detail") or "")} - {lid, ""}
+        if pair not in {tuple(sorted((lid, other))) for other in others if other and other != lid}:
+            continue
+        blocked = True
+        if not rule or rule in rules_at_decision(item.get("detail") or ""):
+            continue
+        if _reopen_new_evidence(item, rule):
+            reopened.append(item.get("queue_id") or "")
+    return blocked, [item for item in reopened if item]
 
 
 def new_queue_item(ledger_id: str, detail: str, *, now: str | None = None) -> dict[str, str]:
@@ -275,7 +442,7 @@ def undecided_same_script(
     a pair E1–E4 already accepts, and a pair an existing item already names.
     """
     by_id = {row["ledger_id"]: row for row in artists}
-    known = queue_pair_keys(review)
+    known = queue_pair_keys(review, artists)
     items: list[dict] = []
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     for left, right, _script in same_script_pairs(artists):

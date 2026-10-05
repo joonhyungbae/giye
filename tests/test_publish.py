@@ -102,8 +102,8 @@ def _activity(ledger_id: str, **extra: str) -> dict[str, str]:
     return row
 
 
-def _publish(tmp_path: Path, artists, activities=None, membership=None, **tables) -> dict:
-    cfg = load(_config(tmp_path))
+def _publish(tmp_path: Path, artists, activities=None, membership=None, *, frames: str = FRAMES, **tables) -> dict:
+    cfg = load(_config(tmp_path, frames=frames))
     ledger = Ledger.open(cfg)
     ledger.write("artists", artists, task="test")
     ledger.write("activities", activities or [], task="test")
@@ -424,3 +424,88 @@ def test_default_citation_author_is_the_production_string(tmp_path: Path):
     demo = load(ROOT / "examples" / "demo" / "giye.toml")
     assert demo.site_url == "https://example.org"
     assert demo.citation_author == "Example Archive"
+
+
+def _decision_frame(code: str, decision: str) -> str:
+    return f"""
+  - code: {code}
+    name_en: {code}
+    source_url: https://example.org/{code.lower()}
+    roster_count: 4
+    eligibility:
+      decision: {decision}
+      f1_purpose: States the field.
+      f2_cohort: A jury selects a cohort.
+      f3_territory: Held in the configured territory.
+      f4_roster: A public page lists the participants.
+      f5_period: Two editions.
+      note: Recorded as {decision}.
+"""
+
+
+def _member(ledger_id: str, frame_code: str) -> dict[str, str]:
+    return empty_row(
+        MEMBERSHIP_FIELDS,
+        ledger_id=ledger_id,
+        frame_code=frame_code,
+        source_url=f"https://example.org/{frame_code.lower()}",
+        collected_at="2026-01-15",
+    )
+
+
+def test_only_included_and_adjacent_memberships_are_published(tmp_path: Path):
+    """Excluded, planned, and no_public_roster stay on the coverage files and not on a person."""
+    frames = (
+        "version: 1\nframes:"
+        + _decision_frame("INC", "included")
+        + _decision_frame("ADJ", "adjacent")
+        + _decision_frame("EXC", "excluded")
+        + _decision_frame("PLAN", "planned")
+        + _decision_frame("NOROSTER", "no_public_roster")
+    )
+    artists = [
+        _artist("LED-kept", "김하늘"),
+        _artist("LED-both", "정다운"),
+        _artist("LED-near", "한별"),
+        _artist("LED-out", "박서연"),
+    ]
+    membership = [
+        _member("LED-kept", "INC"),
+        _member("LED-both", "INC"),
+        _member("LED-both", "EXC-2019"),
+        _member("LED-near", "ADJ"),
+        _member("LED-out", "EXC"),
+        _member("LED-out", "PLAN"),
+        _member("LED-out", "NOROSTER"),
+    ]
+    activities = [
+        _activity("LED-out", activity_id="act-out", title="제외된 명단", origin="EXC"),
+        _activity("LED-kept", activity_id="act-kept", title="채택된 명단", origin="INC"),
+    ]
+    site = _publish(tmp_path, artists, activities, membership, frames=frames)
+    published = {row["name_ko"]: row for row in site["artists.json"]}
+    assert list(published) == ["김하늘", "정다운", "한별"]
+    assert published["김하늘"]["frame_codes"] == ["INC"]
+    assert published["정다운"]["frame_codes"] == ["INC"]
+    assert "EXC" not in json.dumps(published["정다운"]["frame_editions"])
+    assert published["한별"]["frame_codes"] == ["ADJ"]
+    assert published["한별"]["frame_editions"][0]["frame"] == "ADJ"
+    dumped = json.dumps(site["artists.json"], ensure_ascii=False)
+    assert "박서연" not in dumped
+    assert [row["title"] for row in site["activities.json"]] == ["채택된 명단"]
+    decisions = {row["code"]: row["eligibility"]["decision"] for row in site["frames.json"]}
+    assert decisions == {
+        "INC": "included",
+        "ADJ": "adjacent",
+        "EXC": "excluded",
+        "PLAN": "planned",
+        "NOROSTER": "no_public_roster",
+    }
+    by_code = {row["code"]: row for row in site["frames.json"]}
+    assert by_code["EXC"]["published_count"] == 0
+    assert by_code["EXC"]["included_count"] == 0
+    assert by_code["ADJ"]["published_count"] == 1
+    assert by_code["ADJ"]["eligibility"]["decision"] == "adjacent"
+    coverage_codes = [row["code"] for row in site["coverage.json"]["frames"]]
+    assert coverage_codes == ["INC", "ADJ", "EXC", "PLAN", "NOROSTER"]
+    assert "박서연" not in json.dumps(site["coverage.json"], ensure_ascii=False)

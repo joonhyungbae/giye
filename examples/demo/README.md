@@ -28,8 +28,9 @@ giye resolve --config examples/demo/giye.toml
 
 The fixtures are arranged so each merge rule fires once, and so attachment records its rule.
 Lee Haru and Haru Lee share the workshop family, so the later edition attaches by A1.
-Kim Haneul on the forum agrees in English with Haneul Kim on the workshop, so that row
-attaches by A2. A shared website (E1, the two 정다운 rows, pinned apart by identity keys so
+Kim Haneul on the forum and Haneul Kim on the workshop are Latin-only personal names in
+different programmes, so A2 does not join them on name alone: the forum row opens its own
+record and the pair goes to the review queue. A shared website (E1, the two 정다운 rows, pinned apart by identity keys so
 A6 does not attach them at collection), a CV line naming the other row's roster edition
 (E2 for 표은솔, and X1+E2 for 김하늘 / Haneul Kim), a bracketed work title on two programmes
 (E3), and a shared `팀:` credit (E4) each merge one pair. The person 배수아 and the team

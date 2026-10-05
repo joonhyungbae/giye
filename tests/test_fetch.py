@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import requests
 
-from giye.collect.fetch import Fetcher, RobotsDisallowed
+from giye.collect.fetch import Fetcher, RobotsDisallowed, TermsRefused, is_social
 from tests.conftest import serve
 
 UA = "GiyeTest/0.1 (+https://example.org/contact)"
@@ -194,3 +194,159 @@ def test_per_host_delay_does_not_apply_across_hosts():
 def test_user_agent_must_carry_a_contact():
     with pytest.raises(ValueError):
         Fetcher("GiyeTest/0.1")
+
+
+def test_terms_block_matches_the_host_not_a_lookalike():
+    assert is_social("https://www.instagram.com/anna")
+    assert is_social("https://instagram.com/anna")
+    assert is_social("https://WWW.INSTAGRAM.COM:443/anna")
+    assert is_social("https://m.facebook.com/anna")
+    assert is_social("https://x.com/anna")
+    assert not is_social("https://instagram.com.example.org/anna")
+    assert not is_social("https://notinstagram.com/anna")
+    assert not is_social("https://example.org/instagram.com")
+
+
+def test_blocked_host_is_refused_before_robots_and_is_not_requested(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def boom_decide(*_args, **_kwargs):
+        raise AssertionError("robots.txt was consulted")
+
+    monkeypatch.setattr("giye.collect.fetch.decide", boom_decide)
+
+    def boom(url, **_kwargs):
+        raise AssertionError(f"network used: {url}")
+
+    root = tmp_path / "ig"
+    root.mkdir()
+    (root / "robots.txt").write_text("User-agent: *\nAllow: /\n", encoding="utf-8")
+    (root / "anna.html").write_text("<p>should not be read</p>", encoding="utf-8")
+    fetcher = Fetcher(
+        UA,
+        min_delay_s=0,
+        offline_roots={"https://www.instagram.com": root, "https://instagram.com": root},
+    )
+    fetcher.session = FakeSession(boom)  # type: ignore[assignment]
+    for url in (
+        "https://www.instagram.com/anna",
+        "https://instagram.com/anna",
+        "https://WWW.INSTAGRAM.COM:443/anna",
+    ):
+        with pytest.raises(TermsRefused) as caught:
+            fetcher.get(url)
+        assert caught.value.url == url
+        assert caught.value.verdict == "platform_excluded"
+        assert str(caught.value).startswith("not fetched (platform_excluded):")
+    assert fetcher.session.calls == []  # type: ignore[attr-defined]
+    assert "should not be read" in (root / "anna.html").read_text(encoding="utf-8")
+    assert list(tmp_path.rglob("manifest.jsonl")) == []
+
+
+def test_redirect_onto_a_blocked_host_is_not_sent():
+    calls: list[str] = []
+
+    def handler(url, **_kwargs):
+        calls.append(url)
+        if str(url).endswith("/robots.txt"):
+            return FakeResponse(200, "User-agent: *\nAllow: /\n", url, "text/plain")
+        if url == "https://example.org/start":
+            response = FakeResponse(302, "", url)
+            response.headers = {"Location": "https://www.instagram.com/anna"}
+            return response
+        raise AssertionError(f"blocked hop was requested: {url}")
+
+    session = FakeSession(handler)
+    fetcher = Fetcher(UA, min_delay_s=0, session=session)  # type: ignore[arg-type]
+    with pytest.raises(TermsRefused) as caught:
+        fetcher.get("https://example.org/start")
+    assert caught.value.url == "https://www.instagram.com/anna"
+    assert calls == ["https://example.org/robots.txt", "https://example.org/start"]
+
+
+def test_instagram_cv_is_registered_and_never_fetched(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """A CV on a blocked host stays in the registry. The fetcher never asks for it."""
+    from datetime import date
+
+    from giye.collect.evidence import settle_url
+    from giye.collect.snapshot import SnapshotStore
+    from giye.config import load
+    from giye.extract.service import extract
+    from giye.ledger.ledger import Ledger
+    from giye.ledger.schemas import ARTISTS_FIELDS, empty_row
+
+    def boom(self, url, *args, **kwargs):
+        raise AssertionError(f"network used: {url}")
+
+    monkeypatch.setattr(requests.Session, "get", boom)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+
+    def boom_decide(*_args, **_kwargs):
+        raise AssertionError("robots.txt was consulted")
+
+    monkeypatch.setattr("giye.collect.fetch.decide", boom_decide)
+
+    site = tmp_path / "site"
+    site.mkdir()
+    (site / "robots.txt").write_text("User-agent: *\nAllow: /\n", encoding="utf-8")
+    (site / "anna.html").write_text("<p>Anna Example, Example Hall, 2019</p>", encoding="utf-8")
+    frames = Path(__file__).resolve().parents[1] / "examples" / "demo" / "frames.yml"
+    config_path = tmp_path / "giye.toml"
+    config_path.write_text(
+        f"""
+[archive]
+name = "Synthetic extract test"
+id_prefix = "GY"
+
+[paths]
+data = "{(tmp_path / "data").as_posix()}"
+frames = "{frames.as_posix()}"
+
+[collect]
+user_agent = "{UA}"
+min_delay_s = 0.0
+
+[collect.offline_roots]
+"https://www.instagram.com" = "{site.as_posix()}"
+
+[extract]
+cache = "{(tmp_path / "cache").as_posix()}"
+
+[[extract.sources]]
+ledger_id = "LED-anna"
+lang = "en"
+url = "https://www.instagram.com/anna"
+source_id = "CV-ANNA-en"
+""",
+        encoding="utf-8",
+    )
+    ledger = Ledger.open(load(config_path))
+    ledger.write(
+        "artists",
+        [empty_row(ARTISTS_FIELDS, ledger_id="LED-anna", name_ko="Anna Example", name_en="Anna Example", status="STAGED")],
+        task="test",
+    )
+    result = extract(load(config_path), replay_only=True, today=date(2026, 10, 4))
+    assert result.registered == 1
+    assert result.pull.get("error") == 1
+    row = Ledger.open(load(config_path)).read("cv_sources")[0]
+    assert row["url"] == "https://www.instagram.com/anna"
+    assert row["source_id"] == "CV-ANNA-en"
+    assert row["snapshot_path"] == ""
+    assert row["last_status"] == "error"
+    queue = Ledger.open(load(config_path)).read("review_queue")
+    assert queue[0]["reason"] == "cv_pull_failed"
+    assert "TermsRefused" in queue[0]["detail"]
+    assert "platform_excluded" in queue[0]["detail"]
+    assert not (tmp_path / "data" / "raw" / "cv").exists()
+    assert list((tmp_path / "data").rglob("manifest.jsonl")) == []
+
+    def refuse(url, **_kwargs):
+        raise AssertionError(f"network used: {url}")
+
+    fetcher = Fetcher(UA, min_delay_s=0, offline_roots={"https://www.instagram.com": site})
+    fetcher.session = FakeSession(refuse)  # type: ignore[assignment]
+    settled = settle_url("https://www.instagram.com/anna", fetcher=fetcher, store=SnapshotStore(tmp_path / "evidence"))
+    assert settled["status"] == "platform_excluded"
+    assert settled["reason"] == "terms"
+    assert settled["robots"] == "platform_excluded"
+    assert list((tmp_path / "evidence").rglob("manifest.jsonl")) == []

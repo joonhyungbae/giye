@@ -16,14 +16,18 @@ A1. The same name keys are already on a row in this event family.
 A2. The name keys match and the English names agree.
     Agreement is at least two Latin tokens, order ignored, against ``name_en``
     or a Latin alias. One Latin token is too common. Checked before A3, so a
-    group whose English names agree is A2.
+    group whose English names agree is A2. Two Latin-only personal names are
+    not joined here: the agreeing Latin string is the whole of the evidence.
+    A Hangul name whose English tokens agree is still A2.
 
 A3. The name is not a bare personal name.
-    ``person_like`` asks the language module (``personal_name``); the
-    Korean–English module takes two to four Hangul syllables starting with a
-    listed surname. A group, a studio, or any other spelling is not that pattern, so
-    the first same-key row is reused. A Latin-only name that failed the
-    two-token test takes this branch for the same reason.
+    ``person_like`` asks the language module (``personal_name``). The
+    Korean–English module takes a Hangul surname shape or two to four Latin
+    tokens. A group, a studio, or any other spelling is not that pattern, so
+    the first same-key row is reused. A Latin-only personal name does not take
+    this branch. A name the field file's team words match is a group, so it
+    still does. A Latin-only name outside the two-to-four token shape takes
+    this branch for the same reason a non-personal spelling does.
 
 A4. A same-key row exists and it has no roster membership yet.
     The first roster attaches to it. Only a bare Korean personal name reaches
@@ -49,7 +53,7 @@ from typing import TYPE_CHECKING
 from giye.field import Field, frame_family
 from giye.ledger.schemas import split_pipe
 from giye.resolve.evidence import url_key
-from giye.resolve.teams import person_like
+from giye.resolve.teams import person_like, team_like
 
 if TYPE_CHECKING:  # pragma: no cover
     from giye.normalize.language import LanguageModule
@@ -60,11 +64,17 @@ _LATIN = re.compile(r"[A-Za-z]+")
 
 @dataclass(frozen=True)
 class Attachment:
-    """Who a roster row joins, which rule fired, and the same-name rows it did not take."""
+    """Who a roster row joins, which rule fired, and the same-name rows it did not take.
+
+    ``miss`` is why a same-name pair was left for review. Empty for the Korean
+    homonym path. ``latin name only`` when both sides are Latin-only personal
+    names and no rule joined them.
+    """
 
     ledger_id: str | None
     rule: str | None
     ambiguous: tuple[str, ...]
+    miss: str = ""
 
 
 def hangul_compact(text: str) -> str:
@@ -107,6 +117,52 @@ def name_keys(name_ko: str, name_en: str, aliases: str) -> set[str]:
     return keys
 
 
+def _latin_only_personal(
+    name_ko: str,
+    name_en: str,
+    language: LanguageModule | None,
+    words: re.Pattern[str],
+    artist: dict | None = None,
+) -> bool:
+    """A Latin-only personal name: the language module's shape, and not a team.
+
+    Hangul on either field is not this case (a Hangul row with an agreeing
+    English name stays on A2). The field file's team words, a ``members=`` /
+    ``rep=`` note, or person-shaped aliases make a group, which keeps A3.
+    Group words are the archive's list, so they are not compiled into the
+    language module.
+    """
+    ko = (name_ko or "").strip()
+    en = (name_en or "").strip()
+    if _HANGUL.search(ko) or _HANGUL.search(en):
+        return False
+    primary = en or ko
+    if not primary:
+        return False
+    row = {
+        "name_ko": ko or primary,
+        "name_en": en,
+        "reviewer_note": (artist or {}).get("reviewer_note") or "",
+        "aliases": (artist or {}).get("aliases") or "",
+    }
+    if team_like(row, words=words, language=language):
+        return False
+    return person_like(primary, language)
+
+
+def _bare_personal(
+    name_ko: str,
+    name_en: str,
+    language: LanguageModule | None,
+    words: re.Pattern[str],
+) -> bool:
+    """A name A3 must not reuse: a Hangul personal name, or a Latin-only one."""
+    if _latin_only_personal(name_ko, name_en, language, words):
+        return True
+    ko = name_ko or ""
+    return bool(hangul_compact(ko) and person_like(ko, language))
+
+
 def _member_list(artist: dict, language: LanguageModule | None = None) -> bool:
     """A group row whose aliases name two or more people."""
     if person_like(artist.get("name_ko") or "", language):
@@ -143,6 +199,8 @@ def match_artist(
             candidates = [artist for artist in artists if artist["ledger_id"] == alias_hits[0]]
     if not candidates:
         return Attachment(None, None, ())
+    words = field.compiled_team_words()
+    incoming_latin = _latin_only_personal(name_ko, name_en, language, words)
     family = frame_family(frame_code, field)
     incoming = set(latin_tokens(name_en))
     for artist in candidates:
@@ -150,14 +208,32 @@ def match_artist(
             return Attachment(artist["ledger_id"], "A1", ())
     for artist in candidates:
         spellings = [artist.get("name_en") or ""] + split_pipe(artist.get("aliases") or "")
+        # A stored Latin-only row keeps the Latin string in name_ko as well.
+        spellings.append(artist.get("name_ko") or "")
         if len(incoming) >= 2 and any(incoming == set(latin_tokens(text)) for text in spellings):
+            other_latin = _latin_only_personal(
+                artist.get("name_ko") or "",
+                artist.get("name_en") or "",
+                language,
+                words,
+                artist,
+            )
+            # Author decision 2026-10-05: two Latin-only personal names are not
+            # the same person because the Latin string agrees.
+            if incoming_latin and other_latin:
+                continue
             return Attachment(artist["ledger_id"], "A2", ())
-    if not person_like(name_ko or "", language):
+    if not _bare_personal(name_ko, name_en, language, words):
         return Attachment(candidates[0]["ledger_id"], "A3", ())
-    for artist in candidates:
-        if not families_by_lid.get(artist["ledger_id"]):
-            return Attachment(artist["ledger_id"], "A4", ())
-    return Attachment(None, None, tuple(artist["ledger_id"] for artist in candidates))
+    # A4 stays the Korean path. A Latin personal name used to fall through to
+    # A3; it now stays unattached rather than joining the first roster-less row
+    # on the name alone.
+    if hangul_compact(name_ko) and person_like(name_ko or "", language):
+        for artist in candidates:
+            if not families_by_lid.get(artist["ledger_id"]):
+                return Attachment(artist["ledger_id"], "A4", ())
+    miss = "latin name only" if incoming_latin else ""
+    return Attachment(None, None, tuple(artist["ledger_id"] for artist in candidates), miss)
 
 
 def attach_row(

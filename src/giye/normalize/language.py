@@ -4,7 +4,8 @@
 The rules that depend on a language read it through this interface, so a later
 archive can supply another script pair without editing the rule code. The
 Korean–English module is the default. ``personal_name`` is the bare personal-name
-test of A3, A4, A6 and T1. ``name_keys`` wraps ``giye.resolve.names`` (personal
+test of A2, A3, A4, A6 and T1 (Hangul surname shape, or two to four Latin
+tokens). ``name_keys`` wraps ``giye.resolve.names`` (personal
 names, rule X1). The venue rules (V7–V9) read generic words, place names, and
 romanisation here. Institution merging uses ``romanise`` (one syllable at a
 time, Revised Romanization, no cross-syllable sound change), not those
@@ -29,6 +30,13 @@ if TYPE_CHECKING:  # pragma: no cover
     from giye.config import Config
 
 _HANGUL = re.compile(r"[가-힣]")
+# A Latin-only personal name is two to four alphabetic tokens. One token is too
+# common to treat as a collision of people (the same floor A2 uses). Five or
+# more tokens are not the given-name-plus-surname shape this test is for.
+# Separators are spaces, hyphens, apostrophes, and periods. Group words are not
+# listed here: they differ by archive and live in the field file's team list,
+# which attachment applies on top of this shape.
+_LATIN_PERSONAL = re.compile(r"[A-Za-z]+(?:[\s.'’\-]+[A-Za-z]+){1,3}")
 DEFAULT_LANGUAGE = "giye.normalize.lang.ko_en:KoEn"
 
 # A bare 2–4 syllable Korean personal name starts with one of these surnames.
@@ -139,7 +147,7 @@ class LanguageModule(Protocol):
         """Short id, for example ``ko-en``."""
 
     def personal_name(self, name: str) -> bool:
-        """True for a bare personal name of the kind that collides across people (A3, A4, A6, T1)."""
+        """True for a bare personal name of the kind that collides across people (A2, A3, A4, A6, T1)."""
 
     @property
     def venue_words(self) -> VenueWords:
@@ -179,9 +187,20 @@ class KoreanEnglish:
         return self._gazetteer
 
     def personal_name(self, name: str) -> bool:
-        """Two to four Hangul syllables starting with a listed Korean surname."""
-        text = name or ""
-        return bool(_KOREAN_PERSONAL_NAME.fullmatch(text)) and text[:1] in KOREAN_SURNAMES
+        """A bare personal name: Hangul surname shape, or two to four Latin tokens.
+
+        Hangul is two to four syllables starting with a listed Korean surname.
+        Latin is the whole string matching ``_LATIN_PERSONAL`` (two to four
+        alphabetic tokens, no Hangul). A field file's group words are not
+        applied here; attachment treats a team-word hit as a group, not as
+        this name.
+        """
+        text = (name or "").strip()
+        if _KOREAN_PERSONAL_NAME.fullmatch(text) and text[:1] in KOREAN_SURNAMES:
+            return True
+        if not text or _HANGUL.search(text):
+            return False
+        return bool(_LATIN_PERSONAL.fullmatch(text))
 
     def name_keys(self, name: str) -> set[str]:
         """Personal-name keys (rule X1). Hangul uses ``hangul_name_keys``; otherwise Latin keys.

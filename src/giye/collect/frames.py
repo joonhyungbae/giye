@@ -7,7 +7,11 @@ programme was examined (adopted 2026-09-20), so inclusion is not a decision made
 after seeing who was selected.
 
 The software checks that a judgement is complete. It does not re-decide F1–F5:
-the text in the file is the record, as in production.
+the text in the file is the record, as in production. Collection and publication
+then admit only ``included`` and ``adjacent``. An ``adjacent`` frame is published
+as an adjacent strand. ``excluded``, ``planned``, ``no_public_roster``, and any
+other decision are not collected, and their memberships are not published. The
+coverage files still list every frame with its decision.
 
 F1 purpose. The programme's own public description states a purpose within the
 field. In the Korean media-art archive that is art–technology (or art–science)
@@ -44,6 +48,11 @@ import yaml
 
 # Production also publishes ``planned`` and ``no_public_roster`` (see the sampling-frame page).
 DECISIONS = frozenset({"included", "excluded", "adjacent", "planned", "no_public_roster"})
+
+# Collected and published. ``adjacent`` stays a public strand. Every other
+# decision is only a record: the collector is skipped and the memberships
+# are left out of the site snapshot. Coverage still lists the frame.
+ADMITTED = frozenset({"included", "adjacent"})
 
 
 @dataclass(frozen=True)
@@ -101,6 +110,15 @@ class FrameRegistry:
             if frame.code == code:
                 return frame
         return None
+
+
+def is_admitted(decision: str) -> bool:
+    """True when this frame is collected and its memberships are published.
+
+    The loader still only checks that the word is one of ``DECISIONS``. It does
+    not re-decide F1–F5. Admission is this set, not a new judgement.
+    """
+    return decision in ADMITTED
 
 
 def coverage(members_recorded: int, roster_size: int) -> float | None:

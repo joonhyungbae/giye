@@ -28,8 +28,8 @@
         "created_at": "TIMESTAMP"
       },
       {
-        "id": "5b49ddb8-fb10-5a34-9fd4-47b45c7c92ba",
-        "artist_id": "GY-000001",
+        "id": "a5ad13fe-0022-5a59-8463-a8c5e9a45d78",
+        "artist_id": "GY-000022",
         "title": "EXAMPLE-FORUM-2023",
         "venue": null,
         "year": 2023,
@@ -132,8 +132,8 @@
         "created_at": "TIMESTAMP"
       },
       {
-        "id": "1da623ef-4b01-538d-ad1f-42165c752e94",
-        "artist_id": "GY-000025",
+        "id": "4861435a-52f9-564b-8b09-e34b53e3256a",
+        "artist_id": "GY-000026",
         "title": "EXAMPLE-WORKSHOP-2021",
         "venue": null,
         "year": 2021,
@@ -197,6 +197,19 @@
         "created_at": "TIMESTAMP"
       },
       {
+        "id": "bc372a0a-dbd9-5d1d-8266-9c6f2d5a35c4",
+        "artist_id": "GY-000025",
+        "title": "EXAMPLE-WORKSHOP-2021",
+        "venue": null,
+        "year": 2021,
+        "activity_type": "other",
+        "role": "팀: 배수아",
+        "source_url": "https://example.org/workshop/fellows",
+        "source_type": "PUBLIC_RECORD",
+        "collected_at": "DATE",
+        "created_at": "TIMESTAMP"
+      },
+      {
         "id": "d6fd98ea-d169-5e15-8fa1-0a58edad5c33",
         "artist_id": "GY-000014",
         "title": "EXAMPLE-WORKSHOP-2021",
@@ -217,19 +230,6 @@
         "year": 2021,
         "activity_type": "other",
         "role": null,
-        "source_url": "https://example.org/workshop/fellows",
-        "source_type": "PUBLIC_RECORD",
-        "collected_at": "DATE",
-        "created_at": "TIMESTAMP"
-      },
-      {
-        "id": "e44f3ad4-f391-5ac4-8ff6-9edf0da9d1b4",
-        "artist_id": "GY-000024",
-        "title": "EXAMPLE-WORKSHOP-2021",
-        "venue": null,
-        "year": 2021,
-        "activity_type": "other",
-        "role": "팀: 배수아",
         "source_url": "https://example.org/workshop/fellows",
         "source_type": "PUBLIC_RECORD",
         "collected_at": "DATE",
@@ -327,6 +327,19 @@
         "created_at": "TIMESTAMP"
       },
       {
+        "id": "49e9e8ca-b488-55b1-be98-23eed43db2b6",
+        "artist_id": "GY-000023",
+        "title": "EXAMPLE-RESIDENCY-2019",
+        "venue": null,
+        "year": 2019,
+        "activity_type": "other",
+        "role": "팀: 노을 스튜디오",
+        "source_url": "https://example.org/residency/alumni",
+        "source_type": "PUBLIC_RECORD",
+        "collected_at": "DATE",
+        "created_at": "TIMESTAMP"
+      },
+      {
         "id": "545727c4-7382-5a03-87a5-9bdf03f1ef40",
         "artist_id": "GY-000001",
         "title": "EXAMPLE-RESIDENCY-2019",
@@ -334,19 +347,6 @@
         "year": 2019,
         "activity_type": "other",
         "role": null,
-        "source_url": "https://example.org/residency/alumni",
-        "source_type": "PUBLIC_RECORD",
-        "collected_at": "DATE",
-        "created_at": "TIMESTAMP"
-      },
-      {
-        "id": "639763e0-c4c3-58b8-8885-20f7e1f52fea",
-        "artist_id": "GY-000022",
-        "title": "EXAMPLE-RESIDENCY-2019",
-        "venue": null,
-        "year": 2019,
-        "activity_type": "other",
-        "role": "팀: 노을 스튜디오",
         "source_url": "https://example.org/residency/alumni",
         "source_type": "PUBLIC_RECORD",
         "collected_at": "DATE",
@@ -444,8 +444,8 @@
         "created_at": "TIMESTAMP"
       },
       {
-        "id": "f65c732f-35ae-583e-afad-e754a2bd0ed6",
-        "artist_id": "GY-000023",
+        "id": "f34eca4b-1378-5b85-96ab-b5c2a5c456b7",
+        "artist_id": "GY-000024",
         "title": "EXAMPLE-RESIDENCY-2019",
         "venue": null,
         "year": 2019,
@@ -540,6 +540,47 @@
         "updated_at": "TIMESTAMP"
       },
       {
+        "id": "GY-000022",
+        "name_ko": "Kim Haneul",
+        "name_en": "Kim Haneul",
+        "aliases": [],
+        "type": "individual",
+        "bio_short": null,
+        "birth_year": null,
+        "birth_year_source_url": null,
+        "active_since": null,
+        "regions": [],
+        "countries": [],
+        "medium_tags": [],
+        "derived": {},
+        "technique_tags": [],
+        "theme_tags": [],
+        "frame_status": "IN_FRAME",
+        "frame_codes": [
+          "EXAMPLE-FORUM-2023"
+        ],
+        "frame_editions": [
+          {
+            "frame": "EXAMPLE-FORUM",
+            "edition": "2023"
+          }
+        ],
+        "verification": "UNVERIFIED",
+        "cv_status": "none",
+        "same_name": [
+          "GY-000001"
+        ],
+        "status": "PUBLISHED",
+        "source_url": "https://example.org/forum/guests",
+        "source_type": "PUBLIC_RECORD",
+        "collected_at": "DATE",
+        "external_ids": {
+          "ledger_id": "LED-0000002040"
+        },
+        "created_at": "TIMESTAMP",
+        "updated_at": "TIMESTAMP"
+      },
+      {
         "id": "GY-000011",
         "name_ko": "Kim Seoyeon",
         "name_en": "Kim Seoyeon",
@@ -627,7 +668,7 @@
         "updated_at": "TIMESTAMP"
       },
       {
-        "id": "GY-000022",
+        "id": "GY-000023",
         "name_ko": "김바다",
         "name_en": null,
         "aliases": [],
@@ -661,13 +702,13 @@
         "source_type": "PUBLIC_RECORD",
         "collected_at": "DATE",
         "external_ids": {
-          "ledger_id": "LED-0000002440"
+          "ledger_id": "LED-0000002640"
         },
         "created_at": "TIMESTAMP",
         "updated_at": "TIMESTAMP"
       },
       {
-        "id": "GY-000024",
+        "id": "GY-000025",
         "name_ko": "김솔",
         "name_en": null,
         "aliases": [],
@@ -701,7 +742,7 @@
         "source_type": "PUBLIC_RECORD",
         "collected_at": "DATE",
         "external_ids": {
-          "ledger_id": "LED-0000002640"
+          "ledger_id": "LED-0000002840"
         },
         "created_at": "TIMESTAMP",
         "updated_at": "TIMESTAMP"
@@ -729,8 +770,7 @@
         "frame_status": "IN_FRAME",
         "frame_codes": [
           "EXAMPLE-RESIDENCY-2019",
-          "EXAMPLE-WORKSHOP-2021",
-          "EXAMPLE-FORUM-2023"
+          "EXAMPLE-WORKSHOP-2021"
         ],
         "frame_editions": [
           {
@@ -740,15 +780,13 @@
           {
             "frame": "EXAMPLE-WORKSHOP",
             "edition": "2021"
-          },
-          {
-            "frame": "EXAMPLE-FORUM",
-            "edition": "2023"
           }
         ],
         "verification": "UNVERIFIED",
         "cv_status": "found",
-        "same_name": [],
+        "same_name": [
+          "GY-000022"
+        ],
         "status": "PUBLISHED",
         "source_url": "https://example.org/residency/alumni",
         "source_type": "PUBLIC_RECORD",
@@ -845,7 +883,7 @@
         "updated_at": "TIMESTAMP"
       },
       {
-        "id": "GY-000023",
+        "id": "GY-000024",
         "name_ko": "박바다",
         "name_en": null,
         "aliases": [],
@@ -879,7 +917,7 @@
         "source_type": "PUBLIC_RECORD",
         "collected_at": "DATE",
         "external_ids": {
-          "ledger_id": "LED-0000002540"
+          "ledger_id": "LED-0000002740"
         },
         "created_at": "TIMESTAMP",
         "updated_at": "TIMESTAMP"
@@ -928,7 +966,7 @@
         "updated_at": "TIMESTAMP"
       },
       {
-        "id": "GY-000025",
+        "id": "GY-000026",
         "name_ko": "박솔",
         "name_en": null,
         "aliases": [],
@@ -962,7 +1000,7 @@
         "source_type": "PUBLIC_RECORD",
         "collected_at": "DATE",
         "external_ids": {
-          "ledger_id": "LED-0000002740"
+          "ledger_id": "LED-0000002940"
         },
         "created_at": "TIMESTAMP",
         "updated_at": "TIMESTAMP"
@@ -1395,6 +1433,16 @@
           "bibtex": "@misc{giye_GY_000021,\n  author       = {{Example Archive}},\n  title        = {Jiwoo Seo},\n  note         = {Artist record GY-000021, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000021}},\n  urldate      = {DATE}\n}"
         },
         {
+          "id": "GY-000022",
+          "title": "Kim Haneul",
+          "url": "https://example.org/artist/GY-000022",
+          "year": 2026,
+          "accessed": "DATE",
+          "apa": "Example Archive. (2026). Kim Haneul [Artist record GY-000022, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000022",
+          "chicago": "Example Archive. \"Kim Haneul.\" [Artist record GY-000022, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000022.",
+          "bibtex": "@misc{giye_GY_000022,\n  author       = {{Example Archive}},\n  title        = {Kim Haneul},\n  note         = {Artist record GY-000022, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000022}},\n  urldate      = {DATE}\n}"
+        },
+        {
           "id": "GY-000011",
           "title": "Kim Seoyeon",
           "url": "https://example.org/artist/GY-000011",
@@ -1415,24 +1463,24 @@
           "bibtex": "@misc{giye_GY_000013,\n  author       = {{Example Archive}},\n  title        = {Lee Haru},\n  note         = {Artist record GY-000013, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000013}},\n  urldate      = {DATE}\n}"
         },
         {
-          "id": "GY-000022",
+          "id": "GY-000023",
           "title": "김바다",
-          "url": "https://example.org/artist/GY-000022",
+          "url": "https://example.org/artist/GY-000023",
           "year": 2026,
           "accessed": "DATE",
-          "apa": "Example Archive. (2026). 김바다 [Artist record GY-000022, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000022",
-          "chicago": "Example Archive. \"김바다.\" [Artist record GY-000022, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000022.",
-          "bibtex": "@misc{giye_GY_000022,\n  author       = {{Example Archive}},\n  title        = {김바다},\n  note         = {Artist record GY-000022, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000022}},\n  urldate      = {DATE}\n}"
+          "apa": "Example Archive. (2026). 김바다 [Artist record GY-000023, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000023",
+          "chicago": "Example Archive. \"김바다.\" [Artist record GY-000023, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000023.",
+          "bibtex": "@misc{giye_GY_000023,\n  author       = {{Example Archive}},\n  title        = {김바다},\n  note         = {Artist record GY-000023, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000023}},\n  urldate      = {DATE}\n}"
         },
         {
-          "id": "GY-000024",
+          "id": "GY-000025",
           "title": "김솔",
-          "url": "https://example.org/artist/GY-000024",
+          "url": "https://example.org/artist/GY-000025",
           "year": 2026,
           "accessed": "DATE",
-          "apa": "Example Archive. (2026). 김솔 [Artist record GY-000024, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000024",
-          "chicago": "Example Archive. \"김솔.\" [Artist record GY-000024, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000024.",
-          "bibtex": "@misc{giye_GY_000024,\n  author       = {{Example Archive}},\n  title        = {김솔},\n  note         = {Artist record GY-000024, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000024}},\n  urldate      = {DATE}\n}"
+          "apa": "Example Archive. (2026). 김솔 [Artist record GY-000025, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000025",
+          "chicago": "Example Archive. \"김솔.\" [Artist record GY-000025, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000025.",
+          "bibtex": "@misc{giye_GY_000025,\n  author       = {{Example Archive}},\n  title        = {김솔},\n  note         = {Artist record GY-000025, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000025}},\n  urldate      = {DATE}\n}"
         },
         {
           "id": "GY-000001",
@@ -1465,14 +1513,14 @@
           "bibtex": "@misc{giye_GY_000006,\n  author       = {{Example Archive}},\n  title        = {문지호},\n  note         = {Artist record GY-000006, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000006}},\n  urldate      = {DATE}\n}"
         },
         {
-          "id": "GY-000023",
+          "id": "GY-000024",
           "title": "박바다",
-          "url": "https://example.org/artist/GY-000023",
+          "url": "https://example.org/artist/GY-000024",
           "year": 2026,
           "accessed": "DATE",
-          "apa": "Example Archive. (2026). 박바다 [Artist record GY-000023, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000023",
-          "chicago": "Example Archive. \"박바다.\" [Artist record GY-000023, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000023.",
-          "bibtex": "@misc{giye_GY_000023,\n  author       = {{Example Archive}},\n  title        = {박바다},\n  note         = {Artist record GY-000023, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000023}},\n  urldate      = {DATE}\n}"
+          "apa": "Example Archive. (2026). 박바다 [Artist record GY-000024, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000024",
+          "chicago": "Example Archive. \"박바다.\" [Artist record GY-000024, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000024.",
+          "bibtex": "@misc{giye_GY_000024,\n  author       = {{Example Archive}},\n  title        = {박바다},\n  note         = {Artist record GY-000024, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000024}},\n  urldate      = {DATE}\n}"
         },
         {
           "id": "GY-000002",
@@ -1485,14 +1533,14 @@
           "bibtex": "@misc{giye_GY_000002,\n  author       = {{Example Archive}},\n  title        = {박서연 (Seoyeon Park)},\n  note         = {Artist record GY-000002, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000002}},\n  urldate      = {DATE}\n}"
         },
         {
-          "id": "GY-000025",
+          "id": "GY-000026",
           "title": "박솔",
-          "url": "https://example.org/artist/GY-000025",
+          "url": "https://example.org/artist/GY-000026",
           "year": 2026,
           "accessed": "DATE",
-          "apa": "Example Archive. (2026). 박솔 [Artist record GY-000025, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000025",
-          "chicago": "Example Archive. \"박솔.\" [Artist record GY-000025, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000025.",
-          "bibtex": "@misc{giye_GY_000025,\n  author       = {{Example Archive}},\n  title        = {박솔},\n  note         = {Artist record GY-000025, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000025}},\n  urldate      = {DATE}\n}"
+          "apa": "Example Archive. (2026). 박솔 [Artist record GY-000026, Dataset v0.2]. Retrieved DATE, from https://example.org/artist/GY-000026",
+          "chicago": "Example Archive. \"박솔.\" [Artist record GY-000026, Dataset v0.2] 2026. Accessed DATE. https://example.org/artist/GY-000026.",
+          "bibtex": "@misc{giye_GY_000026,\n  author       = {{Example Archive}},\n  title        = {박솔},\n  note         = {Artist record GY-000026, Dataset v0.2},\n  year         = {2026},\n  howpublished = {\\url{https://example.org/artist/GY-000026}},\n  urldate      = {DATE}\n}"
         },
         {
           "id": "GY-000008",
@@ -1591,8 +1639,8 @@
     "content_revisions.json": [],
     "coverage.json": {
       "generated_at": "TIMESTAMP",
-      "published_artists": 20,
-      "ledger_artists": 20,
+      "published_artists": 21,
+      "ledger_artists": 21,
       "frame_count_active": 0,
       "frame_count_total": 4,
       "frames": [
@@ -1636,8 +1684,8 @@
         "version": "0.2",
         "released_at": "DATE",
         "doi": null,
-        "notes": "Ledger snapshot · frames active=0 · published=20 · generated TIMESTAMP",
-        "artist_count": 20
+        "notes": "Ledger snapshot · frames active=0 · published=21 · generated TIMESTAMP",
+        "artist_count": 21
       }
     ],
     "frames.json": [
@@ -1876,8 +1924,8 @@
           "code": "GEN-2020",
           "label_ko": "2020–2024 진입",
           "label_en": "Entered 2020–2024",
-          "n": 8,
-          "participants": 8,
+          "n": 9,
+          "participants": 9,
           "linked": true,
           "first_year": 2020
         }
@@ -1907,7 +1955,6 @@
           "year": 2019,
           "edition": "2019",
           "also": [
-            "EXAMPLE-FORUM",
             "EXAMPLE-RESIDENCY",
             "EXAMPLE-WORKSHOP"
           ]
@@ -1922,7 +1969,7 @@
           ]
         },
         {
-          "id": "GY-000022",
+          "id": "GY-000023",
           "family": "GEN-2015",
           "year": 2019,
           "edition": "2019",
@@ -1931,7 +1978,7 @@
           ]
         },
         {
-          "id": "GY-000023",
+          "id": "GY-000024",
           "family": "GEN-2015",
           "year": 2019,
           "edition": "2019",
@@ -2043,7 +2090,7 @@
           ]
         },
         {
-          "id": "GY-000024",
+          "id": "GY-000025",
           "family": "GEN-2020",
           "year": 2021,
           "edition": "2021",
@@ -2052,7 +2099,7 @@
           ]
         },
         {
-          "id": "GY-000025",
+          "id": "GY-000026",
           "family": "GEN-2020",
           "year": 2021,
           "edition": "2021",
@@ -2086,6 +2133,15 @@
           "also": [
             "EXAMPLE-WORKSHOP"
           ]
+        },
+        {
+          "id": "GY-000022",
+          "family": "GEN-2020",
+          "year": 2023,
+          "edition": "2023",
+          "also": [
+            "EXAMPLE-FORUM"
+          ]
         }
       ]
     },
@@ -2093,8 +2149,8 @@
   },
   "processed": {
     "venues.csv": "venue_id,name,aliases,kind,city,country,kr_region,n_rows,n_artists\nVEN-000001,서울시립미술관,서울시립미술관 《빛》|서울시립미술관 외|Seoul Museum of Art|서울시립미술관 전시실,institution,,,,7,3\nVEN-000002,예시문화원,,institution,Busan,KR,부산,2,1\nVEN-000003,예시미술관,,institution,Seoul,KR,서울,2,2\nVEN-000004,예시홀,,institution,Seoul,KR,서울,2,1\nVEN-000005,Seoul Yesidae University,,institution,,,,1,1\nVEN-000006,서울예시대학교,,institution,,,,1,1\n",
-    "artist_attributes.csv": "ledger_id,field,value,rule,evidence,evidence_url\nLED-0000000140,active_since,2019,A1 earliest public practice row,d9f93d48-4e93-59f7-a5df-c6699135ce07,\nLED-0000000140,record_depth,4,P6 record depth,activities.csv origin=cv:CV-DEMO-HANEUL-en|CV-DEMO-HANEUL-ko rows=12 activity_id=26b13e3a-7885-54e7-8a44-0e20fb7da97a|2bb58ab3-f726-5517-a774-f2f36043360b|30cb6a2f-e482-525b-aa26-77a9f0db2057|3a12034a-6fc0-5c61-9303-09df666f6356|476cf0d4-0eef-5b5c-8704-64365dc28db4|+7,\nLED-0000000240,active_since,2019,A1 earliest public practice row,5201f511-6115-5096-b431-0fa2db081b0b,\nLED-0000000240,record_depth,4,P6 record depth,activities.csv origin=cv:CV-DEMO-SEOYEON-ko rows=2 activity_id=5201f511-6115-5096-b431-0fa2db081b0b|6a6da9b2-c284-5f0b-a8bd-529c689e25b7,\nLED-0000000340,record_depth,3,P6 record depth,links.csv link_id=00000004-4000-8000-8000-000000000004,\nLED-0000000540,record_depth,1,P6 record depth,frame_membership.csv editions=2 frame_code=EXAMPLE-RESIDENCY-2019|EXAMPLE-WORKSHOP-2021,\nLED-0000000640,record_depth,1,P6 record depth,frame_membership.csv editions=2 frame_code=EXAMPLE-RESIDENCY-2019|EXAMPLE-WORKSHOP-2020,\nLED-0000000740,record_depth,1,P6 record depth,frame_membership.csv editions=2 frame_code=EXAMPLE-RESIDENCY-2019|EXAMPLE-WORKSHOP-2021,\nLED-0000000840,record_depth,1,P6 record depth,frame_membership.csv editions=1 frame_code=EXAMPLE-RESIDENCY-2019,\nLED-0000000940,record_depth,3,P6 record depth,links.csv link_id=0000000a-4000-8000-8000-00000000000a,\nLED-0000000b40,record_depth,3,P6 record depth,links.csv link_id=0000000c-4000-8000-8000-00000000000c,\nLED-0000000d40,record_depth,1,P6 record depth,frame_membership.csv editions=1 frame_code=EXAMPLE-RESIDENCY-2019,\nLED-0000000e40,active_since,2020,A1 earliest public practice row,74a1a4ee-6950-59b8-98ec-8bd16e08670f,\nLED-0000000e40,record_depth,4,P6 record depth,activities.csv origin=cv:CV-DEMO-KIMSEOYEON-en rows=1 activity_id=74a1a4ee-6950-59b8-98ec-8bd16e08670f,\nLED-0000001140,record_depth,1,P6 record depth,frame_membership.csv editions=2 frame_code=EXAMPLE-WORKSHOP-2021|EXAMPLE-WORKSHOP-2022,\nLED-0000001240,record_depth,1,P6 record depth,frame_membership.csv editions=1 frame_code=EXAMPLE-WORKSHOP-2021,\nLED-0000001a40,record_depth,1,P6 record depth,frame_membership.csv editions=1 frame_code=EXAMPLE-WORKSHOP-2021,\nLED-0000001c40,record_depth,1,P6 record depth,frame_membership.csv editions=1 frame_code=EXAMPLE-WORKSHOP-2021,\nLED-0000001f40,record_depth,1,P6 record depth,frame_membership.csv editions=1 frame_code=EXAMPLE-WORKSHOP-2022,\nLED-0000002440,record_depth,1,P6 record depth,frame_membership.csv editions=1 frame_code=EXAMPLE-RESIDENCY-2019,\nLED-0000002540,record_depth,1,P6 record depth,frame_membership.csv editions=1 frame_code=EXAMPLE-RESIDENCY-2019,\nLED-0000002640,record_depth,1,P6 record depth,frame_membership.csv editions=1 frame_code=EXAMPLE-WORKSHOP-2021,\nLED-0000002740,record_depth,1,P6 record depth,frame_membership.csv editions=1 frame_code=EXAMPLE-WORKSHOP-2021,\n",
-    "venue_audit.md": "# Place and institution entity-resolution audit sample\n\nRules G1–G6 · V2–V9. Random sample seed: `20260925`.\nSection 7 lists every merge and the rule that made it.\n\n## 1. Random sample of activity rows\n\n### 1. 9dc1c853-f22b-5736-ab1e-800455e8cd6e\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 2. cc0e3197-df48-5e41-98cf-931b75813907\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 3. 55c7b580-7a40-5dd6-83f3-f1b09c22bcf2\n\n- Raw venue: `예시문화원, 부산`\n- Fragments: `예시문화원` → institution → VEN-000002 (예시문화원); `부산` → place (Busan, KR, 부산)\n- venue_kind: institution\n- venue_id: VEN-000002 (예시문화원)\n- funder_id: \n\n### 4. f14c04bc-1ffd-5428-b2a7-45a0393af4af\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 5. d9f93d48-4e93-59f7-a5df-c6699135ce07\n\n- Raw venue: `예시미술관, 서울`\n- Fragments: `예시미술관` → institution → VEN-000003 (예시미술관); `서울` → place (Seoul, KR, 서울)\n- venue_kind: institution\n- venue_id: VEN-000003 (예시미술관)\n- funder_id: \n\n### 6. 2bb58ab3-f726-5517-a774-f2f36043360b\n\n- Raw venue: `서울예시대학교`\n- Fragments: `서울예시대학교` → institution → VEN-000006 (서울예시대학교)\n- venue_kind: institution\n- venue_id: VEN-000006 (서울예시대학교)\n- funder_id: \n\n### 7. 8d78ac11-53bc-521b-af01-de8788228807\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 8. 8f1e0db3-e1e4-54da-a18e-48e38ba4af50\n\n- Raw venue: `서울시립미술관 전시실`\n- Fragments: `서울시립미술관 전시실` → institution → VEN-000001 (서울시립미술관)\n- venue_kind: institution\n- venue_id: VEN-000001 (서울시립미술관)\n- funder_id: \n\n### 9. e44f3ad4-f391-5ac4-8ff6-9edf0da9d1b4\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 10. 429e2883-4cb4-54b7-886f-cb5d31c964b0\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 11. f4070705-4e70-5115-9799-c84b40f1fd9a\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 12. 545727c4-7382-5a03-87a5-9bdf03f1ef40\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 13. e3d43f3e-e1b7-5609-b18b-dc4742de66ea\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 14. 1da623ef-4b01-538d-ad1f-42165c752e94\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 15. 476cf0d4-0eef-5b5c-8704-64365dc28db4\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 16. 15483a40-c705-586f-8004-5e43fb9fdb20\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 17. 74a1a4ee-6950-59b8-98ec-8bd16e08670f\n\n- Raw venue: `Seoul Museum of Art`\n- Fragments: `Seoul Museum of Art` → institution → VEN-000001 (서울시립미술관)\n- venue_kind: institution\n- venue_id: VEN-000001 (서울시립미술관)\n- funder_id: \n\n### 18. 037b2f7e-bf4e-53be-8723-a4a55fb7ef48\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 19. 30cb6a2f-e482-525b-aa26-77a9f0db2057\n\n- Raw venue: `예시홀, 서울`\n- Fragments: `예시홀` → institution → VEN-000004 (예시홀); `서울` → place (Seoul, KR, 서울)\n- venue_kind: institution\n- venue_id: VEN-000004 (예시홀)\n- funder_id: \n\n### 20. bc05c504-e741-586a-b763-9a0e57be5d7b\n\n- Raw venue: `Seoul Yesidae University`\n- Fragments: `Seoul Yesidae University` → institution → VEN-000005 (Seoul Yesidae University)\n- venue_kind: institution\n- venue_id: VEN-000005 (Seoul Yesidae University)\n- funder_id: \n\n### 21. 5b49ddb8-fb10-5a34-9fd4-47b45c7c92ba\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 22. cf77f4d8-65e4-5523-a3d8-f3d550888291\n\n- Raw venue: `서울시립미술관 《빛》`\n- Fragments: `서울시립미술관 《빛》` → institution → VEN-000001 (서울시립미술관)\n- venue_kind: institution\n- venue_id: VEN-000001 (서울시립미술관)\n- funder_id: \n\n### 23. 936d1aaf-591f-5f98-bb62-4e56499780ca\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 24. dab8d132-8e36-5f68-996a-7999cce68fcd\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 25. 50c59121-f80c-50a1-8837-e5ecd33bae9a\n\n- Raw venue: `서울시립미술관`\n- Fragments: `서울시립미술관` → institution → VEN-000001 (서울시립미술관)\n- venue_kind: institution\n- venue_id: VEN-000001 (서울시립미술관)\n- funder_id: \n\n### 26. a8a2101d-d91a-5c9e-ae88-905ce5112e4d\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 27. e9659053-6298-5a48-ab41-74b3ad294abf\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 28. 636931d3-1a5e-5a04-a099-65741d1f16c1\n\n- Raw venue: `예시문화원, 부산`\n- Fragments: `예시문화원` → institution → VEN-000002 (예시문화원); `부산` → place (Busan, KR, 부산)\n- venue_kind: institution\n- venue_id: VEN-000002 (예시문화원)\n- funder_id: \n\n### 29. 8b027c81-9fc0-5ac5-bef3-6c7f5c64b03a\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 30. 3a12034a-6fc0-5c61-9303-09df666f6356\n\n- Raw venue: `서울시립미술관 외`\n- Fragments: `서울시립미술관 외` → institution → VEN-000001 (서울시립미술관)\n- venue_kind: institution\n- venue_id: VEN-000001 (서울시립미술관)\n- funder_id: \n\n### 31. 26b13e3a-7885-54e7-8a44-0e20fb7da97a\n\n- Raw venue: `Seoul Museum of Art`\n- Fragments: `Seoul Museum of Art` → institution → VEN-000001 (서울시립미술관)\n- venue_kind: institution\n- venue_id: VEN-000001 (서울시립미술관)\n- funder_id: \n\n### 32. fea061ea-3a03-55c6-b4fc-77a6535b9909\n\n- Raw venue: `예시홀, 서울`\n- Fragments: `예시홀` → institution → VEN-000004 (예시홀); `서울` → place (Seoul, KR, 서울)\n- venue_kind: institution\n- venue_id: VEN-000004 (예시홀)\n- funder_id: \n\n### 33. 8f743137-0e7d-5d18-bb4c-f6cd2ae97a58\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 34. 6a6da9b2-c284-5f0b-a8bd-529c689e25b7\n\n- Raw venue: `서울시립미술관`\n- Fragments: `서울시립미술관` → institution → VEN-000001 (서울시립미술관)\n- venue_kind: institution\n- venue_id: VEN-000001 (서울시립미술관)\n- funder_id: \n\n### 35. d6fd98ea-d169-5e15-8fa1-0a58edad5c33\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 36. 70bbb44b-4ea2-5bec-bb7a-5b0a3e26081c\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 37. 639763e0-c4c3-58b8-8885-20f7e1f52fea\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 38. 5201f511-6115-5096-b431-0fa2db081b0b\n\n- Raw venue: `예시미술관, 서울`\n- Fragments: `예시미술관` → institution → VEN-000003 (예시미술관); `서울` → place (Seoul, KR, 서울)\n- venue_kind: institution\n- venue_id: VEN-000003 (예시미술관)\n- funder_id: \n\n### 39. 4b37ac92-ddb1-5daf-941b-09f57af22e0f\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 40. f65c732f-35ae-583e-afad-e754a2bd0ed6\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 41. 8216e861-bc95-55aa-be7d-9bffd14b0fae\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 42. ff4280cb-cb5a-5f65-bd3e-5814226f1ecb\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 43. aa93c1bb-5399-5529-a984-ba03177668f2\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n## 2. Top 30 entities merged by alias\n\n- none\n\n## 3. Top 40 entities by row count\n\n- VEN-000001 · 서울시립미술관 · institution · 7 rows · 3 artists\n- VEN-000002 · 예시문화원 · institution · 2 rows · 1 artists\n- VEN-000003 · 예시미술관 · institution · 2 rows · 2 artists\n- VEN-000004 · 예시홀 · institution · 2 rows · 1 artists\n- VEN-000005 · Seoul Yesidae University · institution · 1 rows · 1 artists\n- VEN-000006 · 서울예시대학교 · institution · 1 rows · 1 artists\n\n## 4. Top 30 funders\n\n- none\n\n## 5. Top 30 fragments left as institution that look like a country code or a state name\n\n- none\n\n## 6. Components left unmerged\n\nV5e: if a candidate pair's connected component contains two or more distinct Hangul name keys, the whole component is left unmerged.\n\n- Component count: 0\n\n## 7. Merges (every join, with its rule)\n\nV5a cross-script parenthetical pair written by two or more artists · V5d acronym and Latin initials, two or more artists · V5f one artist, Hangul and Latin, both names specific, after V5e · V7e Latin word-bag · V8 part of a known entity · V9 Hangul reading equals the Latin bag, one reading per component.\nFormat: rule · kept spelling (row count) ← joined spelling (row count).\n\n### V5a — 0 cases\n\n- none\n\n### V5d — 0 cases\n\n- none\n\n### V5f — 0 cases\n\n- none\n\n### V9 — 1 cases\n\n- V9 · `서울시립미술관`(4) ← `Seoul Museum of Art`(2)\n\n### V8 — 1 cases\n\n- V8 · `서울시립미술관`(4) ← `서울시립미술관 전시실`(1)\n\n### V7e — 0 cases\n\n- none\n"
+    "artist_attributes.csv": "ledger_id,field,value,rule,evidence,evidence_url\nLED-0000000140,active_since,2019,A1 earliest public practice row,d9f93d48-4e93-59f7-a5df-c6699135ce07,\nLED-0000000140,record_depth,4,P6 record depth,activities.csv origin=cv:CV-DEMO-HANEUL-en|CV-DEMO-HANEUL-ko rows=12 activity_id=26b13e3a-7885-54e7-8a44-0e20fb7da97a|2bb58ab3-f726-5517-a774-f2f36043360b|30cb6a2f-e482-525b-aa26-77a9f0db2057|3a12034a-6fc0-5c61-9303-09df666f6356|476cf0d4-0eef-5b5c-8704-64365dc28db4|+7,\nLED-0000000240,active_since,2019,A1 earliest public practice row,5201f511-6115-5096-b431-0fa2db081b0b,\nLED-0000000240,record_depth,4,P6 record depth,activities.csv origin=cv:CV-DEMO-SEOYEON-ko rows=2 activity_id=5201f511-6115-5096-b431-0fa2db081b0b|6a6da9b2-c284-5f0b-a8bd-529c689e25b7,\nLED-0000000340,record_depth,3,P6 record depth,links.csv link_id=00000004-4000-8000-8000-000000000004,\nLED-0000000540,record_depth,1,P6 record depth,frame_membership.csv editions=2 frame_code=EXAMPLE-RESIDENCY-2019|EXAMPLE-WORKSHOP-2021,\nLED-0000000640,record_depth,1,P6 record depth,frame_membership.csv editions=2 frame_code=EXAMPLE-RESIDENCY-2019|EXAMPLE-WORKSHOP-2020,\nLED-0000000740,record_depth,1,P6 record depth,frame_membership.csv editions=2 frame_code=EXAMPLE-RESIDENCY-2019|EXAMPLE-WORKSHOP-2021,\nLED-0000000840,record_depth,1,P6 record depth,frame_membership.csv editions=1 frame_code=EXAMPLE-RESIDENCY-2019,\nLED-0000000940,record_depth,3,P6 record depth,links.csv link_id=0000000a-4000-8000-8000-00000000000a,\nLED-0000000b40,record_depth,3,P6 record depth,links.csv link_id=0000000c-4000-8000-8000-00000000000c,\nLED-0000000d40,record_depth,1,P6 record depth,frame_membership.csv editions=1 frame_code=EXAMPLE-RESIDENCY-2019,\nLED-0000000e40,active_since,2020,A1 earliest public practice row,74a1a4ee-6950-59b8-98ec-8bd16e08670f,\nLED-0000000e40,record_depth,4,P6 record depth,activities.csv origin=cv:CV-DEMO-KIMSEOYEON-en rows=1 activity_id=74a1a4ee-6950-59b8-98ec-8bd16e08670f,\nLED-0000001140,record_depth,1,P6 record depth,frame_membership.csv editions=2 frame_code=EXAMPLE-WORKSHOP-2021|EXAMPLE-WORKSHOP-2022,\nLED-0000001240,record_depth,1,P6 record depth,frame_membership.csv editions=1 frame_code=EXAMPLE-WORKSHOP-2021,\nLED-0000001a40,record_depth,1,P6 record depth,frame_membership.csv editions=1 frame_code=EXAMPLE-WORKSHOP-2021,\nLED-0000001c40,record_depth,1,P6 record depth,frame_membership.csv editions=1 frame_code=EXAMPLE-WORKSHOP-2021,\nLED-0000001f40,record_depth,1,P6 record depth,frame_membership.csv editions=1 frame_code=EXAMPLE-WORKSHOP-2022,\nLED-0000002040,record_depth,1,P6 record depth,frame_membership.csv editions=1 frame_code=EXAMPLE-FORUM-2023,\nLED-0000002640,record_depth,1,P6 record depth,frame_membership.csv editions=1 frame_code=EXAMPLE-RESIDENCY-2019,\nLED-0000002740,record_depth,1,P6 record depth,frame_membership.csv editions=1 frame_code=EXAMPLE-RESIDENCY-2019,\nLED-0000002840,record_depth,1,P6 record depth,frame_membership.csv editions=1 frame_code=EXAMPLE-WORKSHOP-2021,\nLED-0000002940,record_depth,1,P6 record depth,frame_membership.csv editions=1 frame_code=EXAMPLE-WORKSHOP-2021,\n",
+    "venue_audit.md": "# Place and institution entity-resolution audit sample\n\nRules G1–G6 · V2–V9. Random sample seed: `20260925`.\nSection 7 lists every merge and the rule that made it.\n\n## 1. Random sample of activity rows\n\n### 1. 9dc1c853-f22b-5736-ab1e-800455e8cd6e\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 2. cc0e3197-df48-5e41-98cf-931b75813907\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 3. 55c7b580-7a40-5dd6-83f3-f1b09c22bcf2\n\n- Raw venue: `예시문화원, 부산`\n- Fragments: `예시문화원` → institution → VEN-000002 (예시문화원); `부산` → place (Busan, KR, 부산)\n- venue_kind: institution\n- venue_id: VEN-000002 (예시문화원)\n- funder_id: \n\n### 4. f14c04bc-1ffd-5428-b2a7-45a0393af4af\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 5. d9f93d48-4e93-59f7-a5df-c6699135ce07\n\n- Raw venue: `예시미술관, 서울`\n- Fragments: `예시미술관` → institution → VEN-000003 (예시미술관); `서울` → place (Seoul, KR, 서울)\n- venue_kind: institution\n- venue_id: VEN-000003 (예시미술관)\n- funder_id: \n\n### 6. 2bb58ab3-f726-5517-a774-f2f36043360b\n\n- Raw venue: `서울예시대학교`\n- Fragments: `서울예시대학교` → institution → VEN-000006 (서울예시대학교)\n- venue_kind: institution\n- venue_id: VEN-000006 (서울예시대학교)\n- funder_id: \n\n### 7. 8d78ac11-53bc-521b-af01-de8788228807\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 8. 8f1e0db3-e1e4-54da-a18e-48e38ba4af50\n\n- Raw venue: `서울시립미술관 전시실`\n- Fragments: `서울시립미술관 전시실` → institution → VEN-000001 (서울시립미술관)\n- venue_kind: institution\n- venue_id: VEN-000001 (서울시립미술관)\n- funder_id: \n\n### 9. bc372a0a-dbd9-5d1d-8266-9c6f2d5a35c4\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 10. 429e2883-4cb4-54b7-886f-cb5d31c964b0\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 11. f4070705-4e70-5115-9799-c84b40f1fd9a\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 12. 545727c4-7382-5a03-87a5-9bdf03f1ef40\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 13. e3d43f3e-e1b7-5609-b18b-dc4742de66ea\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 14. 4861435a-52f9-564b-8b09-e34b53e3256a\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 15. 476cf0d4-0eef-5b5c-8704-64365dc28db4\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 16. 15483a40-c705-586f-8004-5e43fb9fdb20\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 17. 74a1a4ee-6950-59b8-98ec-8bd16e08670f\n\n- Raw venue: `Seoul Museum of Art`\n- Fragments: `Seoul Museum of Art` → institution → VEN-000001 (서울시립미술관)\n- venue_kind: institution\n- venue_id: VEN-000001 (서울시립미술관)\n- funder_id: \n\n### 18. 037b2f7e-bf4e-53be-8723-a4a55fb7ef48\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 19. 30cb6a2f-e482-525b-aa26-77a9f0db2057\n\n- Raw venue: `예시홀, 서울`\n- Fragments: `예시홀` → institution → VEN-000004 (예시홀); `서울` → place (Seoul, KR, 서울)\n- venue_kind: institution\n- venue_id: VEN-000004 (예시홀)\n- funder_id: \n\n### 20. bc05c504-e741-586a-b763-9a0e57be5d7b\n\n- Raw venue: `Seoul Yesidae University`\n- Fragments: `Seoul Yesidae University` → institution → VEN-000005 (Seoul Yesidae University)\n- venue_kind: institution\n- venue_id: VEN-000005 (Seoul Yesidae University)\n- funder_id: \n\n### 21. a5ad13fe-0022-5a59-8463-a8c5e9a45d78\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 22. cf77f4d8-65e4-5523-a3d8-f3d550888291\n\n- Raw venue: `서울시립미술관 《빛》`\n- Fragments: `서울시립미술관 《빛》` → institution → VEN-000001 (서울시립미술관)\n- venue_kind: institution\n- venue_id: VEN-000001 (서울시립미술관)\n- funder_id: \n\n### 23. 936d1aaf-591f-5f98-bb62-4e56499780ca\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 24. dab8d132-8e36-5f68-996a-7999cce68fcd\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 25. 50c59121-f80c-50a1-8837-e5ecd33bae9a\n\n- Raw venue: `서울시립미술관`\n- Fragments: `서울시립미술관` → institution → VEN-000001 (서울시립미술관)\n- venue_kind: institution\n- venue_id: VEN-000001 (서울시립미술관)\n- funder_id: \n\n### 26. a8a2101d-d91a-5c9e-ae88-905ce5112e4d\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 27. e9659053-6298-5a48-ab41-74b3ad294abf\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 28. 636931d3-1a5e-5a04-a099-65741d1f16c1\n\n- Raw venue: `예시문화원, 부산`\n- Fragments: `예시문화원` → institution → VEN-000002 (예시문화원); `부산` → place (Busan, KR, 부산)\n- venue_kind: institution\n- venue_id: VEN-000002 (예시문화원)\n- funder_id: \n\n### 29. 8b027c81-9fc0-5ac5-bef3-6c7f5c64b03a\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 30. 3a12034a-6fc0-5c61-9303-09df666f6356\n\n- Raw venue: `서울시립미술관 외`\n- Fragments: `서울시립미술관 외` → institution → VEN-000001 (서울시립미술관)\n- venue_kind: institution\n- venue_id: VEN-000001 (서울시립미술관)\n- funder_id: \n\n### 31. 26b13e3a-7885-54e7-8a44-0e20fb7da97a\n\n- Raw venue: `Seoul Museum of Art`\n- Fragments: `Seoul Museum of Art` → institution → VEN-000001 (서울시립미술관)\n- venue_kind: institution\n- venue_id: VEN-000001 (서울시립미술관)\n- funder_id: \n\n### 32. fea061ea-3a03-55c6-b4fc-77a6535b9909\n\n- Raw venue: `예시홀, 서울`\n- Fragments: `예시홀` → institution → VEN-000004 (예시홀); `서울` → place (Seoul, KR, 서울)\n- venue_kind: institution\n- venue_id: VEN-000004 (예시홀)\n- funder_id: \n\n### 33. 8f743137-0e7d-5d18-bb4c-f6cd2ae97a58\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 34. 6a6da9b2-c284-5f0b-a8bd-529c689e25b7\n\n- Raw venue: `서울시립미술관`\n- Fragments: `서울시립미술관` → institution → VEN-000001 (서울시립미술관)\n- venue_kind: institution\n- venue_id: VEN-000001 (서울시립미술관)\n- funder_id: \n\n### 35. d6fd98ea-d169-5e15-8fa1-0a58edad5c33\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 36. 70bbb44b-4ea2-5bec-bb7a-5b0a3e26081c\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 37. 49e9e8ca-b488-55b1-be98-23eed43db2b6\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 38. 5201f511-6115-5096-b431-0fa2db081b0b\n\n- Raw venue: `예시미술관, 서울`\n- Fragments: `예시미술관` → institution → VEN-000003 (예시미술관); `서울` → place (Seoul, KR, 서울)\n- venue_kind: institution\n- venue_id: VEN-000003 (예시미술관)\n- funder_id: \n\n### 39. 4b37ac92-ddb1-5daf-941b-09f57af22e0f\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 40. f34eca4b-1378-5b85-96ab-b5c2a5c456b7\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 41. 8216e861-bc95-55aa-be7d-9bffd14b0fae\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 42. ff4280cb-cb5a-5f65-bd3e-5814226f1ecb\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n### 43. aa93c1bb-5399-5529-a984-ba03177668f2\n\n- Raw venue: `(blank)`\n- Fragments: (none)\n- venue_kind: empty\n- venue_id: \n- funder_id: \n\n## 2. Top 30 entities merged by alias\n\n- none\n\n## 3. Top 40 entities by row count\n\n- VEN-000001 · 서울시립미술관 · institution · 7 rows · 3 artists\n- VEN-000002 · 예시문화원 · institution · 2 rows · 1 artists\n- VEN-000003 · 예시미술관 · institution · 2 rows · 2 artists\n- VEN-000004 · 예시홀 · institution · 2 rows · 1 artists\n- VEN-000005 · Seoul Yesidae University · institution · 1 rows · 1 artists\n- VEN-000006 · 서울예시대학교 · institution · 1 rows · 1 artists\n\n## 4. Top 30 funders\n\n- none\n\n## 5. Top 30 fragments left as institution that look like a country code or a state name\n\n- none\n\n## 6. Components left unmerged\n\nV5e: if a candidate pair's connected component contains two or more distinct Hangul name keys, the whole component is left unmerged.\n\n- Component count: 0\n\n## 7. Merges (every join, with its rule)\n\nV5a cross-script parenthetical pair written by two or more artists · V5d acronym and Latin initials, two or more artists · V5f one artist, Hangul and Latin, both names specific, after V5e · V7e Latin word-bag · V8 part of a known entity · V9 Hangul reading equals the Latin bag, one reading per component.\nFormat: rule · kept spelling (row count) ← joined spelling (row count).\n\n### V5a — 0 cases\n\n- none\n\n### V5d — 0 cases\n\n- none\n\n### V5f — 0 cases\n\n- none\n\n### V9 — 1 cases\n\n- V9 · `서울시립미술관`(4) ← `Seoul Museum of Art`(2)\n\n### V8 — 1 cases\n\n- V8 · `서울시립미술관`(4) ← `서울시립미술관 전시실`(1)\n\n### V7e — 0 cases\n\n- none\n"
   },
   "ties": {
     "n_people": 3,

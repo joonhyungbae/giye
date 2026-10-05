@@ -9,8 +9,13 @@ is new: the production site built the same sentences in the browser.
 
 Who is published: a ledger row that is in scope, has an http(s) source, is on a
 roster or has ``cv_link_ok=yes``, and whose status is empty, ``PUBLISHED``, or
-``STAGED``. A roster row is itself the evidence of participation. A row that
-already has a ``gy_id`` but is not published becomes a stub: ``HIDDEN_BY_REQUEST``
+``STAGED``. A roster membership counts only when the frame's decision is
+``included`` or ``adjacent``. ``adjacent`` stays an adjacent strand.
+``excluded``, ``planned``, ``no_public_roster``, and any other decision are
+listed on the coverage files with that decision, and their memberships are
+not published. A roster row of an admitted frame is itself the evidence of
+participation. A row that already has a ``gy_id`` but is not published becomes
+a stub: ``HIDDEN_BY_REQUEST``
 or ``WITHDRAWN``, with no name and no records. A retired id is a redirect to the
 survivor's current id (the ledger already points every retirement at the final
 survivor).
@@ -31,7 +36,7 @@ from pathlib import Path
 
 import yaml
 
-from giye.collect.frames import load_frames, validate_transcribed_membership
+from giye.collect.frames import is_admitted, load_frames, validate_transcribed_membership
 from giye.config import Config, ConfigError
 from giye.extract.apply import PRIVATE_TITLE
 from giye.field import Field, edition_alias
@@ -127,8 +132,21 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
     def edition_of(mem_code: str) -> tuple[str, str | None] | None:
         return resolve_frame_edition(mem_code, frame_codes, years_by_frame, field=config.field_config)
 
+    decisions = {frame.code: frame.eligibility.decision for frame in registry.frames}
+
+    def admitted_membership(mem_code: str) -> bool:
+        """A code that does not resolve is not a recorded decision, so it stays."""
+        resolved = edition_of(mem_code)
+        if resolved is None:
+            return True
+        return is_admitted(decisions.get(resolved[0], ""))
+
+    # Coverage still lists every frame. Memberships of a frame that was not
+    # admitted are not part of the published roster.
+    public_membership = [row for row in membership if admitted_membership(row["frame_code"])]
+
     mem_by_ledger: dict[str, list[str]] = {}
-    for row in membership:
+    for row in public_membership:
         mem_by_ledger.setdefault(row["ledger_id"], []).append(row["frame_code"])
 
     scope = {row["ledger_id"] for row in ledger.read("scope") if row.get("scope") == "out"}
@@ -137,7 +155,7 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
     hidden = {row["ledger_id"] for row in artists_in if row.get("status") == "HIDDEN_BY_REQUEST"}
     frame_url = {str(row.get("code") or ""): row.get("source_url") or "" for row in frame_rows}
     roster_url: dict[str, str] = {}
-    for row in membership:
+    for row in public_membership:
         edition = edition_of(row["frame_code"])
         for url in (row.get("source_url") or "", frame_url.get(edition[0], "") if edition else ""):
             if str(url).startswith("http"):
@@ -191,7 +209,7 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
     links_out = _links(links_in, ledger_to_gy, stamp)
     collaborations_out = _collaborations(ledger, ledger_to_gy)
     background_out = _background(acts_in, ledger_to_gy, clock.year)
-    frames_out = _frames(frame_rows, membership, edition_of, ledger_to_gy, scope)
+    frames_out = _frames(frame_rows, public_membership, edition_of, ledger_to_gy, scope)
     unpublished = sorted(set(mem_by_ledger) - set(ledger_to_gy) - scope - hidden)
     if unpublished:
         raise SystemExit(

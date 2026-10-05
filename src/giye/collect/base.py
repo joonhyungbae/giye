@@ -181,7 +181,19 @@ class RosterCollector:
         activity's year column, so a single call with the bare frame would
         leave every membership undated. The snapshot path stays the bare frame:
         ``fetch`` uses ``self.frame``, not the edition.
+
+        A frame whose ``eligibility.decision`` is not ``included`` or
+        ``adjacent`` is not collected. ``run`` prints one line and returns no
+        rows, and it does not fetch or write the ledger.
         """
+        from giye.collect.frames import is_admitted
+        from giye.config import checked_frames
+
+        registry = checked_frames(self.config)  # type: ignore[arg-type]
+        declared = registry.by_code(self.frame)
+        if declared is not None and not is_admitted(declared.eligibility.decision):
+            _skip_notice(self.frame, declared.eligibility.decision)
+            return []
         stamp = collected_at or datetime.now(timezone.utc).date().isoformat()
         rows: list[dict[str, str]] = []
         batches: dict[str, list[dict[str, str]]] = {}
@@ -259,8 +271,12 @@ def run_configured(
     """Run every configured collector. One fetcher and one snapshot store are shared.
 
     The frames file is read first. A collector whose ``frame`` is not declared
-    there is refused before any page is fetched.
+    there is refused before any page is fetched. A declared frame whose
+    decision is not ``included`` or ``adjacent`` is skipped before ``run``:
+    one notice, no fetch, no ledger rows. ``run`` repeats that check for a
+    caller that does not come through here.
     """
+    from giye.collect.frames import is_admitted
     from giye.config import ConfigError, checked_frames
 
     registry = checked_frames(config)  # type: ignore[arg-type]
@@ -277,7 +293,18 @@ def run_configured(
     stamp = run_id or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     results = []
     for cls in classes:
+        frame = registry.by_code(cls.frame)
+        # ``frame`` is set: a missing code was refused above.
+        decision = frame.eligibility.decision if frame is not None else ""
+        if not is_admitted(decision):
+            _skip_notice(cls.frame, decision)
+            continue
         collector = cls(config, fetcher=fetcher, store=store, run_id=stamp)
         rows = collector.run(collected_at=collected_at)
         results.append((cls.frame, rows, collector.csv_path()))
     return results
+
+
+def _skip_notice(code: str, decision: str) -> None:
+    """One line. The collector is not run and no page is fetched."""
+    print(f"skip {code}: eligibility.decision is {decision}; not collected", file=sys.stderr)
