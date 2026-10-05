@@ -2226,6 +2226,25 @@
         "merges_that_added_ties": 1,
         "ties_added": 1
       }
+    },
+    "n_people_roster_independent": 3,
+    "attribution_roster_independent": {
+      "V7a-d": 0,
+      "V7e": {
+        "merges": 0,
+        "merges_that_added_ties": 0,
+        "ties_added": 0
+      },
+      "V8": {
+        "merges": 1,
+        "merges_that_added_ties": 1,
+        "ties_added": 1
+      },
+      "V9": {
+        "merges": 1,
+        "merges_that_added_ties": 1,
+        "ties_added": 1
+      }
     }
   }
 }

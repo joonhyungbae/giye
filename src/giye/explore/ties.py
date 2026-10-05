@@ -376,7 +376,7 @@ def layer_report(
     ]
     if mismatches:
         raise RuntimeError("merge replay does not match the layer runs: " + "; ".join(mismatches))
-    return {
+    report: dict[str, Any] = {
         "n_people": len({row["ledger_id"] for row in cv_rows}),
         "entities": entities,
         "ties": ties,
@@ -385,6 +385,21 @@ def layer_report(
             **{rule: dict(block) for rule, block in replay["per_rule"].items()},
         },
     }
+    if indep_rows is not None:
+        # The same replay on the evaluation outcome, so its rise can be attributed rule by rule too.
+        indep = attribute_merges(observations(full, indep_rows), full.root_before_name_rules, full.name_rule_merges)
+        wrong = [
+            rule for rule, layer in RULE_LAYER.items()
+            if indep["ties_after_rule_including_prior"][rule] != ties[layer]["roster_independent"]
+        ]
+        if wrong:
+            raise RuntimeError(f"roster-independent replay does not match the layer runs after {wrong}")
+        report["n_people_roster_independent"] = len({row["ledger_id"] for row in indep_rows})
+        report["attribution_roster_independent"] = {
+            "V7a-d": indep["ties_including_prior"] - ties["base"]["roster_independent"],
+            **{rule: dict(block) for rule, block in indep["per_rule"].items()},
+        }
+    return report
 
 
 KINDS = ("roster-independent", "cv-listing")
@@ -442,4 +457,14 @@ def format_layers(report: Mapping[str, Any]) -> str:
             f"added\t{rule}\t{block['ties_added']}\t"
             f"merges={block['merges']}\tmerges_that_added_ties={block['merges_that_added_ties']}"
         )
+    indep = report.get("attribution_roster_independent")
+    if indep:
+        lines.append(f"people_roster_independent\t{report['n_people_roster_independent']}")
+        lines.append(f"added_roster_independent\tV7a-d\t{indep['V7a-d']}")
+        for rule in MERGE_RULES:
+            block = indep[rule]
+            lines.append(
+                f"added_roster_independent\t{rule}\t{block['ties_added']}\t"
+                f"merges={block['merges']}\tmerges_that_added_ties={block['merges_that_added_ties']}"
+            )
     return "\n".join(lines)
