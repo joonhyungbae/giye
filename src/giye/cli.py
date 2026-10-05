@@ -57,7 +57,7 @@ def _collect(args: argparse.Namespace) -> int:
     from giye.collect.base import run_configured
 
     config = _open_config(args.config)
-    results = run_configured(config)
+    results = run_configured(config, from_snapshots=getattr(args, "from_snapshots", False))
     if not results:
         print(
             "giye collect: no collectors configured (set collect.collector_modules in the config)",
@@ -371,6 +371,16 @@ def _add_stage_parsers(sub: argparse._SubParsersAction) -> None:
     for stage in STAGES + ["run"]:
         sp = sub.add_parser(stage, help=f"run the {stage} stage" if stage != "run" else "run every stage in order")
         sp.add_argument("--config", default="giye.toml")
+        if stage in {"collect", "run"}:
+            sp.add_argument(
+                "--from-snapshots",
+                action="store_true",
+                help=(
+                    "re-run roster collectors on kept snapshot bodies; "
+                    "no socket, no robots.txt fetch, no new snapshot lines; "
+                    "collected_at is the kept page's fetch date"
+                ),
+            )
         if stage == "resolve":
             sp.add_argument("--dry-run", action="store_true", help="decide without writing the ledger")
         if stage == "normalize":

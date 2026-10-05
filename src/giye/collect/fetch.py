@@ -25,6 +25,10 @@ refusal is the same whoever asked (docs/RULES.md, collection policy). The decisi
   is set as well. The path verdict does not depend on the flag.
 - The configured User-Agent is sent on every request, including robots.txt. It must contain
   a contact URL or email.
+- ``from_snapshots`` answers ``get`` from the snapshot store instead of the network.
+  No socket is opened and robots.txt is not fetched: the manifest line already records
+  the verdict from the original fetch. A URL that was never kept is a 404 page with
+  reason ``not kept``.
 
 A disallowed or unreachable URL is never requested. The public evidence default still does
 not fall back to the Internet Archive for that refusal (see ``giye.collect.evidence``).
@@ -51,6 +55,7 @@ from giye.collect.robots import (
     _location,
     decide,
 )
+from giye.collect.snapshot import SnapshotStore
 
 __all__ = [
     "SOCIAL_HOSTS",
@@ -117,6 +122,9 @@ class Page:
     ``requested_url`` is the URL the caller asked for, before redirects. ``robots`` is the
     verdict for the hop whose bytes are in ``content`` (the last hop). A refused hop never
     becomes a ``Page``: the fetcher raises before sending it.
+
+    ``fetched_at`` is the manifest timestamp when this page was read back from the
+    snapshot store. ``reason`` is ``not kept`` when the store has no body for the URL.
     """
 
     url: str
@@ -127,6 +135,8 @@ class Page:
     requested_url: str = ""
     robots: str = VERDICT_NOT_CHECKED
     robots_tls_unverified: bool = False
+    fetched_at: str = ""
+    reason: str = ""
 
     def __post_init__(self) -> None:
         if not self.requested_url:
@@ -165,6 +175,10 @@ class Fetcher:
 
     ``offline_roots`` maps a URL prefix to a local directory (the demo). Those reads never
     open a socket, but they still pass through the robots.txt file in that directory.
+
+    ``from_snapshots`` reads ``snapshot_root/*/snapshots/manifest.jsonl`` instead.
+    ``prefer_frame`` is the collector's frame: when that frame also kept the URL,
+    its copy is used. robots.txt is not fetched in this mode.
     """
 
     def __init__(
@@ -176,12 +190,23 @@ class Fetcher:
         robots_timeout_s: float = 20.0,
         session: requests.Session | None = None,
         offline_roots: tuple[tuple[str, Path], ...] | dict[str, Path] | None = None,
+        from_snapshots: bool = False,
+        snapshot_root: Path | None = None,
+        prefer_frame: str = "",
     ) -> None:
         self.user_agent = require_contact(user_agent)
         self.min_delay_s = float(min_delay_s)
         self.timeout_s = float(timeout_s)
         self.robots_timeout_s = float(robots_timeout_s)
-        self.session = session or requests.Session()
+        self.from_snapshots = bool(from_snapshots)
+        self.snapshot_root = None if snapshot_root is None else Path(snapshot_root)
+        self.prefer_frame = prefer_frame or ""
+        self._reads: SnapshotStore | None = None
+        # Replay must not be able to fall through into a live session.
+        if self.from_snapshots:
+            self.session = session
+        else:
+            self.session = session or requests.Session()
         roots: list[tuple[str, Path]] = []
         for prefix, dest in dict(offline_roots or ()).items():
             roots.append((str(prefix).rstrip("/"), Path(dest)))
@@ -196,7 +221,12 @@ class Fetcher:
         """Fetch ``url``. A disallowed or unreachable hop raises before that hop is sent.
 
         Redirects are followed one hop at a time. Each hop is passed to ``decide`` first.
+
+        In ``from_snapshots`` mode the answer is the newest kept body for ``url``
+        (see ``SnapshotStore.recall``). Nothing is sent, and robots.txt is not read.
         """
+        if self.from_snapshots:
+            return self._from_store(url)
         original = url
         current = urldefrag(str(url))[0]
         limit = getattr(self.session, "max_redirects", None)
@@ -245,6 +275,39 @@ class Fetcher:
                 raise requests.exceptions.InvalidURL(f"redirect without a usable Location: {current}")
             current = urldefrag(nxt)[0]
         raise requests.exceptions.TooManyRedirects(f"exceeded {limit} redirects: {current}")
+
+    def _from_store(self, url: str) -> Page:
+        """One kept body, or a 404 page whose ``reason`` is ``not kept``.
+
+        The session, ``offline_roots``, and ``decide`` are not used. A mistaken
+        call into the live path cannot open a socket: this mode stores no session
+        unless the caller passed one, and this method does not touch it.
+        """
+        store = self._read_store()
+        if store is None:
+            return _not_kept(url)
+        kept = store.recall(str(url), prefer_frame=self.prefer_frame)
+        if kept is None:
+            return _not_kept(url)
+        final = kept.final_url or kept.url or str(url)
+        return Page(
+            url=final,
+            status=kept.status,
+            content=kept.content,
+            content_type=kept.content_type,
+            tls_unverified=kept.tls_unverified,
+            requested_url=str(url),
+            robots=kept.robots or VERDICT_NOT_CHECKED,
+            robots_tls_unverified=kept.robots_tls_unverified,
+            fetched_at=kept.fetched_at,
+        )
+
+    def _read_store(self) -> SnapshotStore | None:
+        if self.snapshot_root is None:
+            return None
+        if self._reads is None:
+            self._reads = SnapshotStore(self.snapshot_root)
+        return self._reads
 
     def _robots_get(self, url: str, timeout: float):
         """One robots.txt hop for ``decide``. Redirects are not followed here.
@@ -386,6 +449,11 @@ class Fetcher:
         return exact
 
 
+def _not_kept(url: str) -> Page:
+    """A URL the snapshot store has no servable body for. No request was made."""
+    return Page(url=url, status=404, content=b"", requested_url=url, reason="not kept")
+
+
 def _offline_robots(root: Path, url: str):
     """A robots.txt response from a fixture directory. Missing file → 404 (unavailable, allowed)."""
     path = root / "robots.txt"
@@ -437,12 +505,18 @@ def _content_type(path: Path) -> str:
     return "application/octet-stream"
 
 
-def fetcher_from_config(config: object) -> Fetcher:
-    """Build a ``Fetcher`` from a ``giye.config.Config``."""
+def fetcher_from_config(config: object, *, from_snapshots: bool = False) -> Fetcher:
+    """Build a ``Fetcher`` from a ``giye.config.Config``.
+
+    ``from_snapshots`` reads ``config.raw`` and does not use the network.
+    """
+    raw = getattr(config, "raw", None)
     return Fetcher(
         config.user_agent,  # type: ignore[attr-defined]
         min_delay_s=config.min_delay_s,  # type: ignore[attr-defined]
         timeout_s=config.timeout_s,  # type: ignore[attr-defined]
         robots_timeout_s=config.robots_timeout_s,  # type: ignore[attr-defined]
         offline_roots=config.offline_roots,  # type: ignore[attr-defined]
+        from_snapshots=from_snapshots,
+        snapshot_root=Path(raw) if from_snapshots and raw is not None else None,
     )

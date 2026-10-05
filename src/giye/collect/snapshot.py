@@ -21,12 +21,20 @@ robots.txt, and this store gets no line.
 Manifest version 1 does not keep the original response headers. Version 2 would be
 the first to store them. Until then a WARC export reconstructs a status line and
 Content-Type from these fields and the stored body (see ``giye.export``).
+
+``recall`` reads the lines back for ``giye collect --from-snapshots``. It scans
+``<root>/*/snapshots/manifest.jsonl``. A line matches when its ``url`` or
+``final_url`` equals the requested URL. Withdrawn lines are not bodies
+(``servable_rows``). The newest match has the greatest ``fetched_at``; an equal
+timestamp keeps the later line. When ``prefer_frame`` also has a match, only
+that frame is considered, so a collector re-reads its own store first.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -86,6 +94,22 @@ def servable_rows(rows: list[dict]) -> list[dict]:
     return served
 
 
+@dataclass(frozen=True)
+class KeptBody:
+    """One servable manifest line and the bytes it points at."""
+
+    frame: str
+    url: str
+    final_url: str
+    status: int
+    content: bytes
+    content_type: str
+    fetched_at: str
+    robots: str
+    tls_unverified: bool = False
+    robots_tls_unverified: bool = False
+
+
 class SnapshotStore:
     """Keep response bodies under ``root`` (the archive's ``data/raw`` directory)."""
 
@@ -93,6 +117,8 @@ class SnapshotStore:
         self.root = Path(root)
         # snapshots directory → full sha256 → path as stored on the manifest line.
         self._sha_index: dict[Path, dict[str, str]] = {}
+        # Servable lines for ``recall``. Cleared when ``keep`` appends a line.
+        self._kept_index: list[tuple[str, dict]] | None = None
 
     def keep(
         self,
@@ -156,7 +182,62 @@ class SnapshotStore:
         manifest = self.root / frame_dir / "snapshots" / "manifest.jsonl"
         with manifest.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(line, ensure_ascii=False) + "\n")
+        self._kept_index = None
         return path
+
+    def recall(self, url: str, *, prefer_frame: str = "") -> KeptBody | None:
+        """Newest servable body whose ``url`` or ``final_url`` equals ``url``.
+
+        Every frame directory under this store is scanned
+        (``<root>/*/snapshots/manifest.jsonl``). A withdrawn URL is skipped with
+        its earlier bodies. When ``prefer_frame`` has a match, a newer copy in
+        another frame does not win: re-collection should read the frame that
+        is running. Newest is the greatest ``fetched_at``; the same timestamp
+        keeps the later line. ``None`` means this store never kept the URL.
+        """
+        matched = [
+            (index, frame, row)
+            for index, (frame, row) in enumerate(self._servable_lines())
+            if _line_matches(row, url)
+        ]
+        if not matched:
+            return None
+        if prefer_frame:
+            own = [item for item in matched if item[1] == prefer_frame]
+            if own:
+                matched = own
+        matched.sort(key=lambda item: (_fetched_at(item[2]), item[0]), reverse=True)
+        for _index, frame, row in matched:
+            content = self._body_of(frame, row)
+            if content is None:
+                continue
+            return _kept_body(frame, row, content)
+        return None
+
+    def _servable_lines(self) -> list[tuple[str, dict]]:
+        """``(frame, line)`` for every servable manifest line, in file order."""
+        if self._kept_index is not None:
+            return self._kept_index
+        lines: list[tuple[str, dict]] = []
+        if self.root.is_dir():
+            for manifest in sorted(self.root.glob("*/snapshots/manifest.jsonl")):
+                if not manifest.is_file():
+                    continue
+                frame = manifest.parent.parent.name
+                for row in servable_rows(_read_manifest(manifest)):
+                    lines.append((frame, row))
+        self._kept_index = lines
+        return lines
+
+    def _body_of(self, frame: str, row: dict) -> bytes | None:
+        """Bytes for one manifest line, or ``None`` when the file is not in this frame."""
+        rel = row.get("path")
+        if not isinstance(rel, str) or not rel:
+            return None
+        path = self._resolve_stored(self.root / frame / "snapshots", frame, rel)
+        if path is None:
+            return None
+        return path.read_bytes()
 
     def _sha_index_for(self, snapshots: Path) -> dict[str, str]:
         """Full sha256 → path from every manifest line. The file is not rewritten."""
@@ -221,6 +302,67 @@ class SnapshotStore:
             if candidate.is_file() and _inside(snapshots, candidate):
                 return candidate
         return None
+
+
+def _read_manifest(path: Path) -> list[dict]:
+    """Manifest lines that parse as objects. A broken line is skipped."""
+    rows: list[dict] = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        if not raw.strip():
+            continue
+        try:
+            row = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict):
+            rows.append(row)
+    return rows
+
+
+def _line_matches(row: dict, url: str) -> bool:
+    """True when the line's requested URL or final URL is exactly ``url``."""
+    if not url:
+        return False
+    return url == row.get("url") or url == row.get("final_url")
+
+
+def _fetched_at(row: dict) -> str:
+    value = row.get("fetched_at")
+    return value if isinstance(value, str) else ""
+
+
+def _stored_status(row: dict) -> int:
+    """Status stored on the line. A missing status is 0, not a guessed 200."""
+    status = row.get("status")
+    if isinstance(status, bool):
+        return 0
+    if isinstance(status, int):
+        return status
+    if isinstance(status, str):
+        text = status.strip()
+        if text.lstrip("-").isdigit():
+            return int(text)
+    return 0
+
+
+def _stored_text(row: dict, key: str) -> str:
+    value = row.get(key)
+    return value if isinstance(value, str) else ""
+
+
+def _kept_body(frame: str, row: dict, content: bytes) -> KeptBody:
+    return KeptBody(
+        frame=frame,
+        url=_stored_text(row, "url"),
+        final_url=_stored_text(row, "final_url"),
+        status=_stored_status(row),
+        content=content,
+        content_type=_stored_text(row, "content_type"),
+        fetched_at=_fetched_at(row),
+        robots=_stored_text(row, "robots") or ROBOTS_NOT_CHECKED,
+        tls_unverified=bool(row.get("tls_unverified")),
+        robots_tls_unverified=bool(row.get("robots_tls_unverified")),
+    )
 
 
 def _inside(folder: Path, candidate: Path) -> bool:

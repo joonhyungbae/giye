@@ -42,6 +42,10 @@ Optional table. Key: URL prefix. Value: directory. `giye.collect.fetch` reads th
 "https://example.org" = "fixtures"
 ```
 
+### Re-collection from kept snapshots
+
+`giye collect --from-snapshots` and `giye run --from-snapshots` are command-line flags, not keys in this file. The fetcher answers each `get(url)` from `<data>/raw/*/snapshots/manifest.jsonl`: the newest servable line whose `url` or `final_url` equals the requested URL. A withdrawn line is not a body. When the collector's own frame also kept the URL, that frame's newest line wins over a newer copy in another frame. The same `fetched_at` keeps the later line. The stored status and content type are returned. A URL with no servable line is HTTP 404 with reason `not kept`. No socket is opened. robots.txt is not read again; the manifest line already holds the verdict from fetch time. `RosterCollector.fetch` does not append a snapshot line in this mode. `collected_at` on the rows written is the UTC date (`YYYY-MM-DD`) of that line's `fetched_at`, not the date of the re-run, so a register rebuilt from the same pages keeps the ledger those pages already produced.
+
 ## `[resolve]`
 
 | Key | Type | Default | Required | Read by | Example |

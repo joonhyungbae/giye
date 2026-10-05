@@ -3,12 +3,15 @@
 
 from __future__ import annotations
 
+import json
+import socket
 from pathlib import Path
 
 import pytest
 import requests
 
 from giye.collect.fetch import Fetcher, RobotsDisallowed, TermsRefused, is_social
+from giye.collect.snapshot import SnapshotStore
 from tests.conftest import serve
 
 UA = "GiyeTest/0.1 (+https://example.org/contact)"
@@ -350,3 +353,167 @@ source_id = "CV-ANNA-en"
     assert settled["reason"] == "terms"
     assert settled["robots"] == "platform_excluded"
     assert list((tmp_path / "evidence").rglob("manifest.jsonl")) == []
+
+
+def _keep(
+    root: Path,
+    frame: str,
+    url: str,
+    body: bytes,
+    *,
+    final_url: str = "",
+    status: int = 200,
+    content_type: str = "text/html; charset=utf-8",
+    fetched_at: str = "",
+    robots: str = "allowed",
+) -> None:
+    """Store one body, then pin ``fetched_at`` so newest-line tests do not race the clock."""
+    store = SnapshotStore(root)
+    store.keep(
+        frame,
+        url,
+        body,
+        final_url=final_url or url,
+        status=status,
+        content_type=content_type,
+        robots=robots,
+    )
+    if not fetched_at:
+        return
+    manifest = root / frame / "snapshots" / "manifest.jsonl"
+    rows = [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines() if line.strip()]
+    rows[-1]["fetched_at"] = fetched_at
+    manifest.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8")
+
+
+def _block_sockets(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Any socket constructor or DNS lookup fails the test."""
+
+    def opened(*_args, **_kwargs):
+        raise AssertionError("socket opened")
+
+    monkeypatch.setattr(socket, "socket", opened)
+    monkeypatch.setattr(socket, "create_connection", opened)
+    monkeypatch.setattr(socket, "getaddrinfo", opened)
+
+
+def test_from_snapshots_prefers_the_frame_and_the_newest_line(tmp_path: Path):
+    raw = tmp_path / "raw"
+    url = "https://example.org/alumni"
+    _keep(raw, "FRAME-A", url, b"a-old", fetched_at="2010-01-01T00:00:00Z", status=200, content_type="text/html")
+    _keep(
+        raw,
+        "FRAME-A",
+        url,
+        b"a-new",
+        fetched_at="2020-01-01T00:00:00Z",
+        status=200,
+        content_type="text/html; charset=utf-8",
+    )
+    _keep(raw, "FRAME-B", url, b"b-newer", fetched_at="2024-06-01T00:00:00Z", status=201, content_type="text/plain")
+    _keep(raw, "FRAME-C", "https://example.org/tie", b"first", fetched_at="2021-01-01T00:00:00Z")
+    _keep(raw, "FRAME-C", "https://example.org/tie", b"second", fetched_at="2021-01-01T00:00:00Z")
+    _keep(
+        raw,
+        "FRAME-A",
+        "https://example.org/start",
+        b"hop",
+        final_url="https://example.org/end",
+        fetched_at="2018-07-04T01:02:03Z",
+        status=203,
+        content_type="text/plain; charset=utf-8",
+        robots="unavailable_allowed",
+    )
+    fetcher = Fetcher(UA, min_delay_s=0, from_snapshots=True, snapshot_root=raw, prefer_frame="FRAME-A")
+    own = fetcher.get(url)
+    assert own.content == b"a-new"
+    assert own.status == 200
+    assert own.content_type == "text/html; charset=utf-8"
+    assert own.fetched_at == "2020-01-01T00:00:00Z"
+    assert own.reason == ""
+    fetcher.prefer_frame = ""
+    newest = fetcher.get(url)
+    assert newest.content == b"b-newer"
+    assert newest.status == 201
+    assert newest.content_type == "text/plain"
+    fetcher.prefer_frame = "FRAME-B"
+    assert fetcher.get(url).content == b"b-newer"
+    fetcher.prefer_frame = "FRAME-C"
+    assert fetcher.get("https://example.org/tie").content == b"second"
+    fetcher.prefer_frame = "FRAME-A"
+    by_final = fetcher.get("https://example.org/end")
+    assert by_final.content == b"hop"
+    assert by_final.status == 203
+    assert by_final.url == "https://example.org/end"
+    assert by_final.requested_url == "https://example.org/end"
+    assert by_final.content_type == "text/plain; charset=utf-8"
+    assert by_final.robots == "unavailable_allowed"
+    by_request = fetcher.get("https://example.org/start")
+    assert by_request.content == b"hop"
+    assert by_request.url == "https://example.org/end"
+    assert by_request.requested_url == "https://example.org/start"
+    missing = fetcher.get("https://example.org/never")
+    assert missing.status == 404
+    assert missing.reason == "not kept"
+    assert missing.content == b""
+    assert missing.fetched_at == ""
+
+
+def test_from_snapshots_opens_no_socket_and_does_not_read_robots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    raw = tmp_path / "raw"
+    body = b"<p>kept</p>"
+    _keep(
+        raw,
+        "FRAME-A",
+        "https://example.org/page",
+        body,
+        fetched_at="2019-03-15T04:05:06Z",
+        status=203,
+        content_type="text/plain; charset=utf-8",
+        robots="allowed",
+    )
+    blocked = tmp_path / "site"
+    blocked.mkdir()
+    (blocked / "robots.txt").write_text("User-agent: *\nDisallow: /\n", encoding="utf-8")
+
+    def robots(*_args, **_kwargs):
+        raise AssertionError("robots fetched")
+
+    _block_sockets(monkeypatch)
+    monkeypatch.setattr("giye.collect.fetch.decide", robots)
+    fetcher = Fetcher(
+        UA,
+        min_delay_s=0,
+        from_snapshots=True,
+        snapshot_root=raw,
+        prefer_frame="FRAME-A",
+        offline_roots={"https://example.org": blocked},
+    )
+    page = fetcher.get("https://example.org/page")
+    assert page.status == 203
+    assert page.content == body
+    assert page.content_type == "text/plain; charset=utf-8"
+    assert page.fetched_at == "2019-03-15T04:05:06Z"
+    assert page.robots == "allowed"
+    assert page.reason == ""
+    missing = fetcher.get("https://example.org/missing")
+    assert missing.status == 404
+    assert missing.reason == "not kept"
+    assert missing.content == b""
+
+
+def test_from_snapshots_skips_a_withdrawn_body(tmp_path: Path):
+    raw = tmp_path / "raw"
+    url = "https://example.org/gone"
+    _keep(raw, "FRAME-A", url, b"secret", fetched_at="2020-01-01T00:00:00Z")
+    _keep(raw, "FRAME-B", url, b"still-kept", fetched_at="2019-01-01T00:00:00Z")
+    manifest = raw / "FRAME-A" / "snapshots" / "manifest.jsonl"
+    with manifest.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"url": url, "final_url": url, "withdrawn": True}) + "\n")
+    fetcher = Fetcher(UA, min_delay_s=0, from_snapshots=True, snapshot_root=raw, prefer_frame="FRAME-A")
+    # FRAME-A no longer has a servable body, so the other frame's copy is the one kept.
+    page = fetcher.get(url)
+    assert page.content == b"still-kept"
+    assert page.fetched_at == "2019-01-01T00:00:00Z"
+    fetcher.prefer_frame = "FRAME-B"
+    assert fetcher.get(url).content == b"still-kept"

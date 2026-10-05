@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import csv
 import json
+import shutil
+import socket
 from pathlib import Path
 
 import pytest
@@ -325,3 +327,105 @@ def test_direct_run_skips_a_frame_that_is_not_admitted(tmp_path: Path, capsys: p
     assert classes[0](config).run(collected_at="2026-10-04") == []
     assert capsys.readouterr().err.splitlines() == ["skip DROPPED: eligibility.decision is excluded; not collected"]
     assert not (tmp_path / "data" / "ledger").exists()
+
+
+def _block_sockets(monkeypatch: pytest.MonkeyPatch) -> None:
+    def opened(*_args, **_kwargs):
+        raise AssertionError("socket opened")
+
+    monkeypatch.setattr(socket, "socket", opened)
+    monkeypatch.setattr(socket, "create_connection", opened)
+    monkeypatch.setattr(socket, "getaddrinfo", opened)
+
+
+def _ledger_rows(data: Path) -> dict[str, list[dict[str, str]]]:
+    """Ledger tables without ``updated_at``.
+
+    That column is the time of the roster write, not the collection date, so a
+    re-run stamps it again. Every other column is a collection fact.
+    """
+    found: dict[str, list[dict[str, str]]] = {}
+    for path in sorted((data / "ledger").glob("*.csv")):
+        with path.open(encoding="utf-8", newline="") as handle:
+            rows = [dict(row) for row in csv.DictReader(handle)]
+        for row in rows:
+            row.pop("updated_at", None)
+        found[path.name] = rows
+    return found
+
+
+def _manifest_text(data: Path) -> dict[str, str]:
+    root = data / "raw"
+    return {
+        path.relative_to(root).as_posix(): path.read_text(encoding="utf-8")
+        for path in sorted(root.glob("*/snapshots/manifest.jsonl"))
+    }
+
+
+def _roster_text(data: Path) -> dict[str, str]:
+    folder = data / "work" / "rosters"
+    return {path.name: path.read_text(encoding="utf-8") for path in sorted(folder.glob("*.csv"))}
+
+
+def test_from_snapshots_flag_is_only_on_collect_and_run():
+    from giye.cli import _parser
+
+    parser = _parser()
+    assert parser.parse_args(["collect", "--from-snapshots"]).from_snapshots is True
+    assert parser.parse_args(["run", "--from-snapshots"]).from_snapshots is True
+    assert parser.parse_args(["collect"]).from_snapshots is False
+    with pytest.raises(SystemExit):
+        parser.parse_args(["extract", "--from-snapshots"])
+
+
+def test_from_snapshots_rebuilds_the_same_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Online collect against offline fixtures, then the same pages from the store.
+
+    The copy is a second archive. Snapshot lines are not appended. Ledger rows
+    match, including ``collected_at`` taken from each manifest ``fetched_at``.
+    """
+    online = tmp_path / "online"
+    online.mkdir()
+    assert main(["collect", "--config", str(_config(online))]) == 0
+    assert _manifest_text(online / "data")
+    replay = tmp_path / "replay"
+    shutil.copytree(online / "data", replay / "data")
+    manifests = _manifest_text(replay / "data")
+    dates = {
+        json.loads(line)["fetched_at"][:10]
+        for text in manifests.values()
+        for line in text.splitlines()
+        if line.strip()
+    }
+    _block_sockets(monkeypatch)
+    assert main(["collect", "--from-snapshots", "--config", str(_config(replay))]) == 0
+    assert _manifest_text(replay / "data") == manifests
+    assert _roster_text(replay / "data") == _roster_text(online / "data")
+    assert _ledger_rows(replay / "data") == _ledger_rows(online / "data")
+    artists = Ledger.open(load(_config(replay))).read("artists")
+    assert {row["collected_at"] for row in artists} == dates
+    assert "김하늘" in {row["name_ko"] for row in artists}
+
+
+def test_from_snapshots_dates_rows_from_the_manifest_not_today(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    online = tmp_path / "online"
+    online.mkdir()
+    assert main(["collect", "--config", str(_config(online))]) == 0
+    replay = tmp_path / "replay"
+    shutil.copytree(online / "data" / "raw", replay / "data" / "raw")
+    for manifest in (replay / "data" / "raw").glob("*/snapshots/manifest.jsonl"):
+        rows = [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines() if line.strip()]
+        for row in rows:
+            row["fetched_at"] = "2019-03-15T04:05:06Z"
+        manifest.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8")
+    before = _manifest_text(replay / "data")
+    _block_sockets(monkeypatch)
+    assert main(["collect", "--from-snapshots", "--config", str(_config(replay))]) == 0
+    assert _manifest_text(replay / "data") == before
+    ledger = Ledger.open(load(_config(replay)))
+    assert {row["collected_at"] for row in ledger.read("artists")} == {"2019-03-15"}
+    assert {row["collected_at"] for row in ledger.read("activities")} == {"2019-03-15"}
+    assert {row["collected_at"] for row in ledger.read("frame_membership")} == {"2019-03-15"}
+    assert "김하늘" in {row["name_ko"] for row in ledger.read("artists")}

@@ -53,6 +53,21 @@ _HANGUL = re.compile(r"[가-힣]")
 _YEAR = re.compile(r"\d{4}$")
 
 
+def _kept_fetch_date(fetched_at: str) -> str:
+    """UTC calendar date of a manifest ``fetched_at``, or empty when it is not one.
+
+    Roster ``collected_at`` is a date. The snapshot line stores a full UTC
+    timestamp. Re-collection uses that date so the row does not move to today.
+    """
+    text = (fetched_at or "").strip()
+    if len(text) < 10 or text[4] != "-" or text[7] != "-":
+        return ""
+    year, month, day = text[:4], text[5:7], text[8:10]
+    if not (year.isdigit() and month.isdigit() and day.isdigit()):
+        return ""
+    return text[:10]
+
+
 def edition_code(frame: str, year: int | str) -> str:
     """``FRAME-YYYY`` when ``year`` is four digits, otherwise the bare frame.
 
@@ -124,6 +139,11 @@ class RosterCollector:
         if not self.frame or "/" in self.frame or "\\" in self.frame:
             raise ValueError("RosterCollector.frame must be a frame code without path separators")
         self.fetcher = fetcher if fetcher is not None else fetcher_from_config(config)
+        self.from_snapshots = bool(getattr(self.fetcher, "from_snapshots", False))
+        # source URL → UTC date of the kept page that ``fetch`` just returned.
+        self._kept_dates: dict[str, str] = {}
+        if self.from_snapshots:
+            self.fetcher.prefer_frame = self.frame
         self.store = store if store is not None else SnapshotStore(Path(config.raw))  # type: ignore[attr-defined]
         self.run_id = run_id or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -136,8 +156,20 @@ class RosterCollector:
 
         A disk problem must not abort a collection that can still write the roster
         rows, so a snapshot error is logged and the page is still returned.
+
+        In ``from_snapshots`` mode the body is already in the store. No manifest
+        line is appended. ``run`` dates each row from that page's ``fetched_at``.
         """
+        if self.from_snapshots:
+            self.fetcher.prefer_frame = self.frame
         page = self.fetcher.get(url)
+        if self.from_snapshots:
+            when = _kept_fetch_date(page.fetched_at)
+            if when:
+                self._kept_dates[page.url] = when
+                if page.requested_url:
+                    self._kept_dates[page.requested_url] = when
+            return page
         if page.ok and page.content and len(page.content) <= MAX_BYTES:
             try:
                 extra: dict[str, object] = {}
@@ -168,6 +200,12 @@ class RosterCollector:
         calendar date, so a row does not depend on the operator's timezone. The
         snapshot manifest stores a full UTC timestamp.
 
+        In ``from_snapshots`` mode ``collected_at`` is the UTC date of the kept
+        page's ``fetched_at`` (the manifest line whose URL is the edition's
+        ``source_url``), not ``collected_at`` and not today's date. A register
+        rebuilt from the same pages stays aligned with the ledger those pages
+        already produced.
+
         The ledger is the source of truth: a new person gets a ``gy_id``, the frame
         gains a membership, and each appearance is an activity. The CSV is the
         collection report for this run.
@@ -193,12 +231,15 @@ class RosterCollector:
         if declared is not None and not is_admitted(declared.eligibility.decision):
             _skip_notice(self.frame, declared.eligibility.decision)
             return []
-        stamp = collected_at or datetime.now(timezone.utc).date().isoformat()
+        # Replay dates each row from the kept page. Today's date, or the
+        # argument, would record a new visit and the ledger would drift.
+        live_stamp = collected_at or datetime.now(timezone.utc).date().isoformat()
         rows: list[dict[str, str]] = []
         batches: dict[str, list[dict[str, str]]] = {}
         for edition in self.editions():
             code = edition_code(self.frame, edition.year)
             batch = batches.setdefault(code, [])
+            stamp = self._kept_dates.get(edition.source_url, "") if self.from_snapshots else live_stamp
             for person in edition.people:
                 row = {
                     "frame_code": code,
@@ -267,7 +308,11 @@ def load_collectors(config: object) -> list[type[RosterCollector]]:
 
 
 def run_configured(
-    config: object, *, collected_at: str | None = None, run_id: str | None = None
+    config: object,
+    *,
+    collected_at: str | None = None,
+    run_id: str | None = None,
+    from_snapshots: bool = False,
 ) -> list[tuple[str, list[dict[str, str]], Path]]:
     """Run every configured collector. One fetcher and one snapshot store are shared.
 
@@ -276,6 +321,10 @@ def run_configured(
     decision is not ``included`` or ``adjacent`` is skipped before ``run``:
     one notice, no fetch, no ledger rows. ``run`` repeats that check for a
     caller that does not come through here.
+
+    ``from_snapshots`` reads each page from the snapshot store. No socket is
+    opened and no new snapshot line is written. ``collected_at`` on the rows
+    is then the kept page's fetch date, not this argument and not today.
     """
     from giye.collect.frames import is_admitted
     from giye.config import ConfigError, checked_frames
@@ -289,7 +338,7 @@ def run_configured(
         )
     if not classes:
         return []
-    fetcher = fetcher_from_config(config)
+    fetcher = fetcher_from_config(config, from_snapshots=from_snapshots)
     store = SnapshotStore(Path(config.raw))  # type: ignore[attr-defined]
     stamp = run_id or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     results = []
