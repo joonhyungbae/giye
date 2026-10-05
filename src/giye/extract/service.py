@@ -94,7 +94,7 @@ def _register_configured(ledger: Ledger, config: Config, result: ExtractResult) 
         if artist is None:
             result.skipped_unmatched.append(label)
             continue
-        reason = team_like(artist)
+        reason = team_like(artist, words=config.field_config.compiled_team_words())
         if reason and not config.extract_allow_team:
             result.skipped_team.append(f"{artist['ledger_id']} ({reason})")
             continue

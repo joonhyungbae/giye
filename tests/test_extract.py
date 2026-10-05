@@ -1097,3 +1097,28 @@ def test_local_provider_sends_reasoning_effort_only_when_set(tmp_path: Path):
     path.write_text('[archive]\nname = "Synthetic"\n[extract]\nreasoning_effort = "off"\n', encoding="utf-8")
     with pytest.raises(ValueError, match="reasoning_effort must be one of"):
         load(path)
+
+
+def test_registration_uses_the_configured_field_team_words(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """T1 at CV registration reads the archive's field file, not the shipped Korean list."""
+    _block_network(monkeypatch)
+    site = tmp_path / "site"
+    site.mkdir()
+    shutil.copy(FIXTURE / "robots.txt", site / "robots.txt")
+    shutil.copy(FIXTURE / "artist.html", site / "artist.html")
+    source = """
+[[extract.sources]]
+name_ko = "물결 Orchestra"
+lang = "ko"
+url = "https://cv.example.org/artist.html"
+source_id = "CV-ORCH-ko"
+"""
+    config = _config(tmp_path, site=site, cache=tmp_path / "cache", sources=source)
+    field = tmp_path / "field.toml"
+    field.write_text("[resolve]\nteam_words = '(orchestra)'\n", encoding="utf-8")
+    text = config.read_text(encoding="utf-8").replace("[paths]\n", f'[paths]\nfield = "{field.as_posix()}"\n', 1)
+    config.write_text(text, encoding="utf-8")
+    _ledger(tmp_path, config, [_person("LED-orch", "물결 Orchestra", gy="GY-000012")])
+    result = extract(load(config), replay_only=True, today=TODAY)
+    assert result.registered == 0
+    assert result.skipped_team == ["LED-orch (team_name)"]

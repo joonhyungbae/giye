@@ -50,8 +50,8 @@ def team_like(artist: Mapping[str, str], *, words: re.Pattern[str] | None = None
     ``team=`` is also written on a person (the team they belong to), so it does
     not mark a team row. A team row carries ``members=`` or ``rep=``, or a
     non-person name with two or more person-shaped aliases, or a team word.
-    ``words`` is the field file's pattern. Callers that have no config (the CV
-    registry) use the shipped Korean media-art list.
+    ``words`` is the archive's field-file pattern; every pipeline caller passes
+    it. Without it the shipped Korean media-art list is used.
     """
     note = artist.get("reviewer_note") or ""
     for mark in ("members=", "rep="):

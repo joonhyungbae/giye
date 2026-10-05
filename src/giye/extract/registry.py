@@ -49,7 +49,7 @@ def register(
     artist = artists.get(ledger_id)
     if artist is None:
         raise KeyError(ledger_id)
-    reason = team_like(artist)
+    reason = team_like(artist, words=ledger.config.field_config.compiled_team_words())
     if reason and not allow_team:
         raise ValueError(
             f"skip team row ({reason}): {ledger_id} {artist.get('name_ko') or artist.get('name_en')} ← {url}. "
