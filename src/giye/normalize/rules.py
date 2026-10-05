@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import date
 from pathlib import Path
 
@@ -456,33 +456,69 @@ def record_depth(
     return "1", f"frame_membership.csv editions={len(codes)} frame_code={shown}{extra}"
 
 
+def admitted_memberships(
+    membership: list[dict],
+    decisions: Mapping[str, str],
+    edition_of: Callable[[str], tuple[str, str | None] | None],
+) -> list[dict]:
+    """Memberships of admitted frames (``included`` or ``adjacent``).
+
+    ``decisions`` maps a registry frame code to its F1-F5 decision. A code that
+    does not resolve to a registry frame is not a recorded decision, so it
+    stays. A frame that was not admitted stays on the coverage files; its
+    memberships are not part of the published roster.
+    """
+    from giye.collect.frames import is_admitted
+
+    def admitted(mem_code: str) -> bool:
+        resolved = edition_of(mem_code)
+        if resolved is None:
+            return True
+        return is_admitted(decisions.get(resolved[0], ""))
+
+    return [row for row in membership if admitted(row.get("frame_code") or "")]
+
+
+def roster_source_urls(
+    public_membership: list[dict],
+    frames: list[dict],
+    edition_of: Callable[[str], tuple[str, str | None] | None],
+) -> dict[str, str]:
+    """First http(s) URL for a person: the membership row, else the frame page."""
+    frame_url = {str(frame.get("code") or ""): frame.get("source_url") or "" for frame in frames if frame.get("code")}
+    roster_url: dict[str, str] = {}
+    for row in public_membership:
+        ledger_id = row.get("ledger_id") or ""
+        edition = edition_of(row.get("frame_code") or "")
+        for url in (row.get("source_url") or "", frame_url.get(edition[0], "") if edition else ""):
+            if str(url).startswith("http"):
+                roster_url.setdefault(ledger_id, str(url))
+                break
+    return roster_url
+
+
 def published_ids(
     artists: list[dict],
     membership: list[dict],
     scope_rows: list[dict],
     frames: list[dict],
     edition_of: Callable[[str], tuple[str, str | None] | None],
+    decisions: Mapping[str, str],
 ) -> set[str]:
-    """Ledger ids the site publishes. P6 is defined on that population.
+    """Ledger ids the site publishes. The one definition of a published person.
 
-    Same test as the site build: not ``scope=out``, on a roster or
-    ``cv_link_ok=yes``, a source URL (the row's, or else the roster page's), and
-    status empty, PUBLISHED, or STAGED. ``edition_of`` maps a membership code to
-    ``(registry frame, year)`` so a frame URL can fill a row that has none.
-    The artist row is not modified.
+    ``giye publish`` builds its pages from this set and P6 counts record depth
+    on it, so the two cannot disagree. In scope (not ``scope=out``), on an
+    admitted roster (:func:`admitted_memberships`) or ``cv_link_ok=yes``, an
+    http(s) source (the row's, or else the roster page's), a collection date
+    (a fact without one is not published), and status empty, ``PUBLISHED``, or
+    ``STAGED``. ``edition_of`` maps a membership code to ``(registry frame,
+    year)`` so a frame URL can fill a row that has none. The artist rows are
+    not modified.
     """
-    frame_url = {frame["code"]: frame.get("source_url") or "" for frame in frames if frame.get("code")}
-    roster_url: dict[str, str] = {}
-    members: set[str] = set()
-    for row in membership:
-        ledger_id = row.get("ledger_id") or ""
-        if ledger_id:
-            members.add(ledger_id)
-        edition = edition_of(row.get("frame_code") or "")
-        for url in (row.get("source_url") or "", frame_url.get(edition[0], "") if edition else ""):
-            if str(url).startswith("http"):
-                roster_url.setdefault(ledger_id, url)
-                break
+    public = admitted_memberships(membership, decisions, edition_of)
+    roster_url = roster_source_urls(public, frames, edition_of)
+    members = {row.get("ledger_id") or "" for row in public} - {""}
     out_of_scope = {row["ledger_id"] for row in scope_rows if row.get("scope") == "out" and row.get("ledger_id")}
     published: set[str] = set()
     for artist in artists:
@@ -495,6 +531,8 @@ def published_ids(
         if not source.startswith("http"):
             source = roster_url.get(ledger_id, "")
         if not source.startswith("http"):
+            continue
+        if not (artist.get("collected_at") or "").strip():
             continue
         if artist.get("status") not in ("", "PUBLISHED", "STAGED"):
             continue

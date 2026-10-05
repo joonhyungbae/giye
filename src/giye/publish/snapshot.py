@@ -35,13 +35,14 @@ from pathlib import Path
 
 import yaml
 
-from giye.collect.frames import FrameRegistry, is_admitted, load_frames, validate_transcribed_membership
+from giye.collect.frames import FrameRegistry, load_frames, validate_transcribed_membership
 from giye.config import Config, ConfigError
 from giye.extract.apply import PRIVATE_TITLE
 from giye.field import Field, edition_alias
 from giye.ledger.ids import activity_id_for, activity_id_key, gy_number, mint_id
 from giye.ledger.ledger import Ledger
 from giye.ledger.schemas import split_pipe
+from giye.normalize.rules import admitted_memberships, published_ids, roster_source_urls
 from giye.publish.cite import citation_texts
 
 # Practice records the site lists. Anything else is stored as ``other``.
@@ -122,12 +123,15 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
     roster_role = _activity_roster_roles(acts_in)
     frame_rows = list(_frames_document(config.frames).get("frames") or [])
     edition_of = _edition_resolver(frame_rows, config.field_config)
-    public_membership = _admitted_rows(membership, registry, edition_of)
+    decisions = {frame.code: frame.eligibility.decision for frame in registry.frames}
+    public_membership = admitted_memberships(membership, decisions, edition_of)
     mem_by_ledger = _codes_by_ledger(public_membership)
-    scope = _scope_ids(ledger.read("scope"))
+    scope_rows = ledger.read("scope")
+    scope = _scope_ids(scope_rows)
     hidden = _hidden_ids(artists_in)
-    _fill_roster_sources(artists_in, _roster_urls(public_membership, frame_rows, edition_of))
-    publishable = _publishable_people(artists_in, scope, mem_by_ledger)
+    _fill_roster_sources(artists_in, roster_source_urls(public_membership, frame_rows, edition_of))
+    published = published_ids(artists_in, membership, scope_rows, frame_rows, edition_of, decisions)
+    publishable = _publishable_people(artists_in, published)
     ledger_to_gy = _assign_gy_ids(ledger, artists_in, publishable, prefix)
     _warn_gy_gaps(artists_in, ledger.read("gy_retired"), prefix)
     derived = _load_derived(config.processed / "artist_attributes.csv")
@@ -135,6 +139,7 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
     cv_status = _cv_status(ledger.read("cv_sources"))
     same_name = _same_name(ledger.read("review_queue"), ledger_to_gy)
     tags = config.field_config.resolved()
+    collective = _team_ids(config, publishable)
     artists_out = [
         _artist_record(
             artist,
@@ -147,11 +152,12 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
             same_name=same_name.get(artist["ledger_id"], []),
             stamp=stamp,
             tags=tags,
+            collective=artist["ledger_id"] in collective,
         )
         for artist in publishable
     ]
-    published_ids = {row["id"] for row in artists_out}
-    stubs = _stubs(artists_in, published_ids)
+    page_ids = {row["id"] for row in artists_out}
+    stubs = _stubs(artists_in, page_ids)
     activities_out = _activities(acts_in, ledger_to_gy, flags, stamp)
     links_out = _links(links_in, ledger_to_gy, stamp)
     collaborations_out = _collaborations(ledger, ledger_to_gy)
@@ -234,24 +240,6 @@ def _edition_resolver(frame_rows: list, field: Field):
     return edition_of
 
 
-def _admitted_rows(membership: list[dict], registry: FrameRegistry, edition_of) -> list[dict]:
-    """Memberships of admitted frames (included or adjacent).
-
-    A code that does not resolve is not a recorded decision, so it stays.
-    Frames that were not admitted stay on the coverage files; their memberships
-    are not part of the published roster.
-    """
-    decisions = {frame.code: frame.eligibility.decision for frame in registry.frames}
-
-    def admitted(mem_code: str) -> bool:
-        resolved = edition_of(mem_code)
-        if resolved is None:
-            return True
-        return is_admitted(decisions.get(resolved[0], ""))
-
-    return [row for row in membership if admitted(row["frame_code"])]
-
-
 def _codes_by_ledger(public_membership: list[dict]) -> dict[str, list[str]]:
     """Person → membership codes, in file order."""
     mem_by_ledger: dict[str, list[str]] = {}
@@ -270,19 +258,6 @@ def _hidden_ids(artists_in: list[dict]) -> set[str]:
     return {row["ledger_id"] for row in artists_in if row.get("status") == "HIDDEN_BY_REQUEST"}
 
 
-def _roster_urls(public_membership: list[dict], frame_rows: list, edition_of) -> dict[str, str]:
-    """First http(s) URL for a person: the membership row, else the frame page."""
-    frame_url = {str(row.get("code") or ""): row.get("source_url") or "" for row in frame_rows}
-    roster_url: dict[str, str] = {}
-    for row in public_membership:
-        edition = edition_of(row["frame_code"])
-        for url in (row.get("source_url") or "", frame_url.get(edition[0], "") if edition else ""):
-            if str(url).startswith("http"):
-                roster_url.setdefault(row["ledger_id"], str(url))
-                break
-    return roster_url
-
-
 def _fill_roster_sources(artists_in: list[dict], roster_url: dict[str, str]) -> None:
     """Copy a roster URL onto a person who has no http(s) source of their own."""
     for artist in artists_in:
@@ -290,22 +265,32 @@ def _fill_roster_sources(artists_in: list[dict], roster_url: dict[str, str]) -> 
             artist["source_url"] = roster_url[artist["ledger_id"]]
 
 
-def _publishable_people(artists_in: list[dict], scope: set[str], mem_by_ledger: dict[str, list[str]]) -> list[dict]:
+def _team_ids(config: Config, publishable: list[dict]) -> set[str]:
+    """Ledger ids the T1 team test marks (``giye.resolve.teams.team_like``).
+
+    The site's ``type`` vocabulary is ``individual`` / ``collective``. A team
+    published as ``individual`` would be labelled a person and described as a
+    schema.org Person, so the record carries the same verdict the resolver
+    uses to keep teams and people apart.
+    """
+    from giye.normalize.language import language_for
+    from giye.resolve.teams import team_like
+
+    words = config.field_config.compiled_team_words()
+    language = language_for(config)
+    return {
+        artist["ledger_id"] for artist in publishable if team_like(artist, words=words, language=language)
+    }
+
+
+def _publishable_people(artists_in: list[dict], published: set[str]) -> list[dict]:
     """Rows that become pages, in name order so a batch of new ids follows it.
 
-    In scope, on a roster or ``cv_link_ok=yes``, an http(s) source, a collection
-    date, status empty / ``PUBLISHED`` / ``STAGED``. A fact without its
-    collection date is not published.
+    ``published`` comes from ``giye.normalize.rules.published_ids``, the same
+    function P6 counts record depth on, so the site and the processed layer
+    agree on who is published.
     """
-    publishable = [
-        artist
-        for artist in artists_in
-        if artist["ledger_id"] not in scope
-        and (artist.get("cv_link_ok") == "yes" or artist["ledger_id"] in mem_by_ledger)
-        and (artist.get("source_url") or "").startswith("http")
-        and (artist.get("collected_at") or "").strip()
-        and artist.get("status") in ("", "PUBLISHED", "STAGED")
-    ]
+    publishable = [artist for artist in artists_in if artist["ledger_id"] in published]
     publishable.sort(key=lambda row: row.get("name_ko") or row.get("name_en") or "")
     return publishable
 
@@ -644,7 +629,9 @@ def _artist_record(
     same_name: list[str],
     stamp: str,
     tags: Field | None = None,
+    collective: bool = False,
 ) -> dict:
+    """One ``artists.json`` record. ``collective`` is the T1 team test's verdict for this row."""
     editions = []
     seen = []
     for code in codes:
@@ -664,7 +651,7 @@ def _artist_record(
         "name_ko": artist.get("name_ko") or artist.get("name_en") or "이름 미상",
         "name_en": artist.get("name_en") or None,
         "aliases": split_pipe(artist.get("aliases")),
-        "type": "individual",
+        "type": "collective" if collective else "individual",
         "bio_short": None,
         "birth_year": _derived_value(derived, "birth_year", int),
         "birth_year_source_url": derived.get("birth_year", {}).get("evidence_url") or None,

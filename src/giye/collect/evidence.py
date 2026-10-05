@@ -22,6 +22,11 @@ For each cited URL (docs/RULES.md, collection policy):
    request. There is no switch that stores those bytes. An unreachable
    robots.txt (HTTP 5xx, timeout, network error) is ``robots_disallowed`` with
    reason ``robots_unreachable`` and is not sent to the Archive.
+6. A config with ``[collect.offline_roots]`` is offline (the demo and tests):
+   ``archive_cited`` sends nothing to the Internet Archive. A URL that would
+   have fallen through to the Archive is ``unavailable`` with
+   ``wayback=offline``. An archive that declares its pages are local must not
+   have its cited URLs leave the machine on the evidence pass.
 """
 
 from __future__ import annotations
@@ -66,6 +71,7 @@ def settle_url(
     frame: str = "_evidence",
     collector: str = "evidence",
     run_id: str = "",
+    wayback: bool = True,
 ) -> dict:
     """Fetch ``url`` or an existing Archive capture. Never requests a new capture.
 
@@ -73,7 +79,9 @@ def settle_url(
     raises before robots.txt, and nothing is stored. A host whose robots.txt
     disallows the URL is link-only: the availability API may run, and the
     capture URL and timestamp are recorded. The ``id_`` raw URL is not
-    requested and no body is stored.
+    requested and no body is stored. ``wayback=False`` makes no Internet
+    Archive request at all (an offline config); the result says
+    ``wayback=offline`` where a lookup would have run.
     """
     now = utc_now()
     reason = ""
@@ -90,6 +98,8 @@ def settle_url(
         reason = "robots_unreachable" if exc.verdict == VERDICT_UNREACHABLE else "robots"
         if reason != "robots":
             return {"status": "robots_disallowed", "at": now, "reason": reason, "robots": exc.verdict}
+        if not wayback:
+            return {"status": "unavailable", "at": now, "reason": reason, "robots": exc.verdict, "wayback": "offline"}
         linked = _archive_link(url, fetcher)
         if linked is None:
             return {"status": "unavailable", "at": now, "reason": reason, "robots": exc.verdict}
@@ -134,6 +144,8 @@ def settle_url(
                 return result
         reason = f"http {page.status}" if not page.ok else "too large or empty"
 
+    if not wayback:
+        return {"status": "unavailable", "at": now, "reason": reason, "wayback": "offline"}
     captured = _existing_capture(url, fetcher)
     if captured is not None:
         content, timestamp, captured_page = captured
@@ -300,7 +312,8 @@ def archive_cited(
     resumes instead of fetching again. ``unavailable`` is retried only when
     ``retry_unavailable`` is set.
     ``archive_link_only`` and ``robots_disallowed`` are settled: a later run does
-    not fetch the disallowed host again.
+    not fetch the disallowed host again. A config with offline roots never
+    contacts the Internet Archive (see :func:`wayback_allowed`).
     """
     fetcher = fetcher or fetcher_from_config(config)
     store = store or SnapshotStore(Path(config.raw))  # type: ignore[attr-defined]
@@ -320,6 +333,7 @@ def archive_cited(
         if isinstance(loaded, dict):
             status = loaded
 
+    wayback = wayback_allowed(config)
     have = _already_snapshotted(config)
     for url in sorted(where):
         if url in have:
@@ -336,6 +350,7 @@ def archive_cited(
                 fetcher=fetcher,
                 store=store,
                 run_id=run_id,
+                wayback=wayback,
             ),
             "cited_in": sorted(where[url]),
         }
@@ -344,6 +359,16 @@ def archive_cited(
     status = {url: value for url, value in status.items() if url in where}
     status_path.write_text(json.dumps(status, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     return status
+
+
+def wayback_allowed(config: object) -> bool:
+    """False when the config declares ``[collect.offline_roots]``.
+
+    Offline roots say this archive's pages are local files (the demo, a test,
+    a field without network). Derived from that existing setting rather than a
+    second switch, so an offline config cannot forget to turn the Archive off.
+    """
+    return not tuple(getattr(config, "offline_roots", ()) or ())
 
 
 def _already_snapshotted(config: object) -> set[str]:

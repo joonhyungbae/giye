@@ -58,7 +58,7 @@ One object per published person, in name order (`name_ko`, then `name_en`).
 |---|---|
 | `id` | Permanent `gy_id` |
 | `name_ko`, `name_en`, `aliases` | Names. A missing `name_ko` falls back to `name_en`, then the production placeholder `이름 미상` |
-| `type` | Always `individual`, including a team row |
+| `type` | `collective` when the T1 team test (`giye.resolve.teams.team_like`) marks the row, otherwise `individual` |
 | `bio_short` | Always null |
 | `birth_year`, `birth_year_source_url` | From `artist_attributes.csv` when normalize has run |
 | `active_since` | Ledger value, else the derived one |

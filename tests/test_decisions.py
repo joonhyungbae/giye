@@ -106,7 +106,7 @@ def test_queue_merge_hide_and_evidence(tmp_path: Path, monkeypatch: pytest.Monke
                 "--decision",
                 "merge",
                 "--evidence",
-                "the queued pair is one person",
+                "H the queued pair is one person, checked 2026-01-15",
             ]
         )
         == 0
@@ -121,7 +121,7 @@ def test_queue_merge_hide_and_evidence(tmp_path: Path, monkeypatch: pytest.Monke
     # The queue decision already merged this pair. A second merge of the same gy_id
     # is the dropped id, which no longer has a row. The CLI path is exercised on
     # two other people below, after the team guard.
-    assert main(["merge", bae[0]["gy_id"], bae[1]["gy_id"], "--config", config, "--evidence", "E1 a team is not a person"]) == 2
+    assert main(["merge", bae[0]["gy_id"], bae[1]["gy_id"], "--config", config, "--evidence", "E1 https://example.org/team a team is not a person"]) == 2
     err = capsys.readouterr().err
     assert err.startswith("giye: error:") and "T1" in err and "Traceback" not in err
     assert len(_named(_artists(dest), "배수아")) == 2
@@ -134,7 +134,7 @@ def test_queue_merge_hide_and_evidence(tmp_path: Path, monkeypatch: pytest.Monke
     keep, drop = others[0], others[1]
     assert (
         main(
-            ["merge", keep["gy_id"], drop["gy_id"], "--config", config, "--evidence", "E1 the two rows are one person"]
+            ["merge", keep["gy_id"], drop["gy_id"], "--config", config, "--evidence", "E1 https://example.org/same-site the two rows are one person"]
         )
         == 0
     )
@@ -189,3 +189,65 @@ def test_queue_merge_hide_and_evidence(tmp_path: Path, monkeypatch: pytest.Monke
     out = capsys.readouterr().out
     assert out.startswith("evidence ")
     assert "Traceback" not in capsys.readouterr().err
+
+
+def test_manual_merge_needs_a_rule_and_a_source(tmp_path: Path):
+    from giye.config import GiyeError
+    from giye.resolve.decide import check_merge_evidence
+
+    dest = _copy(tmp_path)
+    ledger = Ledger.open(load(dest / "giye.toml"))
+    source_id = ledger.read("cv_sources")[0]["source_id"]
+    frame_code = ledger.read("frame_membership")[0]["frame_code"]
+    for bad in (
+        "the queued pair is one person",
+        "E2",
+        "E2 same teacher, same city",
+        "E5 https://example.org/a",
+        "X1 https://example.org/a",
+        "H same person",
+        "H 2026-01-15",
+        "H same person 2026-02-30",
+        "Hm https://example.org/a",
+    ):
+        with pytest.raises(GiyeError, match="merge"):
+            check_merge_evidence(ledger, bad)
+    assert check_merge_evidence(ledger, "E2 https://example.org/press/2020") == "E2"
+    assert check_merge_evidence(ledger, f"X1+E3: {source_id} lists both names") == "X1+E3"
+    assert check_merge_evidence(ledger, f"E1 roster {frame_code}") == "E1"
+    assert check_merge_evidence(ledger, f"E1 roster {frame_code}-2021") == "E1"
+    assert check_merge_evidence(ledger, "H same face in both catalogues, checked by the author 2026-01-15") == "H"
+
+
+def test_merge_over_a_distinct_decision_needs_the_override(tmp_path: Path):
+    from giye.config import GiyeError
+    from giye.resolve.candidates import review_id_set
+    from giye.resolve.decide import decide_queue, merge_people
+
+    dest = _copy(tmp_path)
+    ledger = Ledger.open(load(dest / "giye.toml"))
+    item = next(
+        row
+        for row in ledger.read("review_queue")
+        if row["status"] == "open" and row["reason"] == "possible_same_person" and "서지우" in row["detail"]
+    )
+    decide_queue(ledger, item["queue_id"], "distinct")
+    decided = next(row for row in ledger.read("review_queue") if row["queue_id"] == item["queue_id"])
+    assert "decided=different" in decided["detail"] and "decided_at=" in decided["detail"]
+    left = item["ledger_id"]
+    right = min(review_id_set(item) - {left})
+    evidence = "E2 https://example.org/press/seo-jiwoo"
+    with pytest.raises(GiyeError, match="distinct"):
+        merge_people(ledger, left, right, evidence=evidence)
+    assert {row["ledger_id"] for row in ledger.read("artists")} >= {left, right}
+
+    keep, drop = merge_people(ledger, left, right, evidence=evidence, override_distinct=True)
+    kept = next(row for row in ledger.read("artists") if row["ledger_id"] == keep)
+    import re
+
+    assert re.search(r"overrides distinct decision of \d{4}-\d{2}-\d{2}", kept["reviewer_note"])
+    assert "rule=E2" in kept["reviewer_note"]
+    assert drop not in {row["ledger_id"] for row in ledger.read("artists")}
+    after = next(row for row in ledger.read("review_queue") if row["queue_id"] == item["queue_id"])
+    assert "decided=different" not in after["detail"]
+    assert "decided=same" in after["detail"] and "overrides distinct decision of " in after["detail"]

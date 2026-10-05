@@ -75,6 +75,8 @@ giye export ro-crate --config examples/demo/giye.toml
 
 `giye explore` writes `<data>/site/rim_order.json`. With `--assignment` (a JSON object of person id to group) it also prints coverage, group count, lift, AUC, and stability against `--ties` (a JSON list of pairs), or, when `--ties` is omitted, against the roster-independent co-presence ties computed from the ledger. `giye explore ties` writes those ties (`--out`, a JSON list of ledger-id pairs; `--kind cv-listing` for the CV-listing definition) and, with `--layers [PATH]`, prints the institution entities and both tie counts with V7–V9 off and cumulatively on, plus the ties each rule added (V7a–d, V7e, V8, V9); a path also writes them as JSON. See [docs/EXPLORE.md](docs/EXPLORE.md). `giye run` runs collect, extract, resolve, normalize, publish, and explore. The ledger command only prints counts, so it is not one of those steps. Extract with no API key reads the replay cache.
 
+`giye collect --from-snapshots` and `giye run --from-snapshots` re-run every configured roster collector against the bodies already kept under `data/raw/*/snapshots/` instead of the network. No socket is opened, robots.txt is not fetched again, and no new snapshot line is written. Each roster row's `collected_at` is the UTC date of that page's `fetched_at` in the manifest, not the date of the re-run, so a register rebuilt from the same pages matches the ledger those pages already produced.
+
 `giye export warc` writes the snapshot store as WARC 1.1. Each kept body is a response
 record with a reconstructed status line and `Content-Type`. Original response headers were
 not stored before manifest version 2; the file says so. `--wacz` also writes a WACZ package.
@@ -134,16 +136,16 @@ The pipeline queues a pair it will not merge, and a page can be hidden. These co
 ```bash
 giye queue list --config giye.toml
 giye queue list --kind possible_same_person --status open
-giye queue decide QUEUE_ID --decision merge --evidence "the shared site is theirs"
+giye queue decide QUEUE_ID --decision merge --evidence "E1 https://example.org/studio both rows list this site"
 giye queue decide QUEUE_ID --decision distinct
 giye queue decide QUEUE_ID --decision dismiss --note "not this edition"
-giye merge KEEP_ID DROP_ID --evidence "E1 the website is the same person"
+giye merge KEEP_ID DROP_ID --evidence "H same person in both catalogues, checked by the editor 2026-01-15"
 giye hide GY-000010 --reason "asked to be removed"
 giye unhide GY-000010
 giye evidence --config giye.toml
 ```
 
-`KEEP_ID` and `DROP_ID` are a ledger id or a `gy_id`. `merge` refuses a team paired with a person (T1) and retires the dropped `gy_id` with a redirect, the same way an automatic merge does. `hide` sets `HIDDEN_BY_REQUEST`; publish then writes a tombstone with no name. `evidence` keeps a copy of every URL the ledger cites.
+`KEEP_ID` and `DROP_ID` are a ledger id or a `gy_id`. A merge a person makes needs the same kind of evidence as an automatic one: an E-code (E1–E4, or X1+E1 … X1+E4) followed by a citation (an http(s) URL, a CV source id, or a roster edition code), or `H` (a person's judgement) followed by the reason and the date. Free text alone is refused. A pair decided `distinct` is not merged unless the library call passes `override_distinct=True`, and the evidence then records the decision it overrides. `merge` refuses a team paired with a person (T1) and retires the dropped `gy_id` with a redirect, the same way an automatic merge does. `hide` sets `HIDDEN_BY_REQUEST`; publish then writes a tombstone with no name. `evidence` keeps a copy of every URL the ledger cites.
 
 ## Extending to another field
 
@@ -162,7 +164,7 @@ giye evidence --config giye.toml
 4. **Website.** `web/` reads the snapshot. Origin, contact address, and the field name in both
    languages are `VITE_GIYE_*` (see `web/README.md`). Point `GIYE_SITE_DIR` at `<data>/site`.
 
-Identity is two steps. A new roster row joins an existing person only under attachment rules A1–A6, and the membership row records the rule. Two existing records merge only on written evidence (E1–E4, X1, with the team guard T1). Derived values P1–P5 and institution rules V1–V9 read the language module and the field file.
+Identity is two steps. A new roster row joins an existing person only under attachment rules A1–A6, and the membership row records the rule. Two existing records merge only on written evidence (E1–E4, X1, with the team guard T1). Derived values P1–P6 and institution rules V1–V9 read the language module and the field file.
 
 ## Data policy
 
@@ -173,7 +175,7 @@ under a data-use agreement. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), "G
 ## Status
 
 Ported and tested: collection (F1–F5, RFC 9309 robots.txt, attachment A1–A6), WARC and RO-Crate export, the ledger, CV extraction with a replay cache,
-same-person resolution (E1–E4, T1, X1), normalisation (P1–P5, V1–V9), the site snapshot, the entry-generation rim, co-presence ties and division scores (`giye explore`), the
+same-person resolution (E1–E4, T1, X1), normalisation (P1–P6, V1–V9), the site snapshot, the entry-generation rim, co-presence ties and division scores (`giye explore`), the
 offline demo, and the web front-end (`web/`). Feature embeddings and cluster descriptors (C1, C2) are not ported. Progress is tracked in
 [docs/ROADMAP.md](docs/ROADMAP.md).
 

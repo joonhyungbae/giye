@@ -335,3 +335,54 @@ def test_withdrawn_manifest_line_is_not_a_body(tmp_path: Path):
             if record.rec_type == "response":
                 responses.append(record.content_stream().read())
     assert responses == []
+
+
+def test_offline_config_never_contacts_the_archive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Offline roots make the evidence pass offline: a gone page is not sent to the Internet Archive."""
+    import socket
+
+    from giye.collect.evidence import wayback_allowed
+
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("evidence pass tried to open a socket")
+
+    monkeypatch.setattr(socket, "create_connection", refuse)
+    monkeypatch.setattr(socket.socket, "connect", refuse)
+    data = tmp_path / "data"
+    ledger = data / "ledger"
+    ledger.mkdir(parents=True)
+    fixtures = tmp_path / "fixtures"
+    (fixtures / "residency").mkdir(parents=True)
+    (fixtures / "residency" / "alumni").write_text("<p>alumni</p>", encoding="utf-8")
+    gone = "https://example.org/residency/gone"
+    (ledger / "artists.csv").write_text(f"ledger_id,source_url\nL1,{gone}\n", encoding="utf-8")
+    frames = tmp_path / "frames.yml"
+    frames.write_text("frames: []\n", encoding="utf-8")
+    config = Config(
+        root=tmp_path,
+        name="Synthetic",
+        data=data,
+        frames=frames,
+        user_agent=UA,
+        offline_roots=(("https://example.org", fixtures),),
+    )
+    assert not wayback_allowed(config)
+    status = archive_cited(config)
+    assert status[gone]["status"] == "unavailable"
+    assert status[gone]["wayback"] == "offline"
+    assert "capture_url" not in status[gone]
+
+
+def test_settle_url_without_wayback_makes_no_archive_request(tmp_path: Path):
+    def handler(url, **kwargs):
+        parts = urlparse(url)
+        if parts.path == "/robots.txt":
+            return _allow_robots(url)
+        if "archive.org" in parts.netloc:
+            raise AssertionError(url)
+        return FakeResponse(404, "gone", url)
+
+    fetcher, session = _fetcher(handler)
+    result = settle_url(PAGE, fetcher=fetcher, store=SnapshotStore(tmp_path / "raw"), wayback=False)
+    assert result["status"] == "unavailable" and result["wayback"] == "offline"
+    assert not any("archive.org" in call for call in session.calls)

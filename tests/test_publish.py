@@ -509,3 +509,41 @@ def test_only_included_and_adjacent_memberships_are_published(tmp_path: Path):
     coverage_codes = [row["code"] for row in site["coverage.json"]["frames"]]
     assert coverage_codes == ["INC", "ADJ", "EXC", "PLAN", "NOROSTER"]
     assert "박서연" not in json.dumps(site["coverage.json"], ensure_ascii=False)
+
+
+def test_p6_counts_the_same_people_publish_publishes(tmp_path: Path):
+    """One definition of a published person: P6 record depth and the site agree.
+
+    One person's only programme is excluded, another has ``cv_link_ok=yes`` but
+    no collection date. Neither is published, and P6 does not count them.
+    """
+    from giye.ledger.io import read_csv
+    from giye.normalize.service import normalize
+
+    frames = "version: 1\nframes:" + _decision_frame("INC", "included") + _decision_frame("EXC", "excluded")
+    artists = [
+        _artist("LED-kept", "김하늘"),
+        _artist("LED-near", "한별", cv_link_ok="yes"),
+        _artist("LED-out", "박서연"),
+        _artist("LED-undated", "정다운", cv_link_ok="yes", collected_at=""),
+    ]
+    membership = [_member("LED-kept", "INC"), _member("LED-out", "EXC")]
+    site = _publish(tmp_path, artists, [], membership, frames=frames)
+    published = {row["external_ids"]["ledger_id"] for row in site["artists.json"]}
+    assert published == {"LED-kept", "LED-near"}
+    result = normalize(load(tmp_path / "giye.toml"))
+    attrs = read_csv(result.processed / "artist_attributes.csv")
+    depth = {row["ledger_id"] for row in attrs if row["field"] == "record_depth"}
+    assert depth == published
+
+
+def test_team_records_are_published_as_collective(tmp_path: Path):
+    """A row the T1 team test marks is ``collective`` on the site, not ``individual``."""
+    artists = [
+        _artist("LED-team", "노을 스튜디오", reviewer_note="members=김하늘|박서연"),
+        _artist("LED-person", "김하늘"),
+    ]
+    membership = [_member("LED-team", "EXAMPLE-RESIDENCY"), _member("LED-person", "EXAMPLE-RESIDENCY")]
+    site = _publish(tmp_path, artists, [], membership)
+    kinds = {row["name_ko"]: row["type"] for row in site["artists.json"]}
+    assert kinds == {"노을 스튜디오": "collective", "김하늘": "individual"}

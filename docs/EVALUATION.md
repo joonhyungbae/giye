@@ -83,4 +83,22 @@ Record the config path, the frame, `--n`, and `--seed` next to the sheet. Those 
 
 ## Results on the reference archive
 
-Filled by the author
+One coder, the author, judged every sample. There is no second coder and no
+agreement statistic. The audit was unblinded where the evidence was shown: the
+CV sheet shows the excerpt, and the `people` and `venues` sheets show the
+evidence the rule used beside the pair.
+Intervals are 95% Wilson intervals on the cases the coder could judge;
+`cannot tell` cases are left out of the denominator, and a conservative figure
+counts them as failures where stated.
+
+| Step | Sample | Judgeable | Correct | Precision (95% Wilson) |
+|---|---|---|---|---|
+| CV extraction (`cv`) | 150 | 147 | 143 | 97.3% (93.2–98.9%) |
+| Person merges (`people`) | 82 | 77 | 77 | 100% (95.2–100%); conservative 77/82 = 93.9% (86.5–97.4%) |
+| Institution merges, round 1 (`venues`) | 85 | 83 | 81 | 97.6% (91.6–99.3%) |
+| Institution merges, refined rules (`venues`) | 70 | 70 | 64 | 91.4% (82.5–96.0%) |
+| Same, against the rule's own definition of a part | 70 | 70 | 67 | 95.7% (88.1–98.5%) |
+
+Latin-only personal names: 21 joins of two Latin-only personal names were made
+before the restriction of 2026-10-05 (no join on the name alone). The author
+judged all 21; each was the same person.

@@ -157,7 +157,12 @@ def _frame_rows(config: Config) -> list[dict[str, str]]:
     from giye.collect.frames import load_frames
 
     return [
-        {"code": frame.code, "source_url": frame.source_url, "years_covered": frame.years_covered}
+        {
+            "code": frame.code,
+            "source_url": frame.source_url,
+            "years_covered": frame.years_covered,
+            "decision": frame.eligibility.decision,
+        }
         for frame in load_frames(config.frames).frames
     ]
 
@@ -533,8 +538,9 @@ def _report_text(
         "## P6 record depth (published people; the highest level)",
         "",
         (
-            "A person is published by the same test as the site build: not scope=out, on a roster or "
-            "cv_link_ok=yes, with a source URL, status empty / PUBLISHED / STAGED. "
+            "A person is published by the same function as the site build (`published_ids`): "
+            "not scope=out, on an admitted roster or cv_link_ok=yes, with a source URL and a "
+            "collection date, status empty / PUBLISHED / STAGED. "
             f"Published {published} of {artists}. One `record_depth` row each. "
             "The value is not copied into the site snapshot."
         ),
@@ -582,6 +588,7 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
         loaded.scope_rows,
         loaded.frame_rows,
         _edition_of(config, loaded.frame_rows),
+        {row["code"]: row.get("decision") or "" for row in loaded.frame_rows if row.get("code")},
     )
     # T1 writes this beside the ledger. Absent → level 2 is the M1 rows of this run only.
     snippet_path = config.work / "tendency" / "snippets.jsonl"

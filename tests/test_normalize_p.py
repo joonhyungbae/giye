@@ -262,11 +262,11 @@ def test_p6_assigns_the_highest_level_and_names_the_evidence(tmp_path: Path) -> 
     _write_ledger(
         tmp_path,
         [
-            {"ledger_id": "p-roster", "name_ko": "김하늘", "source_url": url, "status": "STAGED"},
-            {"ledger_id": "p-medium", "name_ko": "김바다", "source_url": url, "status": "STAGED"},
-            {"ledger_id": "p-site", "name_ko": "박서연", "source_url": url, "status": "STAGED"},
-            {"ledger_id": "p-cv", "name_ko": "이하루", "source_url": url, "status": "STAGED"},
-            {"ledger_id": "p-out", "name_ko": "정다운", "source_url": url, "status": "STAGED"},
+            {"ledger_id": "p-roster", "collected_at": "2026-01-01", "name_ko": "김하늘", "source_url": url, "status": "STAGED"},
+            {"ledger_id": "p-medium", "collected_at": "2026-01-01", "name_ko": "김바다", "source_url": url, "status": "STAGED"},
+            {"ledger_id": "p-site", "collected_at": "2026-01-01", "name_ko": "박서연", "source_url": url, "status": "STAGED"},
+            {"ledger_id": "p-cv", "collected_at": "2026-01-01", "name_ko": "이하루", "source_url": url, "status": "STAGED"},
+            {"ledger_id": "p-out", "collected_at": "2026-01-01", "name_ko": "정다운", "source_url": url, "status": "STAGED"},
         ],
         [
             {"activity_id": "m1", "ledger_id": "p-medium", "title": "video study", "year": "2019", "publishable": "yes", "activity_type": "group_exhibition"},
