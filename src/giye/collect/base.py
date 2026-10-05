@@ -28,7 +28,7 @@ import inspect
 import re
 import sys
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -88,6 +88,36 @@ class Person:
     ``website``, ``role``, ``members`` and ``aliases`` are optional. The resolver
     reads them back from the ledger (rules E1, E3, E4, T1). A name that already
     fills one script still takes the other script from ``name``.
+
+    The remaining fields are optional too. They let a collector state what the
+    roster page says about this appearance, so the ledger row is not only the
+    frame code:
+
+    ``members``
+        A team's member names, as ``"A, B"``, ``"A|B"``, or a list. Stored as
+        the ``members=`` note (rule T1). A collector whose ``expand_members``
+        is true also gets each member's own row (``expand_teams``).
+    ``websites``
+        Further personal sites besides ``website``. Each becomes a ``links`` row.
+    ``source_url`` / ``collected_at``
+        The page this person was read from and its date, when the edition's
+        people come from several pages. Empty falls back to the edition.
+    ``note``
+        Note on the appearance's activity row (``reviewer_note``).
+    ``person_note``
+        ``;``-separated segments added once to the person's ``reviewer_note``
+        (for example ``team=<name>`` on a member).
+    ``activity``
+        Fields of the appearance's activity row: ``title``, ``venue``, ``year``,
+        ``activity_type``, ``role``, ``source_url``, ``source_type``,
+        ``collected_at``, ``publishable``, ``reviewer_note``. A missing key keeps
+        the default (title = edition code, type ``other``, the edition's year,
+        the row's source and date, ``role`` and ``note`` above).
+    ``extra_activities``
+        Further activity rows for this appearance (one per work or session),
+        same keys plus an optional ``origin``; ``title`` is required.
+
+    Re-collection only adds or enriches activity rows (``Ledger.apply_roster``).
     """
 
     name: str
@@ -95,11 +125,20 @@ class Person:
     name_en: str = ""
     website: str = ""
     role: str = ""
-    members: str = ""
+    members: str | list[str] = ""
     aliases: str = ""
     identity: str = ""
+    websites: list[str] = field(default_factory=list)
+    source_url: str = ""
+    collected_at: str = ""
+    note: str = ""
+    person_note: str = ""
+    activity: dict | None = None
+    extra_activities: list[dict] = field(default_factory=list)
 
     def __post_init__(self) -> None:
+        if isinstance(self.members, (list, tuple)):
+            self.members = "|".join(str(item).strip() for item in self.members if str(item).strip())
         if not self.name_ko and not self.name_en:
             if _HANGUL.search(self.name or ""):
                 self.name_ko = self.name
@@ -114,17 +153,33 @@ class Person:
 
 @dataclass
 class Edition:
-    """One year (or other edition label) of a programme roster."""
+    """One year (or other edition label) of a programme roster.
+
+    ``source_url`` is the citation on every row. ``fetched_from`` is the page
+    that was actually fetched for it when the two differ (a listing page cited
+    by its permanent address). ``collected_at`` states the date outright. When
+    both are empty a replayed row is dated from the kept page whose URL is
+    ``source_url``, as before.
+    """
 
     year: int | str
     people: list[Person]
     source_url: str
+    collected_at: str = ""
+    fetched_from: str = ""
 
 
 class RosterCollector:
-    """Base class for programme roster collectors. Set ``frame`` on the subclass."""
+    """Base class for programme roster collectors. Set ``frame`` on the subclass.
+
+    ``expand_members`` makes ``run`` give each declared team member
+    (``Person.members``) their own rows after the roster write, the way
+    ``giye resolve`` does (``expand_teams``). It is off by default so a
+    collector's run writes only its own rows.
+    """
 
     frame: str = ""
+    expand_members: bool = False
 
     def __init__(
         self,
@@ -151,8 +206,23 @@ class RosterCollector:
         """Yield each edition of this frame's public roster. Subclasses implement this."""
         raise NotImplementedError
 
-    def fetch(self, url: str) -> Page:
+    def edition_code(self, edition: Edition) -> str:
+        """Membership and activity origin for one edition. Override for another scheme.
+
+        The default is ``<frame>-<year>`` for a four-digit year and the bare frame
+        otherwise (``edition_code``). A frame code that already ends in a year,
+        or an edition labelled by something else, may need its own code. The
+        code must not contain a path separator. Rule R1 reads a trailing
+        ``-YYYY`` as the entry year.
+        """
+        return edition_code(self.frame, edition.year)
+
+    def fetch(self, url: str, *, data: object = None, method: str | None = None) -> Page:
         """Fetch ``url`` and snapshot a successful body. A snapshot error does not stop the run.
+
+        ``data`` is a request body and makes the request a POST unless
+        ``method`` says otherwise (see ``Fetcher.request``). A POST's manifest
+        line also records ``method`` and ``body_sha256``; a GET line is as before.
 
         A disk problem must not abort a collection that can still write the roster
         rows, so a snapshot error is logged and the page is still returned.
@@ -162,7 +232,11 @@ class RosterCollector:
         """
         if self.from_snapshots:
             self.fetcher.prefer_frame = self.frame
-        page = self.fetcher.get(url)
+        verb = (method or ("POST" if data is not None else "GET")).upper()
+        if verb == "GET" and data is None:
+            page = self.fetcher.get(url)
+        else:
+            page = self.fetcher.request(url, method=verb, data=data)
         if self.from_snapshots:
             when = _kept_fetch_date(page.fetched_at)
             if when:
@@ -175,6 +249,9 @@ class RosterCollector:
                 extra: dict[str, object] = {}
                 if page.robots_tls_unverified:
                     extra["robots_tls_unverified"] = True
+                if getattr(page, "method", "GET") != "GET":
+                    extra["method"] = page.method
+                    extra["body_sha256"] = page.body_sha256
                 self.store.keep(
                     self.frame,
                     page.requested_url,
@@ -201,10 +278,12 @@ class RosterCollector:
         snapshot manifest stores a full UTC timestamp.
 
         In ``from_snapshots`` mode ``collected_at`` is the UTC date of the kept
-        page's ``fetched_at`` (the manifest line whose URL is the edition's
+        page's ``fetched_at`` (the manifest line whose URL is the person's
+        ``source_url``, else the edition's ``fetched_from``, else its
         ``source_url``), not ``collected_at`` and not today's date. A register
         rebuilt from the same pages stays aligned with the ledger those pages
-        already produced.
+        already produced. A date the collector states (``Person.collected_at``,
+        then ``Edition.collected_at``) wins in both modes.
 
         The ledger is the source of truth: a new person gets a ``gy_id``, the frame
         gains a membership, and each appearance is an activity. The CSV is the
@@ -213,8 +292,8 @@ class RosterCollector:
         One ``apply_roster`` per edition, not one for the whole programme. The
         code it is given is both the membership and the activity origin, and
         those two strings have to be equal (team expansion and the published
-        roster role match on them). The code is ``<frame>-<year>`` when the
-        edition label is a year. Rule R1 reads that suffix and does not use the
+        roster role match on them). The code is ``edition_code(edition)``:
+        ``<frame>-<year>`` by default when the edition label is a year. Rule R1 reads that suffix and does not use the
         activity's year column, so a single call with the bare frame would
         leave every membership undated. The snapshot path stays the bare frame:
         ``fetch`` uses ``self.frame``, not the edition.
@@ -237,9 +316,8 @@ class RosterCollector:
         rows: list[dict[str, str]] = []
         batches: dict[str, list[dict[str, str]]] = {}
         for edition in self.editions():
-            code = edition_code(self.frame, edition.year)
+            code = self.edition_code(edition)
             batch = batches.setdefault(code, [])
-            stamp = self._kept_dates.get(edition.source_url, "") if self.from_snapshots else live_stamp
             for person in edition.people:
                 row = {
                     "frame_code": code,
@@ -247,21 +325,47 @@ class RosterCollector:
                     "name": person.name,
                     "name_ko": person.name_ko,
                     "name_en": person.name_en,
-                    "source_url": edition.source_url,
-                    "collected_at": stamp,
+                    "source_url": person.source_url or edition.source_url,
+                    "collected_at": self._row_date(edition, person, live_stamp),
                     "website": person.website,
                     "role": person.role,
                     "members": person.members,
                     "aliases": person.aliases,
                     "identity": person.identity,
                 }
+                # Only present when set, so a minimal collector's rows are unchanged.
+                optional = {
+                    "websites": list(person.websites),
+                    "note": person.note,
+                    "reviewer_note": person.person_note,
+                    "activity": dict(person.activity) if person.activity else None,
+                    "extra_activities": [dict(item) for item in person.extra_activities],
+                }
+                row.update({key: value for key, value in optional.items() if value})
                 rows.append(row)
                 batch.append(row)
         ledger = Ledger.open(self.config)
         for code, batch in batches.items():
             ledger.apply_roster(code, batch, task="collect")
+        if type(self).expand_members and any(row.get("members") for row in rows):
+            # Imported here: giye.resolve imports the ledger, which this module also imports.
+            from giye.resolve.teams import expand_teams
+
+            expand_teams(ledger)
         self.write_csv(rows)
         return rows
+
+    def _row_date(self, edition: Edition, person: Person, live_stamp: str) -> str:
+        """``collected_at`` for one roster row (see ``run``)."""
+        stated = (person.collected_at or edition.collected_at or "").strip()
+        if stated:
+            return stated[:10]
+        if not self.from_snapshots:
+            return live_stamp
+        for url in (person.source_url, edition.fetched_from, edition.source_url):
+            if url and url in self._kept_dates:
+                return self._kept_dates[url]
+        return ""
 
     def csv_path(self) -> Path:
         """Collection report for this frame: ``<work>/rosters/<frame>.csv``."""

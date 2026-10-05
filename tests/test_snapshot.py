@@ -136,3 +136,46 @@ def test_empty_or_oversized_body_is_not_stored(tmp_path: Path):
     store = SnapshotStore(tmp_path)
     assert store.keep("EXAMPLE-RESIDENCY", "https://example.org/empty", b"") is None
     assert not (tmp_path / "EXAMPLE-RESIDENCY" / "snapshots" / "manifest.jsonl").exists()
+
+
+def _legacy_line(tmp_path: Path, frame: str, url: str, body: bytes, **keys: object) -> None:
+    """A manifest line in the shape the pre-package collectors wrote (path relative to the frame)."""
+    sha = hashlib.sha256(body).hexdigest()
+    folder = tmp_path / frame / "snapshots"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"page__{sha[:10]}.html").write_bytes(body)
+    line = {"url": url, "fetched_at": "2026-09-21T00:00:00Z", "sha256": sha, "bytes": len(body),
+            "path": f"snapshots/page__{sha[:10]}.html", "new": True, "collector": "old.py",
+            "run_started": "2026-09-21T00:00:00Z", **keys}
+    with (folder / "manifest.jsonl").open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(line) + "\n")
+
+
+def test_recall_reads_older_status_keys(tmp_path: Path):
+    _legacy_line(tmp_path, "OLD", "https://example.org/a", b"<p>a</p>", http_status=200, final_url="https://example.org/a")
+    _legacy_line(tmp_path, "OLD", "https://example.org/b", b"<p>b</p>")
+    _legacy_line(tmp_path, "OLD", "https://example.org/c", b"<p>c</p>", http_status=203, status=201)
+    store = SnapshotStore(tmp_path)
+    assert store.recall("https://example.org/a").status == 200
+    # Oldest lines carry no status at all; their kept body replays as 200.
+    assert store.recall("https://example.org/b").status == 200
+    assert store.recall("https://example.org/c").status == 201
+    # A versioned line that left status out is not guessed.
+    store.keep("NEW", "https://example.org/d", b"<p>d</p>")
+    assert store.recall("https://example.org/d").status == 0
+
+
+def test_recall_tells_two_posts_to_one_url_apart(tmp_path: Path):
+    store = SnapshotStore(tmp_path)
+    url = "https://example.org/search"
+    one, two = hashlib.sha256(b"page=1").hexdigest(), hashlib.sha256(b"page=2").hexdigest()
+    store.keep("F", url, b"<p>get</p>", status=200)
+    store.keep("F", url, b"<p>first</p>", status=200, method="POST", body_sha256=one)
+    store.keep("F", url, b"<p>second</p>", status=200, method="POST", body_sha256=two)
+    assert store.recall(url).content == b"<p>get</p>"
+    assert store.recall(url, method="POST", body_sha256=one).content == b"<p>first</p>"
+    assert store.recall(url, method="POST", body_sha256=two).content == b"<p>second</p>"
+    assert store.recall(url, method="POST", body_sha256="0" * 64) is None
+    rows = [json.loads(line) for line in (tmp_path / "F" / "snapshots" / "manifest.jsonl").read_text().splitlines()]
+    assert "method" not in rows[0] and "body_sha256" not in rows[0]
+    assert rows[1]["method"] == "POST" and rows[1]["body_sha256"] == one

@@ -517,3 +517,68 @@ def test_from_snapshots_skips_a_withdrawn_body(tmp_path: Path):
     assert page.fetched_at == "2019-01-01T00:00:00Z"
     fetcher.prefer_frame = "FRAME-B"
     assert fetcher.get(url).content == b"still-kept"
+
+
+class FakePostSession(FakeSession):
+    def post(self, url, **kwargs):
+        self.calls.append({"url": url, "method": "POST", **kwargs})
+        return self.handler(url, **kwargs)
+
+
+def test_post_checks_robots_sends_the_form_and_replays_by_body(tmp_path: Path):
+    import hashlib
+
+    from giye.collect.base import RosterCollector
+
+    def handler(url, **kwargs):
+        if url.endswith("/robots.txt"):
+            return FakeResponse(200, "User-agent: *\nDisallow: /private\n", url, "text/plain")
+        body = kwargs.get("data") or b""
+        return FakeResponse(200, f"<p>{body.decode()}</p>", url)
+
+    session = FakePostSession(handler)
+    fetcher = Fetcher(UA, min_delay_s=0, session=session)  # type: ignore[arg-type]
+    with pytest.raises(RobotsDisallowed):
+        fetcher.post("https://example.org/private/list", {"page": "1"})
+    assert all(call.get("method") != "POST" for call in session.calls)
+    with pytest.raises(ValueError):
+        fetcher.request("https://example.org/list", method="GET", data={"page": "1"})
+
+    class Lister(RosterCollector):
+        frame = "EXAMPLE-LIST"
+
+    config = type("C", (), {"raw": tmp_path / "raw"})()
+    store = SnapshotStore(tmp_path / "raw")
+    live = Lister(config, fetcher=fetcher, store=store)
+    first = live.fetch("https://example.org/list", data={"page": "1"})
+    second = live.fetch("https://example.org/list", data={"page": "2"})
+    assert first.text == "<p>page=1</p>" and second.text == "<p>page=2</p>"
+    post = [call for call in session.calls if call.get("method") == "POST"][-1]
+    assert post["headers"]["Content-Type"] == "application/x-www-form-urlencoded"
+    rows = [json.loads(line) for line in (tmp_path / "raw" / "EXAMPLE-LIST" / "snapshots" / "manifest.jsonl").read_text().splitlines()]
+    assert [row["method"] for row in rows] == ["POST", "POST"]
+    assert rows[0]["body_sha256"] == hashlib.sha256(b"page=1").hexdigest()
+
+    replay = Fetcher(UA, from_snapshots=True, snapshot_root=tmp_path / "raw")
+    again = Lister(config, fetcher=replay, store=SnapshotStore(tmp_path / "raw"))
+    assert again.fetch("https://example.org/list", data={"page": "2"}).text == "<p>page=2</p>"
+    assert again.fetch("https://example.org/list", data={"page": "1"}).text == "<p>page=1</p>"
+    assert again.fetch("https://example.org/list").reason == "not kept"
+
+
+def test_post_redirect_303_continues_as_get():
+    def handler(url, **kwargs):
+        if url.endswith("/robots.txt"):
+            return FakeResponse(404, "", url, "text/plain")
+        if url.endswith("/form"):
+            response = FakeResponse(303, "", url)
+            response.headers["Location"] = "https://example.org/result"
+            return response
+        return FakeResponse(200, "<p>done</p>", url)
+
+    session = FakePostSession(handler)
+    fetcher = Fetcher(UA, min_delay_s=0, session=session)  # type: ignore[arg-type]
+    page = fetcher.post("https://example.org/form", "q=1")
+    assert page.text == "<p>done</p>" and page.method == "POST"
+    sent = [(call["url"], call.get("method", "GET")) for call in session.calls if "robots" not in call["url"]]
+    assert sent == [("https://example.org/form", "POST"), ("https://example.org/result", "GET")]

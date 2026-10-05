@@ -25,6 +25,11 @@ refusal is the same whoever asked (docs/RULES.md, collection policy). The decisi
   is set as well. The path verdict does not depend on the flag.
 - The configured User-Agent is sent on every request, including robots.txt. It must contain
   a contact URL or email.
+- ``request`` also sends a POST (``post``). Some archives answer a list only to a
+  form submission. The same robots.txt and terms checks run before it. The body
+  is hashed (``body_sha256``) so the snapshot line and replay can tell two POSTs
+  to one URL apart. A 301, 302, or 303 after a POST is followed as a GET with no
+  body (what ``requests`` and browsers do); 307 and 308 repeat the POST.
 - ``from_snapshots`` answers ``get`` from the snapshot store instead of the network.
   No socket is opened and robots.txt is not fetched: the manifest line already records
   the verdict from the original fetch. A URL that was never kept is a 404 page with
@@ -36,12 +41,14 @@ not fall back to the Internet Archive for that refusal (see ``giye.collect.evide
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
-from urllib.parse import unquote, urldefrag, urlparse
+from urllib.parse import unquote, urldefrag, urlencode, urlparse
 
 import requests
 
@@ -64,6 +71,7 @@ __all__ = [
     "RobotsDisallowed",
     "RobotsRefused",
     "TermsRefused",
+    "encode_body",
     "fetcher_from_config",
     "is_social",
     "require_contact",
@@ -125,6 +133,10 @@ class Page:
 
     ``fetched_at`` is the manifest timestamp when this page was read back from the
     snapshot store. ``reason`` is ``not kept`` when the store has no body for the URL.
+
+    ``method`` is the request method the caller used (``GET`` or ``POST``) and
+    ``body_sha256`` the SHA-256 of the request body it sent; empty for a GET.
+    Together with ``requested_url`` they identify the request on a snapshot line.
     """
 
     url: str
@@ -137,6 +149,8 @@ class Page:
     robots_tls_unverified: bool = False
     fetched_at: str = ""
     reason: str = ""
+    method: str = "GET"
+    body_sha256: str = ""
 
     def __post_init__(self) -> None:
         if not self.requested_url:
@@ -157,6 +171,34 @@ class Page:
                 charset = value.strip(" \"'")
                 break
         return self.content.decode(charset, errors="replace")
+
+
+def encode_body(data: object) -> tuple[bytes, str]:
+    """Request body bytes and the Content-Type to send with them.
+
+    A mapping (or a sequence of pairs) is form-encoded in the order given, the
+    way ``requests`` encodes ``data=``; the hash is taken over these bytes, so
+    the same form gives the same hash. ``str`` is UTF-8. ``bytes`` is sent as
+    is with no Content-Type, because the caller knows what they hold.
+    """
+    if data is None:
+        return b"", ""
+    if isinstance(data, bytes):
+        return data, ""
+    if isinstance(data, str):
+        return data.encode("utf-8"), ""
+    if isinstance(data, Mapping):
+        pairs = list(data.items())
+    else:
+        pairs = list(data)  # type: ignore[call-overload]
+    return urlencode(pairs, doseq=True).encode("ascii"), "application/x-www-form-urlencoded"
+
+
+def body_hash(body: bytes, method: str) -> str:
+    """SHA-256 of a request body. A GET with no body has no hash, so its lines stay unchanged."""
+    if method == "GET" and not body:
+        return ""
+    return hashlib.sha256(body).hexdigest()
 
 
 def require_contact(user_agent: str) -> str:
@@ -225,8 +267,36 @@ class Fetcher:
         In ``from_snapshots`` mode the answer is the newest kept body for ``url``
         (see ``SnapshotStore.recall``). Nothing is sent, and robots.txt is not read.
         """
+        return self.request(url)
+
+    def post(self, url: str, data: object = None) -> Page:
+        """POST ``data`` to ``url`` under the same checks as ``get``. See ``request``."""
+        return self.request(url, method="POST", data=data)
+
+    def request(self, url: str, *, method: str = "GET", data: object = None) -> Page:
+        """``GET`` or ``POST`` one URL. Robots.txt and the terms block apply to every hop.
+
+        ``data`` is the request body (see ``encode_body``). A GET with a body is
+        refused: a query belongs in the URL, and a GET line in the manifest has
+        no body hash. In ``from_snapshots`` mode the kept line must match the
+        method and the body hash as well as the URL.
+        """
+        method = (method or "GET").upper()
+        if method not in {"GET", "POST"}:
+            raise ValueError(f"unsupported request method: {method}")
+        body, body_type = encode_body(data)
+        if method == "GET" and data is not None:
+            raise ValueError("a GET request takes no body; put the query in the URL")
+        digest = body_hash(body, method)
         if self.from_snapshots:
-            return self._from_store(url)
+            return self._from_store(url, method=method, body_sha256=digest)
+        page = self._live(url, method=method, body=body, body_type=body_type)
+        page.method = method
+        page.body_sha256 = digest
+        return page
+
+    def _live(self, url: str, *, method: str, body: bytes, body_type: str) -> Page:
+        """Send the request and follow redirects one hop at a time, checking each hop first."""
         original = url
         current = urldefrag(str(url))[0]
         limit = getattr(self.session, "max_redirects", None)
@@ -254,7 +324,7 @@ class Fetcher:
                 raise RobotsRefused(current, decision.verdict)
             if self._offline_root(current) is not None:
                 return self._offline_page(current, original, decision.verdict, robots_tls)
-            response, unverified = self._raw_get(current, self.timeout_s)
+            response, unverified = self._raw_request(current, self.timeout_s, method, body, body_type)
             tls_unverified = tls_unverified or unverified
             status = int(response.status_code)
             if status not in REDIRECT_STATUSES:
@@ -274,9 +344,12 @@ class Fetcher:
             if not nxt:
                 raise requests.exceptions.InvalidURL(f"redirect without a usable Location: {current}")
             current = urldefrag(nxt)[0]
+            # 301/302/303 after a POST continue as a GET without the body.
+            if method != "GET" and status in (301, 302, 303):
+                method, body, body_type = "GET", b"", ""
         raise requests.exceptions.TooManyRedirects(f"exceeded {limit} redirects: {current}")
 
-    def _from_store(self, url: str) -> Page:
+    def _from_store(self, url: str, *, method: str = "GET", body_sha256: str = "") -> Page:
         """One kept body, or a 404 page whose ``reason`` is ``not kept``.
 
         The session, ``offline_roots``, and ``decide`` are not used. A mistaken
@@ -286,9 +359,11 @@ class Fetcher:
         store = self._read_store()
         if store is None:
             return _not_kept(url)
-        kept = store.recall(str(url), prefer_frame=self.prefer_frame)
+        kept = store.recall(str(url), prefer_frame=self.prefer_frame, method=method, body_sha256=body_sha256)
         if kept is None:
-            return _not_kept(url)
+            page = _not_kept(url)
+            page.method, page.body_sha256 = method, body_sha256
+            return page
         final = kept.final_url or kept.url or str(url)
         return Page(
             url=final,
@@ -300,6 +375,8 @@ class Fetcher:
             robots=kept.robots or VERDICT_NOT_CHECKED,
             robots_tls_unverified=kept.robots_tls_unverified,
             fetched_at=kept.fetched_at,
+            method=method,
+            body_sha256=body_sha256,
         )
 
     def _read_store(self) -> SnapshotStore | None:
@@ -380,7 +457,15 @@ class Fetcher:
         )
 
     def _raw_get(self, url: str, timeout: float) -> tuple[object, bool]:
-        """GET one hop. Redirects stay off so the caller can check robots.txt on the next URL.
+        """GET one hop. Redirects stay off so the caller can check robots.txt on the next URL."""
+        return self._raw_request(url, timeout, "GET", b"", "")
+
+    def _raw_request(
+        self, url: str, timeout: float, method: str, body: bytes, body_type: str
+    ) -> tuple[object, bool]:
+        """Send one hop. Redirects stay off so the caller can check robots.txt on the next URL.
+
+        A GET goes through ``session.get`` and a POST through ``session.post``.
 
         The retry after ``SSLError`` is immediate. The per-host delay already ran
         before the first attempt; the retry is the same request after a certificate
@@ -392,19 +477,24 @@ class Fetcher:
             "User-Agent": self.user_agent,
             "Accept": "text/html,application/xhtml+xml,application/pdf,*/*",
         }
+        if body_type:
+            headers["Content-Type"] = body_type
+        send = self.session.get
+        extra: dict[str, object] = {}
+        if method == "POST":
+            send = self.session.post
+            extra["data"] = body
         try:
             try:
-                response = self.session.get(
-                    url, timeout=timeout, headers=headers, allow_redirects=False
-                )
+                response = send(url, timeout=timeout, headers=headers, allow_redirects=False, **extra)
                 return response, False
             except requests.exceptions.SSLError:
                 import urllib3
 
                 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
                 try:
-                    response = self.session.get(
-                        url, timeout=timeout, headers=headers, allow_redirects=False, verify=False
+                    response = send(
+                        url, timeout=timeout, headers=headers, allow_redirects=False, verify=False, **extra
                     )
                 except requests.RequestException as exc:
                     exc.tls_unverified = True  # type: ignore[attr-defined]

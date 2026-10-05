@@ -24,8 +24,10 @@ Content-Type from these fields and the stored body (see ``giye.export``).
 
 ``recall`` reads the lines back for ``giye collect --from-snapshots``. It scans
 ``<root>/*/snapshots/manifest.jsonl``. A line matches when its ``url`` or
-``final_url`` equals the requested URL. Withdrawn lines are not bodies
-(``servable_rows``). The newest match has the greatest ``fetched_at``; an equal
+``final_url`` equals the requested URL and its request method and body hash
+equal the request's. A line without ``method`` is a GET with no body, so two
+POSTs to one URL with different bodies are two captures. Withdrawn lines are
+not bodies (``servable_rows``). The newest match has the greatest ``fetched_at``; an equal
 timestamp keeps the later line. When ``prefer_frame`` also has a match, only
 that frame is considered, so a collector re-reads its own store first.
 """
@@ -185,8 +187,15 @@ class SnapshotStore:
         self._kept_index = None
         return path
 
-    def recall(self, url: str, *, prefer_frame: str = "") -> KeptBody | None:
+    def recall(
+        self, url: str, *, prefer_frame: str = "", method: str = "GET", body_sha256: str = ""
+    ) -> KeptBody | None:
         """Newest servable body whose ``url`` or ``final_url`` equals ``url``.
+
+        ``method`` and ``body_sha256`` name the request: a line matches only when
+        its ``method`` (GET when absent) and ``body_sha256`` (empty when absent)
+        are the same, so a GET never replays a POST answer and two POSTs to one
+        URL are told apart by their bodies.
 
         Every frame directory under this store is scanned
         (``<root>/*/snapshots/manifest.jsonl``). A withdrawn URL is skipped with
@@ -198,7 +207,7 @@ class SnapshotStore:
         matched = [
             (index, frame, row)
             for index, (frame, row) in enumerate(self._servable_lines())
-            if _line_matches(row, url)
+            if _line_matches(row, url) and _request_matches(row, method, body_sha256)
         ]
         if not matched:
             return None
@@ -326,14 +335,47 @@ def _line_matches(row: dict, url: str) -> bool:
     return url == row.get("url") or url == row.get("final_url")
 
 
+def _request_matches(row: dict, method: str, body_sha256: str) -> bool:
+    """True when the line was made by the same request method and body.
+
+    Lines written before POST support have no ``method``: they are GETs with
+    no body, so the absent keys read as ``GET`` and the empty hash.
+    """
+    line_method = row.get("method") if isinstance(row.get("method"), str) else ""
+    line_body = row.get("body_sha256") if isinstance(row.get("body_sha256"), str) else ""
+    return (line_method or "GET").upper() == (method or "GET").upper() and line_body == (body_sha256 or "")
+
+
 def _fetched_at(row: dict) -> str:
     value = row.get("fetched_at")
     return value if isinstance(value, str) else ""
 
 
 def _stored_status(row: dict) -> int:
-    """Status stored on the line. A missing status is 0, not a guessed 200."""
-    status = row.get("status")
+    """Status stored on the line.
+
+    ``status`` is the key since manifest version 1. The production collectors
+    that wrote the archive before the package stored the same value as
+    ``http_status``, so that key is read when ``status`` is absent.
+
+    The oldest lines have neither key and no ``manifest_version``. Those
+    collectors appended a line only for a body they kept from a successful
+    response, and ``recall`` returns a line only when that body is still on
+    disk, so such a line replays as 200. A line that has a ``manifest_version``
+    and no status (or a status that is not a number) stays 0: the writer knew
+    the field and left it out, so no status is guessed for it.
+    """
+    if "status" in row:
+        return _status_value(row.get("status"))
+    if "http_status" in row:
+        return _status_value(row.get("http_status"))
+    if "manifest_version" not in row:
+        return 200
+    return 0
+
+
+def _status_value(status: object) -> int:
+    """An integer status, or 0 when the stored value is not one."""
     if isinstance(status, bool):
         return 0
     if isinstance(status, int):

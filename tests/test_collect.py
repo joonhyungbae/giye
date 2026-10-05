@@ -429,3 +429,71 @@ def test_from_snapshots_dates_rows_from_the_manifest_not_today(
     assert {row["collected_at"] for row in ledger.read("activities")} == {"2019-03-15"}
     assert {row["collected_at"] for row in ledger.read("frame_membership")} == {"2019-03-15"}
     assert "김하늘" in {row["name_ko"] for row in ledger.read("artists")}
+
+
+def test_collector_states_edition_code_row_source_and_date(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from giye.collect.base import Edition, Person, RosterCollector
+    from giye.collect.fetch import Fetcher as _Fetcher
+
+    page_url = "https://example.org/residency/alumni"
+    permalink = "https://example.org/residency/archive/2019"
+
+    class Residency(RosterCollector):
+        frame = "EXAMPLE-RESIDENCY"
+
+        def edition_code(self, edition):
+            return f"{self.frame}-{edition.year}" if edition.year != "archive" else "EXAMPLE-RESIDENCY-ARCHIVE"
+
+        def editions(self):
+            page = self.fetch(page_url)
+            yield Edition(year=2019, source_url=permalink, fetched_from=page.url, people=[
+                Person(name="박미나"),
+                Person(name="서준", source_url="https://example.org/residency/seo", collected_at="2019-05-01"),
+            ])
+            yield Edition(year="archive", source_url=page_url, collected_at="2020-01-02", people=[Person(name="임아라")])
+
+    config = load(_config(tmp_path, modules=False))
+    rows = Residency(config).run(collected_at="2026-10-04")
+    got = {row["name"]: (row["frame_code"], row["source_url"], row["collected_at"]) for row in rows}
+    assert got == {
+        "박미나": ("EXAMPLE-RESIDENCY-2019", permalink, "2026-10-04"),
+        "서준": ("EXAMPLE-RESIDENCY-2019", "https://example.org/residency/seo", "2019-05-01"),
+        "임아라": ("EXAMPLE-RESIDENCY-ARCHIVE", page_url, "2020-01-02"),
+    }
+    assert {row["frame_code"] for row in Ledger.open(config).read("frame_membership")} == {
+        "EXAMPLE-RESIDENCY-2019", "EXAMPLE-RESIDENCY-ARCHIVE"}
+    # Replay: the permalink was never fetched; the row is dated from the page it came from.
+    manifest = next((tmp_path / "data" / "raw").glob("*/snapshots/manifest.jsonl"))
+    lines = [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines()]
+    for line in lines:
+        line["fetched_at"] = "2019-03-15T04:05:06Z"
+    manifest.write_text("".join(json.dumps(line) + "\n" for line in lines), encoding="utf-8")
+    _block_sockets(monkeypatch)
+    replay = _Fetcher(UA, from_snapshots=True, snapshot_root=tmp_path / "data" / "raw")
+    rows = Residency(config, fetcher=replay).run()
+    assert {row["name"]: row["collected_at"] for row in rows} == {
+        "박미나": "2019-03-15", "서준": "2019-05-01", "임아라": "2020-01-02"}
+
+
+def test_expand_members_gives_declared_members_their_rows(tmp_path: Path):
+    from giye.collect.base import Edition, Person, RosterCollector
+
+    class Studio(RosterCollector):
+        frame = "EXAMPLE-RESIDENCY"
+        expand_members = True
+
+        def editions(self):
+            yield Edition(year=2019, source_url="https://example.org/residency/alumni", people=[
+                Person(name="Studio Example", members=["Jun Seo", "Ara Lim"]),
+            ])
+
+    config = load(_config(tmp_path, modules=False))
+    Studio(config).run(collected_at="2026-10-04")
+    ledger = Ledger.open(config)
+    names = {row["name_en"] for row in ledger.read("artists")}
+    assert {"Studio Example", "Jun Seo", "Ara Lim"} <= names
+    team = next(row for row in ledger.read("artists") if row["name_en"] == "Studio Example")
+    assert team["reviewer_note"] == "members=Jun Seo|Ara Lim"
+    before = ledger.read("artists"), ledger.read("activities")
+    Studio(config).run(collected_at="2026-10-04")
+    assert (ledger.read("artists"), ledger.read("activities")) == before
