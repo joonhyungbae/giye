@@ -1110,7 +1110,12 @@ def _roster_activity(
         source = spec["source_url"]
     else:
         source = str(row.get("source_url") or "").strip()
-    year = spec.get("year") or str(row.get("year") or "")
+    # A stated year, even an empty one, is the row's year: an undated career line
+    # must not take the edition's year, which the source does not state.
+    if "year" in spec:
+        year = str(spec["year"] or "")
+    else:
+        year = str(row.get("year") or "")
     origin = spec.get("origin") or frame
     title = spec.get("title") or frame
     activity_type = spec.get("activity_type") or "other"

@@ -678,6 +678,15 @@ def test_extra_activity_with_a_stated_empty_source_has_no_source(tmp_path: Path)
     assert ledger.read("activities") == before
 
 
+def test_extra_activity_with_a_stated_empty_year_stays_undated(tmp_path: Path):
+    ledger = _ledger(tmp_path)
+    row = _roster_row(extra_activities=[{"title": "Career line", "year": ""}, {"title": "Dated line"}])
+    ledger.apply_roster("EXAMPLE-RESIDENCY-2019", [row], task="collect")
+    acts = {a["title"]: a for a in ledger.read("activities")}
+    assert acts["Career line"]["year"] == ""
+    assert acts["Dated line"]["year"] == _roster_row()["year"]
+
+
 def test_person_note_goes_on_a_new_person_and_on_an_existing_one_only_on_request(tmp_path: Path):
     ledger = _ledger(tmp_path)
     code = "EXAMPLE-RESIDENCY-2019"
