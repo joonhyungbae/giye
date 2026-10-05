@@ -45,14 +45,7 @@ giye demo --output /tmp/giye-demo
 ```
 
 Open `/tmp/giye-demo/site/html/index.html` in a browser. Each fact on a person page links to its
-source. Docker runs the same command:
-
-```bash
-docker build -t giye .
-docker run --rm giye
-```
-
-The image is `python:3.11-slim`. Its default command is `giye demo`.
+source.
 
 ## Pipeline
 

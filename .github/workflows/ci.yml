@@ -14,11 +14,6 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: ruff check src tests
       - run: pytest -q
-  docker:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: docker build -t giye-demo .
   web:
     runs-on: ubuntu-latest
     steps:
