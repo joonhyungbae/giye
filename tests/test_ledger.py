@@ -824,3 +824,23 @@ def test_roster_sites_are_typed_like_the_production_collectors(tmp_path: Path):
     ledger.apply_roster("EXAMPLE-RESIDENCY-2019", [row], task="collect")
     kinds = {link["url"]: link["link_type"] for link in ledger.read("links")}
     assert kinds == {"https://example.org/haneul": "website", "https://www.instagram.com/example": "social"}
+
+
+def test_write_csv_is_atomic_and_keeps_the_old_file_on_failure(tmp_path: Path):
+    from giye.ledger.io import read_csv, write_csv
+
+    path = tmp_path / "table.csv"
+    write_csv(path=path, fields=["a", "b"], rows=[{"a": "1", "b": "2"}])
+    path.chmod(0o640)
+
+    def rows():
+        yield {"a": "3", "b": "4"}
+        raise RuntimeError("disk full")
+
+    with pytest.raises(RuntimeError):
+        write_csv(path=path, fields=["a", "b"], rows=rows())
+    assert read_csv(path) == [{"a": "1", "b": "2"}]
+    assert [item.name for item in tmp_path.iterdir()] == ["table.csv"]
+    write_csv(path=path, fields=["a", "b"], rows=[{"a": "5", "b": "6"}])
+    assert read_csv(path) == [{"a": "5", "b": "6"}]
+    assert path.stat().st_mode & 0o777 == 0o640

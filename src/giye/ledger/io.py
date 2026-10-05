@@ -117,15 +117,54 @@ def write_csv(*, path: Path, fields: Sequence[str], rows: Iterable[Mapping[str, 
     Keyword-only so the path, the column list, and the rows cannot be passed
     in the wrong order. Unknown keys are dropped. ``None`` is written as an
     empty cell. An existing file keeps its line ending. A new file uses ``\\n``.
+
+    The write is atomic: the rows go to a temporary file in the same
+    directory, which is flushed, fsynced and then moved over ``path`` with
+    ``os.replace``. Why: the ledger is the source of truth, and a crash or a
+    full disk in the middle of an in-place rewrite would leave a truncated
+    table. A reader sees either the old file or the new one. The new file
+    keeps the old file's permission bits.
     """
+    import tempfile
+
     path.parent.mkdir(parents=True, exist_ok=True)
     columns = list(fields)
     ending = _lineterminator(path)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=columns, extrasaction="ignore", lineterminator=ending)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({key: "" if row.get(key) is None else row.get(key, "") for key in columns})
+    descriptor, temp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    temp = Path(temp_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=columns, extrasaction="ignore", lineterminator=ending)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({key: "" if row.get(key) is None else row.get(key, "") for key in columns})
+            handle.flush()
+            os.fsync(handle.fileno())
+        if path.exists():
+            shutil.copymode(path, temp)
+        else:
+            umask = os.umask(0)
+            os.umask(umask)
+            os.chmod(temp, 0o666 & ~umask)
+        os.replace(temp, path)
+    except BaseException:
+        temp.unlink(missing_ok=True)
+        raise
+    _fsync_directory(path.parent)
+
+
+def _fsync_directory(directory: Path) -> None:
+    """Make the rename durable. Not every platform can open a directory; that is not an error."""
+    try:
+        handle = os.open(directory, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(handle)
+    except OSError:
+        pass
+    finally:
+        os.close(handle)
 
 
 def start_backup_run() -> None:
