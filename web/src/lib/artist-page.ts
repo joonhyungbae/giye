@@ -64,7 +64,7 @@ export type ArtistPageData = {
     medium_derived: boolean;
     technique: Bi[];
     theme: Bi[];
-    /** Roster editions in registry order, newest edition first within a programme. */
+    /** Roster editions, newest first (the reason the person is in the register). */
     editions: { frame: string; name: Bi; label: { ko: string | null; en: string | null } }[];
   };
   sources: PageSource[];
@@ -78,7 +78,8 @@ export type ArtistPageData = {
     topic: string | null;
     source: number;
   }[];
-  links: { label: string; url: string; type: string; dead: "" | "dead" | "check" }[];
+  /** The person's own links: websites first, then social profiles, then the rest. */
+  links: { host: string; url: string; type: string; dead: "" | "dead" | "check" }[];
   members: PagePerson[];
   memberOf: PagePerson[];
   sameName: (PagePerson & { editions: Bi[] })[];
@@ -121,6 +122,15 @@ function country(cc: string): Bi {
     }
   };
   return { ko: name("ko"), en: name("en") };
+}
+
+/** A link's host without "www.", its label on the page. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
 }
 
 /** Comparison key for names: case-folded, letters and digits only. */
@@ -192,10 +202,13 @@ export function shapeArtistPage(input: {
 
   const frameByCode = new Map(input.frames.map((f) => [f.code, f]));
   const editions = [...(artist.frame_editions ?? [])]
+    // Newest edition first; an edition without a year goes last; registry order breaks ties.
     .sort((x, y) => {
+      const yx = Number.parseInt(x.edition ?? "", 10) || 0;
+      const yy = Number.parseInt(y.edition ?? "", 10) || 0;
       const ox = frameByCode.get(x.frame)?.order ?? 999;
       const oy = frameByCode.get(y.frame)?.order ?? 999;
-      return ox - oy || (y.edition ?? "").localeCompare(x.edition ?? "");
+      return yy - yx || ox - oy;
     })
     .map((fe) => {
       const f = frameByCode.get(fe.frame);
@@ -260,16 +273,21 @@ export function shapeArtistPage(input: {
     source: sources.add(c.source_url, c.collected_at),
   }));
 
-  const links = input.links.map((l) => ({
-    label: l.label,
-    url: l.url,
-    type: l.link_type,
-    dead: (!l.is_dead
-      ? ""
-      : l.http_status === "404" || l.http_status === "410"
-        ? "dead"
-        : "check") as "" | "dead" | "check",
-  }));
+  // Websites first, then social profiles, then other kinds; the snapshot's order within a kind.
+  const rank: Record<string, number> = { website: 0, social: 1 };
+  const linkRank = (type: string) => rank[type] ?? 2;
+  const links = [...input.links]
+    .sort((a, b) => linkRank(a.link_type) - linkRank(b.link_type))
+    .map((l) => ({
+      host: hostOf(l.url),
+      url: l.url,
+      type: l.link_type,
+      dead: (!l.is_dead
+        ? ""
+        : l.http_status === "404" || l.http_status === "410"
+          ? "dead"
+          : "check") as "" | "dead" | "check",
+    }));
 
   const frameName = new Map(input.frames.map((f) => [f.code, [f.name_ko, f.name_en]]));
   const sameName = (artist.same_name ?? [])

@@ -281,30 +281,55 @@ function ArtistPage() {
     );
   }
 
-  // Optional sections are numbered in page order after 01 profile and 02 activities.
-  let sectionNo = 2;
+  // Sections are numbered in page order after 01 activities.
+  let sectionNo = 1;
   const nextNo = () => String(++sectionNo).padStart(2, "0");
   const backgroundNo = background.length > 0 ? nextNo() : "";
   const collaborationsNo = collaborations.length > 0 ? nextNo() : "";
-  const linksNo = links.length > 0 ? nextNo() : "";
   const cvFound = artist.cv_status === "found";
   const askNo = !cvFound || sameName.length > 0 ? nextNo() : "";
-  // The person row and birth year cite their pages in the header and profile; each later section
-  // lists the pages its own lines cite.
-  const profileSources = usedSources(
-    [artist.source, artist.birth_source ?? -1].filter((i) => i >= 0),
-  );
   const activitySources = usedSources(years.flatMap((y) => y.rows.map((r) => r[5])));
   const backgroundSources = usedSources(background.flatMap((s) => s.rows.map((r) => r[4])));
   const collaborationSources = usedSources(collaborations.map((c) => c.source));
+  // One summary line in place of the profile table: active since · type · regions · medium,
+  // then technique and theme when present. A derived value says so in its tooltip.
+  const summary: { text: string; note?: string }[] = [
+    ...(artist.active_since
+      ? [
+          {
+            text: `${t("활동 시작", "Active since")} ${artist.active_since}`,
+            note: artist.active_since_derived
+              ? t("아래 기록 중 가장 이른 공개 활동", "Earliest public record below")
+              : undefined,
+          },
+        ]
+      : []),
+    { text: artist.type === "collective" ? t("집단", "Collective") : t("개인", "Individual") },
+    ...(artist.regions.length ? [{ text: tags(artist.regions) }] : []),
+    ...(artist.medium.length
+      ? [
+          {
+            text: tags(artist.medium),
+            note: artist.medium_derived
+              ? t("아래 기록 두 건 이상이 이 매체를 말함", "Named by two or more records below")
+              : undefined,
+          },
+        ]
+      : []),
+    ...(artist.technique.length ? [{ text: tags(artist.technique) }] : []),
+    ...(artist.theme.length ? [{ text: tags(artist.theme) }] : []),
+  ];
+  const section =
+    "grid gap-6 border-t border-input py-10 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-16";
+  const sectionTitle = "font-mono text-[11px] uppercase text-muted-foreground";
 
   return (
-    <div className="wrap py-12 pb-32 lg:py-20">
-      <header className="border-b border-input pb-10">
+    <div className="wrap py-12 pb-32 lg:py-16">
+      <header className="border-b border-input pb-6">
         <p className="font-mono text-[10px] uppercase text-primary">
           [ ARTIST_RECORD / {artist.id} ]
         </p>
-        <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-end">
+        <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-end lg:gap-8">
           <div>
             <h1 className="font-mono text-5xl font-bold italic leading-none sm:text-7xl">
               {primaryName}
@@ -312,9 +337,38 @@ function ArtistPage() {
             {secondaryName && (
               <p
                 lang={secondaryName === artist.name_en ? "en" : "ko"}
-                className="mt-3 text-sm font-light uppercase text-muted-foreground sm:text-base"
+                className="mt-3 text-sm font-light text-muted-foreground sm:text-base"
               >
                 {secondaryName}
+              </p>
+            )}
+            {/* The person's own links, shown by domain. Display only; nothing is fetched. */}
+            {links.length > 0 && (
+              <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs">
+                {links.map((l) => (
+                  <a
+                    key={l.url}
+                    href={l.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-accent no-underline hover:underline"
+                    title={t(
+                      LINK_TYPE_LABEL[l.type]?.[0] ?? l.type,
+                      LINK_TYPE_LABEL[l.type]?.[1] ?? l.type,
+                    )}
+                  >
+                    {l.host}
+                    {l.dead === "dead" && (
+                      <span className="text-muted-foreground"> {t("(연결 끊김)", "(dead link)")}</span>
+                    )}
+                    {l.dead === "check" && (
+                      <span className="text-muted-foreground">
+                        {" "}
+                        {t("(연결 확인 필요)", "(link needs check)")}
+                      </span>
+                    )}
+                  </a>
+                ))}
               </p>
             )}
             {artist.aliases.length > 0 && (
@@ -327,26 +381,72 @@ function ArtistPage() {
               <PeopleLine label={t("구성원", "Members")} people={members} />
             )}
             {memberOf.length > 0 && <PeopleLine label={t("팀", "Team")} people={memberOf} />}
+            {artist.bio_short && <p className="mt-4 max-w-3xl leading-7">{artist.bio_short}</p>}
+            <p className="mt-4 text-sm">
+              {summary.map((s, i) => (
+                <span key={i} title={s.note}>
+                  {i > 0 && <span className="text-muted-foreground"> · </span>}
+                  {s.text}
+                  {s.note && <span className="text-muted-foreground">*</span>}
+                </span>
+              ))}
+            </p>
+            {(artist.birth_year || artist.countries.length > 0) && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                {artist.birth_year && (
+                  <span>
+                    {t("출생", "Born")} {artist.birth_year}
+                    {artist.birth_source != null && (
+                      <SourceRef
+                        index={artist.birth_source}
+                        url={sources[artist.birth_source].url}
+                      />
+                    )}
+                  </span>
+                )}
+                {artist.birth_year && artist.countries.length > 0 && " · "}
+                {artist.countries.length > 0 && (
+                  <span>
+                    {t("활동 기반", "Based in")} {tags(artist.countries)}
+                    {artist.country_url && (
+                      <a
+                        href={artist.country_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="ml-1.5 text-xs text-accent"
+                      >
+                        {t("작가 CV의 표기", "as the artist's CV states")}
+                      </a>
+                    )}
+                  </span>
+                )}
+              </p>
+            )}
+            {summary.some((s) => s.note) && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                * {t("아래 기록에서 도출한 값", "Derived from the records below")}
+              </p>
+            )}
           </div>
-          <div className="space-y-4 lg:border-l lg:border-border lg:pl-6">
+          <div className="space-y-3 lg:border-l lg:border-border lg:pl-6">
             <p className="flex flex-wrap items-center gap-3 text-sm">
               <Button
                 type="button"
                 onClick={() => navigator.clipboard.writeText(artist.id)}
                 variant="outline"
                 size="sm"
-                className="rounded-none border-input bg-transparent font-mono text-[10px] shadow-none hover:border-primary hover:bg-transparent hover:text-primary"
+                className="rounded-none border-input bg-transparent font-mono text-[11px] shadow-none hover:border-primary hover:bg-transparent hover:text-primary"
                 title={t("ID 복사", "Copy ID")}
               >
                 {artist.id}
               </Button>
-              <span className="font-mono text-[10px] text-muted-foreground">
+              <span className="font-mono text-[11px] text-muted-foreground">
                 {t(
                   VERIFICATION_LABEL[artist.verification][0],
                   VERIFICATION_LABEL[artist.verification][1],
                 )}
               </span>
-              <span className="font-mono text-[10px] text-muted-foreground">
+              <span className="font-mono text-[11px] text-muted-foreground">
                 {t("최종 수정", "Last updated")} {artist.updated}
               </span>
               <CiteDialog
@@ -362,149 +462,24 @@ function ArtistPage() {
             {artist.source >= 0 && (
               <p className="text-xs text-muted-foreground">
                 {t("기록 출처", "Record source")}
-                <SourceRef
-                  index={artist.source}
-                  url={sources[artist.source].url} />
+                <SourceRef index={artist.source} url={sources[artist.source].url} />
+                {sources[artist.source].collected.length > 0 && (
+                  <span>
+                    {" · "}
+                    {t("수집일", "Collected")} {sources[artist.source].collected.join(", ")}
+                  </span>
+                )}
               </p>
             )}
           </div>
         </div>
       </header>
 
-      <div className="grid gap-12 py-12 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-24">
-        <h2 className="font-mono text-[10px] uppercase text-muted-foreground">
-          01 / {t("작가 개요", "Artist profile")}
-        </h2>
-        <div>
-          {artist.bio_short && <p className="max-w-3xl text-lg leading-8">{artist.bio_short}</p>}
-
-          <dl className="mt-10 grid gap-x-12 gap-y-7 border-t border-border pt-7 sm:grid-cols-2">
-            {artist.birth_year && (
-              <div>
-                <dt className="label-caps">{t("출생", "Born")}</dt>
-                <dd>
-                  {artist.birth_year}
-                  {artist.birth_source != null && (
-                    <SourceRef
-                      index={artist.birth_source}
-                      url={sources[artist.birth_source].url} />
-                  )}
-                </dd>
-              </div>
-            )}
-            {artist.active_since && (
-              <div>
-                <dt className="label-caps">{t("활동 시작", "Active since")}</dt>
-                <dd>
-                  {artist.active_since}
-                  {artist.active_since_derived && (
-                    <span className="ml-2 text-xs text-muted-foreground">
-                      {t("아래 기록 중 가장 이른 공개 활동", "earliest public record below")}
-                    </span>
-                  )}
-                </dd>
-              </div>
-            )}
-            {artist.countries.length > 0 && (
-              <div>
-                <dt className="label-caps">{t("활동 기반", "Based in")}</dt>
-                <dd>
-                  {tags(artist.countries)}
-                  {artist.country_url && (
-                    <a
-                      href={artist.country_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="ml-2 text-xs text-muted-foreground"
-                    >
-                      {t("작가 CV의 표기", "as the artist's CV states")}
-                    </a>
-                  )}
-                </dd>
-              </div>
-            )}
-            <div>
-              <dt className="label-caps">{t("유형", "Type")}</dt>
-              <dd>
-                {artist.type === "collective" ? t("집단", "Collective") : t("개인", "Individual")}
-              </dd>
-            </div>
-            {artist.regions.length > 0 && (
-              <div>
-                <dt className="label-caps">{t("지역", "Regions")}</dt>
-                <dd>{tags(artist.regions)}</dd>
-              </div>
-            )}
-            {artist.medium.length > 0 && (
-              <div>
-                <dt className="label-caps">{t("매체", "Medium")}</dt>
-                <dd>
-                  {tags(artist.medium)}
-                  {artist.medium_derived && (
-                    <span className="ml-2 text-xs text-muted-foreground">
-                      {t(
-                        "아래 기록 두 건 이상이 이 매체를 말함",
-                        "named by two or more records below",
-                      )}
-                    </span>
-                  )}
-                </dd>
-              </div>
-            )}
-            {artist.technique.length > 0 && (
-              <div>
-                <dt className="label-caps">{t("기법", "Technique")}</dt>
-                <dd>{tags(artist.technique)}</dd>
-              </div>
-            )}
-            {artist.theme.length > 0 && (
-              <div>
-                <dt className="label-caps">{t("주제", "Theme")}</dt>
-                <dd>{tags(artist.theme)}</dd>
-              </div>
-            )}
-            <div>
-              <dt className="label-caps">{t("표집틀", "Sampling frame")}</dt>
-              <dd>
-                {artist.editions.length === 0 ? (
-                  t("표집틀 외", "Out of frame")
-                ) : (
-                  // One line per event edition: an artist can sit in several frames.
-                  // Each links to that event's shelf.
-                  <ul className="space-y-1">
-                    {artist.editions.map((fe, i) => {
-                      const label = lang === "en" ? fe.label.en : fe.label.ko;
-                      return (
-                        <li key={`${fe.frame}-${i}`}>
-                          <Link
-                            to="/artists"
-                            search={{ group: "frame", fr: fe.frame }}
-                            className="underline-offset-4 hover:text-primary hover:underline"
-                          >
-                            {bi(fe.name)}
-                          </Link>
-                          {label ? (
-                            <span className="ml-2 text-xs text-muted-foreground">{label}</span>
-                          ) : null}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </dd>
-            </div>
-          </dl>
-          <SourceList sources={sources} used={profileSources} />
-        </div>
-      </div>
-
-      <section className="grid gap-8 border-t border-input py-12 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-24">
-        <h2 className="font-mono text-[10px] uppercase text-muted-foreground">
-          02 / {t("활동", "Activities")}
-        </h2>
+      <section className={section}>
+        <h2 className={sectionTitle}>01 / {t("활동", "Activities")}</h2>
         <div>
           {years.length === 0 && (
-            <p className="mt-3 text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               {t("기록된 활동이 없습니다.", "No activities recorded.")}
             </p>
           )}
@@ -516,20 +491,20 @@ function ArtistPage() {
       </section>
 
       {background.length > 0 && (
-        <section className="grid gap-8 border-t border-input py-12 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-24">
-          <h2 className="font-mono text-[10px] uppercase text-muted-foreground">
+        <section className={section}>
+          <h2 className={sectionTitle}>
             {backgroundNo} / {t("학력·경력", "Background")}
           </h2>
-          <div className="space-y-10">
-            {background.map(({ section, rows }) => {
-              const [ko, en] = BACKGROUND_SECTION_LABEL[section] ?? [section, section];
+          <div className="space-y-8">
+            {background.map(({ section: key, rows }) => {
+              const [ko, en] = BACKGROUND_SECTION_LABEL[key] ?? [key, key];
               return (
-                <div key={section}>
+                <div key={key}>
                   <h3 className="label-caps">{t(ko, en)}</h3>
                   <BackgroundList rows={rows.slice(0, BACKGROUND_PREVIEW)} sources={sources} />
                   {rows.length > BACKGROUND_PREVIEW && (
                     <details className="mt-2">
-                      <summary className="cursor-pointer font-mono text-[10px] text-muted-foreground transition-colors hover:text-primary">
+                      <summary className="cursor-pointer font-mono text-[11px] text-muted-foreground transition-colors hover:text-primary">
                         {t(
                           `${rows.length - BACKGROUND_PREVIEW}건 더 보기`,
                           `Show ${rows.length - BACKGROUND_PREVIEW} more`,
@@ -547,8 +522,8 @@ function ArtistPage() {
       )}
 
       {collaborations.length > 0 && (
-        <section className="grid gap-8 border-t border-input py-12 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-24">
-          <h2 className="font-mono text-[10px] uppercase text-muted-foreground">
+        <section className={section}>
+          <h2 className={sectionTitle}>
             {collaborationsNo} / {t("협업 과학자·공학자", "Science & engineering collaborators")}
           </h2>
           <div>
@@ -568,42 +543,9 @@ function ArtistPage() {
         </section>
       )}
 
-      {links.length > 0 && (
-        <section className="grid gap-8 border-t border-input py-12 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-24">
-          <h2 className="font-mono text-[10px] uppercase text-muted-foreground">
-            {linksNo} / {t("링크", "Links")}
-          </h2>
-          <ul className="space-y-3">
-            {links.map((l, i) => {
-              const deadNote =
-                l.dead === "dead"
-                  ? t(" · 연결 끊김", " · dead link")
-                  : l.dead === "check"
-                    ? t(" · 연결 확인 필요", " · link needs check")
-                    : "";
-              return (
-                <li key={i} className="text-sm">
-                  <a href={l.url} className="text-accent" target="_blank" rel="noreferrer">
-                    {l.label}
-                  </a>{" "}
-                  <span className="text-muted-foreground">
-                    (
-                    {t(
-                      LINK_TYPE_LABEL[l.type]?.[0] ?? l.type,
-                      LINK_TYPE_LABEL[l.type]?.[1] ?? l.type,
-                    )}
-                    {deadNote})
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
-
       {askNo && (
-        <section className="grid gap-8 border-t border-input py-12 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-24">
-          <h2 className="font-mono text-[10px] uppercase text-muted-foreground">
+        <section className={section}>
+          <h2 className={sectionTitle}>
             {askNo} / {t("아직 확인하지 못한 것", "Still open")}
           </h2>
           <div className="max-w-3xl space-y-8 text-sm leading-7">
@@ -671,6 +613,49 @@ function ArtistPage() {
           </div>
         </section>
       )}
+
+      {/* Why this person is in the register: the roster editions that list them. One line,
+          opening to the editions; the reason, not an introduction, so it sits at the end. */}
+      <section className="border-t border-input py-8 text-sm">
+        {artist.editions.length === 0 ? (
+          <p>
+            <Link to="/about/frame" className="text-accent">
+              {t("수록 근거: 표집틀 외", "Out of frame")} →
+            </Link>
+          </p>
+        ) : (
+          <details>
+            <summary className="cursor-pointer">
+              <Link to="/about/frame" className="text-accent">
+                {t(
+                  `수록 근거: 프로그램 ${artist.editions.length}회차`,
+                  `Included through ${artist.editions.length} programme edition${artist.editions.length === 1 ? "" : "s"}`,
+                )}{" "}
+                →
+              </Link>
+            </summary>
+            <ul className="mt-3 space-y-1 pl-4">
+              {artist.editions.map((fe, i) => {
+                const label = lang === "en" ? fe.label.en : fe.label.ko;
+                return (
+                  <li key={`${fe.frame}-${i}`}>
+                    <Link
+                      to="/artists"
+                      search={{ group: "frame", fr: fe.frame }}
+                      className="underline-offset-4 hover:text-primary hover:underline"
+                    >
+                      {bi(fe.name)}
+                    </Link>
+                    {label ? (
+                      <span className="ml-2 text-xs text-muted-foreground">{label}</span>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </details>
+        )}
+      </section>
 
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 backdrop-blur">
         <div className="wrap flex flex-wrap justify-end gap-2 py-3 text-sm">
