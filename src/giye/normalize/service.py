@@ -5,11 +5,15 @@ The ledger is not modified. Derived rows name the rule that produced them.
 A value already on the artist row wins over P5 (country, region, active_since,
 medium). Outputs:
 
-  activities.csv          title/venue normalisation, place, venue id, P1 flags, P4 link
+  activities.csv          title/venue normalisation, place, venue id, P1 flags, P4 link.
+                          venue_rule names the rules that put the row at its entity
+                          (V4, V7, V5a…V9); rules names every rule that filled a value
+                          of the row (P2, V1, P3, P4, Y0–Y2).
   artist_attributes.csv   one row per derived value, with rule and evidence.
                           P6 record_depth (1–4) is one row per published person.
                           It has no ledger cell and is not copied into the site snapshot.
-  venues.csv              institution and funder entities
+  venues.csv              institution and funder entities, with the rules that formed each
+  venue_merges.csv        every merge: rule, entity, the two keys it joined
   venue_audit.md          every merge, with its rule
   manifest.json           hashes of the inputs, rule version, counts
   report.md               what each rule filled and flagged
@@ -32,6 +36,7 @@ from giye.ledger.io import read_csv, write_csv
 from giye.ledger.ledger import without_hidden
 from giye.normalize.language import LanguageModule, language_for, packaged_dir
 from giye.normalize.rules import (
+    FLAG_RULES,
     HEAD_CHARS,
     active_since,
     based_in,
@@ -69,8 +74,10 @@ ACT_FIELDS = [
     "venue_id",
     "funder_id",
     "venue_kind",
+    "venue_rule",
     "event_link",
     "flags",
+    "rules",
 ]
 ATTR_FIELDS = ["ledger_id", "field", "value", "rule", "evidence", "evidence_url"]
 
@@ -283,6 +290,19 @@ def _places_by_venue(
     return venue_places
 
 
+def _row_rules(country: str, annotation: dict[str, str], link: str, row_flags: list[str]) -> str:
+    """N-8: the rule ids behind the derived values of one processed activity row."""
+    found = ["P2"]
+    if country:
+        found.append("V1")
+    if annotation.get("venue_kind"):
+        found.append("P3")
+    if link:
+        found.append("P4")
+    found.extend(FLAG_RULES.get(flag, flag) for flag in row_flags)
+    return "|".join(found)
+
+
 def _activity_rows(
     activities: list[dict[str, str]],
     venue_places: dict[str, tuple[str, str]],
@@ -295,6 +315,12 @@ def _activity_rows(
     for row in activities:
         venue = norm_text(row.get("venue"))
         country, region = venue_places.get(venue, ("", ""))
+        activity_id = row.get("activity_id", "")
+        annotation = venue_result.annotations.get(
+            activity_id, {"venue_id": "", "funder_id": "", "venue_kind": "", "venue_rule": ""}
+        )
+        link = links.get(activity_id, "")
+        row_flags = flags.get(activity_id, [])
         activity_out.append(
             {
                 "activity_id": row.get("activity_id", ""),
@@ -309,11 +335,10 @@ def _activity_rows(
                 "lang": lang_of(row.get("title")),
                 "venue_country": country,
                 "venue_region": region,
-                **venue_result.annotations.get(
-                    row.get("activity_id", ""), {"venue_id": "", "funder_id": "", "venue_kind": ""}
-                ),
-                "event_link": links.get(row.get("activity_id", ""), ""),
-                "flags": "|".join(flags.get(row.get("activity_id", ""), [])),
+                **annotation,
+                "event_link": link,
+                "flags": "|".join(row_flags),
+                "rules": _row_rules(country, annotation, link, row_flags),
             }
         )
     return activity_out

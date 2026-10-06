@@ -74,7 +74,9 @@ def lang_of(text: str | None) -> str:
 # ── P1 checks (flags, never deletions) ───────────────────────────────────────────────────────────
 
 # Y0 year_missing, Y1 year_range, Y2 year_from_title (docs/RULES.md). The stored
-# flag is the long name; the Y-id names the same check.
+# flag is the long name; the Y-id names the same check. activities.csv carries
+# the Y-id in its ``rules`` column (N-8: processed rows name their rules).
+FLAG_RULES = {"year_missing": "Y0", "year_range": "Y1", "year_from_title": "Y2"}
 PERIOD_IN_TITLE = r"(?:after|since|nach|seit|depuis|dopo|desde)\s+{y}\b|{y}\s*년\s*이후"
 
 

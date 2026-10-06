@@ -3,8 +3,10 @@
 
 Deterministic string rules and the language module's gazetteer only: no fuzzy
 matching, no embeddings, no network, no ledger edits. ``build`` writes
-``venues.csv`` and ``venue_audit.md``. The audit lists every merge with its
-rule id (V5a, V5d, V5f, V7e, V8, V9).
+``venues.csv``, ``venue_merges.csv`` and ``venue_audit.md``. The audit and
+``venue_merges.csv`` list every merge with its rule id (V5a, V5d, V5f, V7e,
+V8, V9). Each entity in ``venues.csv`` and each activity annotation
+(``venue_rule``) names the rules that put it together (N-8).
 
 ``name_rules`` turns V7–V9 off for an ablation. Leaving it unset keeps those
 rules on, which is what ``giye normalize`` does unless the config or
@@ -36,7 +38,12 @@ VENUE_FIELDS = [
     "kr_region",
     "n_rows",
     "n_artists",
+    "rules",
 ]
+# N-8: every join, machine-readable (the audit's section 7 is Markdown).
+MERGE_FIELDS = ["rule", "venue_id", "kept_key", "joined_key"]
+# Order of the rule ids in ``venue_rule`` and ``rules``.
+RULE_ORDER = ("V4", "V7", "V5a", "V5d", "V5f", "V7e", "V8", "V9")
 SPLIT_CHARS = {",", "/", "|", "·", ";", "\x1f"}
 ONLINE_RE = re.compile(
     r"(?:online|web|website|youtube|vimeo|zoom|instagram|virtual|metaverse|온라인|웹사이트|유튜브)",
@@ -492,10 +499,15 @@ def _spelling_sort(item: tuple[str, set[str]]) -> tuple[int, int, str]:
     return -len(row_ids), 0 if HANGUL_RE.search(spelling) else 1, spelling
 
 
-def _write_csv(path: Path, rows: list[dict]) -> None:
-    """Write ``venues.csv`` with ``VENUE_FIELDS`` and a newline after every row."""
+def _display_key(key: str) -> str:
+    """An entity key as text: a generic name's place after `` @ `` (N-1)."""
+    return key.replace(venue_names.PLACE_SEP, " @ ")
+
+
+def _write_csv(path: Path, rows: list[dict], fields: list[str] = VENUE_FIELDS) -> None:
+    """Write ``venues.csv`` (or another table of this module) with a newline after every row."""
     with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=VENUE_FIELDS, lineterminator="\n")
+        writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 
@@ -1178,18 +1190,18 @@ def _collect_entity_use(
     dict[str, set[str]],
     dict[str, set[str]],
     dict[str, Counter],
-    dict[str, list[tuple[str, str]]],
+    dict[str, list[tuple[str, str, str, str]]],
     dict[str, str],
 ]:
     """Rows, artists, and places of each entity, plus the institution key of each activity."""
     entity_rows: dict[str, set[str]] = defaultdict(set)
     entity_artists: dict[str, set[str]] = defaultdict(set)
     entity_places: dict[str, Counter] = defaultdict(Counter)
-    row_roots: dict[str, list[tuple[str, str]]] = {}
+    row_roots: dict[str, list[tuple[str, str, str, str]]] = {}
     institution_key_by_activity: dict[str, str] = {}
     for row in parsed:
         place = next((fragment.place for fragment in row.fragments if fragment.kind == "place"), None)
-        roots: list[tuple[str, str]] = []
+        roots: list[tuple[str, str, str, str]] = []
         seen_roots: set[str] = set()
         chosen_institution: str | None = None
         for fragment in row.fragments:
@@ -1199,7 +1211,7 @@ def _collect_entity_use(
             if fragment.kind == "institution" and chosen_institution is None:
                 chosen_institution = key
             root = root_for_key[key]
-            roots.append((fragment.kind, root))
+            roots.append((fragment.kind, root, key, fragment.text))
             if root in seen_roots:
                 continue
             entity_rows[root].add(row.activity_id)
@@ -1260,6 +1272,8 @@ def _name_entities(
             if count / n_rows >= 0.5:
                 city, country, kr_region = place
         entity_by_root[root] = {
+            "_keys": sorted(keys),
+            "_name_key": next(key for key in sorted(keys) if ordered_spellings[0] in spell_rows[key]),
             "name": ordered_spellings[0],
             "_aliases": ordered_spellings[1:],
             "kind": "funder" if "funder" in kinds else "institution",
@@ -1272,10 +1286,57 @@ def _name_entities(
     return entity_by_root
 
 
+def _rule_text(found: set[str]) -> str:
+    return "|".join(rule for rule in RULE_ORDER if rule in found)
+
+
+def _merge_paths(merges: list[tuple[str, str, str]], entity_by_root: dict[str, dict]) -> dict[str, set[str]]:
+    """N-8: the merge rules on the path from each key to the key of its entity's name.
+
+    The merges inside one entity form a tree (a join is recorded only when it
+    joins two components), so the path is unique.
+    """
+    graph: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    for rule, left, right in merges:
+        graph[left].append((right, rule))
+        graph[right].append((left, rule))
+    found: dict[str, set[str]] = {}
+    for entity in entity_by_root.values():
+        start = entity["_name_key"]
+        found[start] = set()
+        stack = [start]
+        while stack:
+            node = stack.pop()
+            for other, rule in graph.get(node, ()):
+                if other not in found:
+                    found[other] = found[node] | {rule}
+                    stack.append(other)
+    return found
+
+
+def _plain_key(text: str) -> str:
+    """The V4 key of ``text`` without V7a–d."""
+    token = _V7_SPELLING.set(False)
+    try:
+        return institution_key(text)
+    finally:
+        _V7_SPELLING.reset(token)
+
+
+def _spelling_rules(text: str, key: str, paths: dict[str, set[str]]) -> set[str]:
+    """V4; V7 when V7a–d rewrote this spelling; the merge rules from its key to the entity name."""
+    respelled = venue_names.name_part(key) != _plain_key(text)
+    return {"V4", *(("V7",) if respelled else ()), *paths.get(key, ())}
+
+
 def _annotate_rows(
-    parsed: list[ParsedVenue], entity_by_root: dict[str, dict], row_roots: dict[str, list[tuple[str, str]]]
+    parsed: list[ParsedVenue],
+    entity_by_root: dict[str, dict],
+    row_roots: dict[str, list[tuple[str, str, str, str]]],
+    paths: dict[str, set[str]],
+    spell_rows: dict[str, dict[str, set[str]]],
 ) -> tuple[dict[str, dict[str, str]], Counter, list[dict]]:
-    """Number entities ``VEN-`` by row count, and the venue_kind of each activity."""
+    """Number entities ``VEN-`` by row count, and the venue_kind and venue_rule of each activity."""
     # The root key breaks a tie between two entities with one display name and one row count.
     ordered_entities = sorted(
         entity_by_root.items(), key=lambda item: (-item[1]["n_rows"], item[1]["name"], item[0])
@@ -1286,9 +1347,13 @@ def _annotate_rows(
     venue_kind_counts: Counter = Counter()
     for row in parsed:
         roots = row_roots[row.activity_id]
-        institution_root = next((root for kind, root in roots if kind == "institution"), "")
-        funder_root = next((root for kind, root in roots if kind == "funder"), "")
+        institution_root = next((root for kind, root, _key, _text in roots if kind == "institution"), "")
+        funder_root = next((root for kind, root, _key, _text in roots if kind == "funder"), "")
         venue_root = institution_root or funder_root
+        venue_kind_of_key = "institution" if institution_root else "funder"
+        venue_key, venue_text = next(
+            ((key, text) for kind, _root, key, text in roots if kind == venue_kind_of_key), ("", "")
+        )
         kinds = {fragment.kind for fragment in row.fragments}
         if institution_root:
             venue_kind = "institution"
@@ -1304,6 +1369,7 @@ def _annotate_rows(
             "venue_id": entity_by_root[venue_root]["venue_id"] if venue_root else "",
             "funder_id": entity_by_root[funder_root]["venue_id"] if funder_root else "",
             "venue_kind": venue_kind,
+            "venue_rule": _rule_text(_spelling_rules(venue_text, venue_key, paths)) if venue_key else "",
         }
         annotations[row.activity_id] = annotation
         venue_kind_counts[venue_kind] += 1
@@ -1318,6 +1384,14 @@ def _annotate_rows(
             "kr_region": entity["kr_region"],
             "n_rows": entity["n_rows"],
             "n_artists": entity["n_artists"],
+            "rules": _rule_text(
+                {
+                    rule
+                    for key in entity["_keys"]
+                    for spelling in spell_rows[key]
+                    for rule in _spelling_rules(spelling, key, paths)
+                }
+            ),
         }
         for _, entity in ordered_entities
     ]
@@ -1383,10 +1457,24 @@ def _resolve(
     entity_by_root = _name_entities(
         grouped_keys, key_kinds, spell_rows, entity_rows, entity_artists, entity_places, lang
     )
-    annotations, venue_kind_counts, venue_rows = _annotate_rows(parsed, entity_by_root, row_roots)
+    paths = _merge_paths(all_merges, entity_by_root)
+    annotations, venue_kind_counts, venue_rows = _annotate_rows(parsed, entity_by_root, row_roots, paths, spell_rows)
     if write:
         assert out_dir is not None
         _write_csv(out_dir / "venues.csv", venue_rows)
+        _write_csv(
+            out_dir / "venue_merges.csv",
+            [
+                {
+                    "rule": rule,
+                    "venue_id": entity_by_root[root_for_key[left]]["venue_id"],
+                    "kept_key": _display_key(left),
+                    "joined_key": _display_key(right),
+                }
+                for rule, left, right in all_merges
+            ],
+            MERGE_FIELDS,
+        )
         (out_dir / "venue_audit.md").write_text(
             _audit_text(
                 parsed,

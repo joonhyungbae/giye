@@ -194,6 +194,15 @@ def test_p5_birth_base_and_ledger_wins(tmp_path: Path) -> None:
     assert by_id["e1"]["venue_region"] == "경기"
     assert by_id["e1"]["venue_kind"] == "institution"
     assert "year_from_title" in by_id["e3"]["flags"]
+    # N-8: processed rows name the rules behind their derived values.
+    assert by_id["e1"]["venue_rule"].startswith("V4")
+    assert by_id["e1"]["rules"].split("|")[:3] == ["P2", "V1", "P3"]
+    assert "Y2" in by_id["e3"]["rules"].split("|")
+    venues = read_csv(result.processed / "venues.csv")
+    assert venues and all(row["rules"].startswith("V4") for row in venues)
+    assert (result.processed / "venue_merges.csv").read_text(encoding="utf-8").startswith(
+        "rule,venue_id,kept_key,joined_key\n"
+    )
     assert "B1" in result.report and "ledger" in result.report.lower()
 
 

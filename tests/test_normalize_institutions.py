@@ -197,6 +197,27 @@ def test_n7_rules_md_v8_example_holds_with_the_packaged_gazetteer() -> None:
     assert _together(["ZKM", "ZKM Karlsruhe", "ZKM, Karlsruhe"], "ZKM", "ZKM Karlsruhe")
 
 
+def test_n8_venue_rule_names_the_path_to_the_entity(tmp_path: Path) -> None:
+    """N-8: each row's venue_rule and each entity's rules name the joins; venue_merges.csv lists them."""
+    venues = ["예시미술관", "예시미술관 외", "Yesi Museum of Art", "예시미술관 전시실", "Example Hall"]
+    rows = [_row(index, venue) for index, venue in enumerate(venues)]
+    result = build(rows, tmp_path, lang=LANG)
+    rule_of = {row["venue"]: result.annotations[row["activity_id"]]["venue_rule"] for row in rows}
+    assert rule_of == {
+        "예시미술관": "V4",
+        "예시미술관 외": "V4|V7",
+        "Yesi Museum of Art": "V4|V9",
+        "예시미술관 전시실": "V4|V7|V8",
+        "Example Hall": "V4",
+    }
+    museum = next(row for row in result.venues if row["name"] == "예시미술관")
+    assert museum["rules"] == "V4|V7|V8|V9"
+    with (tmp_path / "venue_merges.csv").open(encoding="utf-8", newline="") as handle:
+        merges = list(csv.DictReader(handle))
+    assert sorted(row["rule"] for row in merges) == ["V8", "V9"]
+    assert {row["venue_id"] for row in merges} == {museum["venue_id"]}
+
+
 def test_n3_x2_does_not_fold_through_an_ambiguous_reading() -> None:
     from giye.extract.crosslang import clear_marks, fold_cross_language
 

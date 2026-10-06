@@ -111,7 +111,7 @@ Attachment (A1–A6) already ran at collection and may have queued a near-miss. 
 
 ## Stage 5 — normalize
 
-`giye normalize` does not fetch and does not edit the ledger. It reads the ledger and writes `data/processed/` under the configured data directory: `activities.csv`, `artist_attributes.csv`, `venues.csv`, `venue_audit.md`, `manifest.json`, and `report.md`.
+`giye normalize` does not fetch and does not edit the ledger. It reads the ledger and writes `data/processed/` under the configured data directory: `activities.csv`, `artist_attributes.csv`, `venues.csv`, `venue_merges.csv`, `venue_audit.md`, `manifest.json`, and `report.md`. Activity rows, entities and merges name the rules that produced them (`venue_rule`, `rules`; see RULES.md, Derived values).
 
 - P1 flags a missing year, a year outside 1900 … this year + 2, and a year that is a period named in the title. Nothing is deleted.
 - P2 normalises title and venue text and records a script (`ko` / `en` / `mixed`).
