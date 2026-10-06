@@ -95,6 +95,7 @@ counts them as failures where stated.
 |---|---|---|---|---|
 | CV extraction (`cv`) | 150 | 147 | 143 | 97.3% (93.2–98.9%) |
 | Person merges (`people`) | 82 | 77 | 77 | 100% (95.2–100%); conservative 77/82 = 93.9% (86.5–97.4%) |
+| A2 name attachments | 40 | 40 | 40 | 100% (91.2–100%) |
 | Institution merges, round 1 (`venues`) | 85 | 83 | 81 | 97.6% (91.6–99.3%) |
 | Institution merges, refined rules (`venues`) | 70 | 70 | 64 | 91.4% (82.5–96.0%) |
 | Same, against the rule's own definition of a part | 70 | 70 | 67 | 95.7% (88.1–98.5%) |
@@ -106,9 +107,20 @@ plus a sample: all 42 merges whose stored rule names an evidence rule
 merges with no stated rule (the `uncoded` stratum), 82 rows in all. The
 census strata carry no sampling error; the 40 uncoded rows stand for 117. The
 pooled precision in the table treats the 82 rows as one sample and is not
-weighted by stratum. The package's `sample` command draws only the
+weighted by stratum. Weighted by stratum size, with the census strata taken as
+fixed (40 of 42 decided) and the Wilson lower bound on the sampled stratum (37
+of 37 decided, 90.6%; 117 of the 159 merges), the lower bound is 93.1%: this is
+the figure the manuscript gives beside the unweighted 95.2%. Counting the five
+undecided rows as errors gives 93.2% weighted (lower bound 84.1%). Both
+figures were judged from names, rosters and stored evidence, so neither tests
+homonymy. The package's `sample` command draws only the
 proportional design; this sheet was put together from a census of the coded
 strata and a seeded draw from `uncoded`.
+
+A2 name attachments: a seeded random draw (seed 20261006) of 40 of the 270
+memberships attached by A2. The author judged each attached roster row against
+the record's other editions; all 40 were the same person. Like the merge audit,
+this was judged from names and rosters and is not a test of homonymy.
 
 Latin-only personal names: 21 joins of two Latin-only personal names were made
 before the restriction of 2026-10-05 (no join on the name alone). The author
@@ -119,17 +131,22 @@ judged all 21; each was the same person.
 The evidence rules were compared with Splink 5.0.0 on the reference archive.
 The Splink model compared name similarity, agreement on a programme edition,
 and agreement on a personal website. Its parameters were trained with
-expectation–maximisation, without term-frequency adjustment, and a pair was
-called a match at a match probability of 0.9 or more.
+expectation–maximisation, and a pair was called a match at a match
+probability of 0.9 or more. Term-frequency adjustment, Splink's remedy for
+common names, was not used; this is a limit of the comparison, since a few
+surnames and many given names cover much of the Korean population.
 
 Splink's matches include 131 pairs that rest on the name alone: no evidence
 rule (E1–E4) holds for them. The author judged these 131 pairs from the two
-careers, the author's own impression of how rare the name is, and whether the
-programme years fit one career. 110 pairs were judged one person (recorded as
+careers, the frequency of the name (judged without a reference list), and
+whether the programme years fit one career. 110 pairs were judged one person (recorded as
 96 merges, because several pairs fall into one group), 13 pairs two people,
 and 8 were left undecided. These judgements are the author's, unblinded and
 by one coder, as for the other audits; they are not a second measurement of
-precision.
+precision. The 13 pairs measure disagreement between Splink at 0.9 and this
+coder, not composite people against ground truth. The 96 merges recorded from
+the 110 pairs (rule H) rest on the author's recorded judgement, not on a
+document, and are not marked for review.
 
 ## Rules changed after these audits
 
