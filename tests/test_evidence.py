@@ -373,6 +373,35 @@ def test_offline_config_never_contacts_the_archive(tmp_path: Path, monkeypatch: 
     assert "capture_url" not in status[gone]
 
 
+def test_offline_config_does_not_fetch_a_cited_url_outside_its_roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Software review round 6, minor 5: ``giye evidence`` resolved a live host under an offline config."""
+    import socket
+
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("evidence pass tried to open a socket")
+
+    monkeypatch.setattr(socket, "create_connection", refuse)
+    monkeypatch.setattr(socket.socket, "connect", refuse)
+    monkeypatch.setattr(socket, "getaddrinfo", refuse)
+    data = tmp_path / "data"
+    (data / "ledger").mkdir(parents=True)
+    elsewhere = "https://dawn.example.net/cv"
+    (data / "ledger" / "artists.csv").write_text(f"ledger_id,source_url\nL1,{elsewhere}\n", encoding="utf-8")
+    frames = tmp_path / "frames.yml"
+    frames.write_text("frames: []\n", encoding="utf-8")
+    config = Config(
+        root=tmp_path,
+        name="Synthetic",
+        data=data,
+        frames=frames,
+        user_agent=UA,
+        offline_roots=(("https://example.org", tmp_path / "fixtures"),),
+    )
+    status = archive_cited(config)
+    assert status[elsewhere]["status"] == "unavailable"
+    assert status[elsewhere]["reason"] == "outside offline roots"
+
+
 def test_settle_url_without_wayback_makes_no_archive_request(tmp_path: Path):
     def handler(url, **kwargs):
         parts = urlparse(url)

@@ -514,6 +514,10 @@ class Fetcher:
         if wait > 0:
             self._sleep(wait)
 
+    def serves_offline(self, url: str) -> bool:
+        """True when ``url`` is under one of ``offline_roots`` (read from disk, no socket)."""
+        return self._offline_root(url) is not None
+
     def _offline_root(self, url: str) -> tuple[str, Path] | None:
         for prefix, root in self.offline_roots:
             if url == prefix or url.startswith(prefix + "/"):

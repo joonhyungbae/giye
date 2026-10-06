@@ -23,9 +23,10 @@ For each cited URL (docs/RULES.md, collection policy):
    robots.txt (HTTP 5xx, timeout, network error) is ``robots_disallowed`` with
    reason ``robots_unreachable`` and is not sent to the Archive.
 6. A config with ``[collect.offline_roots]`` is offline (the demo and tests):
-   ``archive_cited`` sends nothing to the Internet Archive. A URL that would
-   have fallen through to the Archive is ``unavailable`` with
-   ``wayback=offline``. An archive that declares its pages are local must not
+   ``archive_cited`` sends nothing to the Internet Archive, and a cited URL
+   outside those roots is not fetched at all (``unavailable``, reason
+   ``outside offline roots``). A URL that would have fallen through to the
+   Archive is ``unavailable`` with ``wayback=offline``. An archive that declares its pages are local must not
    have its cited URLs leave the machine on the evidence pass.
 """
 
@@ -343,6 +344,18 @@ def archive_cited(
         if previous in SETTLED:
             continue
         if previous == "unavailable" and not retry_unavailable:
+            continue
+        if not wayback and not fetcher.serves_offline(url):
+            # An offline config declares its pages local. A cited URL outside
+            # those roots is not fetched (not even its robots.txt), so a
+            # missing network is not recorded as a robots refusal.
+            status[url] = {
+                "status": "unavailable",
+                "at": utc_now(),
+                "reason": "outside offline roots",
+                "wayback": "offline",
+                "cited_in": sorted(where[url]),
+            }
             continue
         status[url] = {
             **settle_url(
