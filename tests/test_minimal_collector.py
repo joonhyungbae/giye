@@ -87,3 +87,47 @@ min_delay_s = 0.0
     by_year = {row["year"]: row["family"] for row in rim["artists"]}
     assert by_year[2019] == "GEN-2015"
     assert "GEN-UNDATED" not in by_year.values()
+
+
+class CarelessResidency(RosterCollector):
+    """A collector that yields names without checking ``page.ok``."""
+
+    frame = "EXAMPLE-RESIDENCY"
+
+    def editions(self):
+        page = self.fetch("https://example.org/residency/alumni")
+        yield Edition(year="2019", people=[Person(name="한별")], source_url=page.url)
+
+
+def test_replay_writes_no_undated_row_and_reports_the_page_not_kept(tmp_path: Path, capsys):
+    """Software review round 6, minor 1: replay wrote roster rows with an empty collected_at."""
+    from giye.collect.fetch import fetcher_from_config
+
+    frames = (ROOT / "tests" / "fixtures" / "frames_valid.yml").as_posix()
+    config_path = tmp_path / "giye.toml"
+    config_path.write_text(
+        f"""
+[archive]
+name = "Synthetic media-art field (demo)"
+territory = "KR"
+
+[paths]
+data = "data"
+frames = "{frames}"
+
+[collect]
+user_agent = "GiyeTest/0.1 (+https://example.org/contact)"
+min_delay_s = 0.0
+""",
+        encoding="utf-8",
+    )
+    config = load(config_path)
+    collector = CarelessResidency(config, fetcher=fetcher_from_config(config, from_snapshots=True))
+    assert collector.run() == []
+    assert collector.undated == 1
+    assert [(item.verdict, item.url) for item in collector.refusals] == [
+        ("not_kept", "https://example.org/residency/alumni")
+    ]
+    assert "was not kept" in capsys.readouterr().err
+    ledger = Ledger.open(config)
+    assert ledger.read("artists") == []

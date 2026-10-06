@@ -212,8 +212,11 @@ class RosterCollector:
             self.fetcher.prefer_frame = self.frame
         self.store = store if store is not None else SnapshotStore(Path(config.raw))  # type: ignore[attr-defined]
         self.run_id = run_id or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        # Fetches refused in the last ``run`` (robots.txt or a terms block).
+        # Fetches refused in the last ``run`` (robots.txt, a terms block, or a
+        # page replay does not have).
         self.refusals: list[Refusal] = []
+        # Roster rows the last ``run`` did not write because nothing dated them.
+        self.undated = 0
 
     def editions(self) -> Iterator[Edition]:
         """Yield each edition of this frame's public roster. Subclasses implement this."""
@@ -251,6 +254,11 @@ class RosterCollector:
         else:
             page = self.fetcher.request(url, method=verb, data=data)
         if self.from_snapshots:
+            if page.reason == "not kept":
+                # Replay has no page for this URL: a live run never kept it
+                # (refused, failed, or never fetched). That is a refusal of
+                # the replay, reported like one, not an empty page.
+                self.refusals.append(_not_kept(self.frame, url))
             when = _kept_fetch_date(page.fetched_at)
             if when:
                 self._kept_dates[page.url] = when
@@ -337,10 +345,18 @@ class RosterCollector:
         rows: list[dict[str, str]] = []
         batches: dict[str, list[dict[str, str]]] = {}
         self.refusals = []
+        self.undated = 0
         try:
             self._read_editions(rows, batches, live_stamp)
         except (RobotsRefused, TermsRefused) as exc:
             self.refusals.append(_refused(self.frame, exc))
+        if self.undated:
+            print(
+                f"skipped {self.frame}: {self.undated} roster row(s) without a collection date "
+                "(no kept page dates them); nothing written for them",
+                file=sys.stderr,
+            )
+        batches = {code: batch for code, batch in batches.items() if batch}
         ledger = Ledger.open(self.config)
         for code, batch in batches.items():
             ledger.apply_roster(code, batch, task="collect")
@@ -387,6 +403,12 @@ class RosterCollector:
                 row.update({key: value for key, value in optional.items() if value})
                 if person.activity is False:
                     row["activity"] = False
+                if not row["collected_at"]:
+                    # A row without a collection date is never written: every
+                    # fact row has ``source_url`` and ``collected_at``. In replay
+                    # this is a person read from a page that was never kept.
+                    self.undated += 1
+                    continue
                 rows.append(row)
                 batch.append(row)
 
@@ -453,6 +475,12 @@ class Refusal:
     frame: str
     url: str
     verdict: str
+
+
+def _not_kept(frame: str, url: str) -> Refusal:
+    """Record a replayed fetch that has no kept page and print it as one line."""
+    print(f"refused {frame}: {url} was not kept (replay reads kept pages only)", file=sys.stderr)
+    return Refusal(frame=frame, url=url, verdict="not_kept")
 
 
 def _refused(frame: str, exc: RobotsRefused | TermsRefused) -> Refusal:
