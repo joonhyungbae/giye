@@ -393,6 +393,35 @@ def _merge_people(args: argparse.Namespace) -> int:
     return 0
 
 
+def _split(args: argparse.Namespace) -> int:
+    """``giye split``: one membership (``--membership``) or a batch file (``--from``)."""
+    from giye.ledger.ledger import Ledger
+    from giye.resolve.split import SplitRequest, read_batch, split_memberships
+
+    if bool(args.membership) == bool(args.from_csv):
+        print("giye split: give --membership or --from, not both", file=sys.stderr)
+        return 2
+    if args.from_csv:
+        if args.evidence or args.name_ko or args.name_en:
+            print("giye split: --evidence and the names go in the --from file", file=sys.stderr)
+            return 2
+        requests = read_batch(args.from_csv)
+    else:
+        if not args.evidence:
+            print("giye split: --membership needs --evidence", file=sys.stderr)
+            return 2
+        requests = [SplitRequest(args.membership, args.evidence, args.name_ko or "", args.name_en or "")]
+    results = split_memberships(Ledger.open(_open_config(args.config)), requests, dry_run=args.dry_run)
+    prefix = "dry-run " if args.dry_run else ""
+    for item in results:
+        name = " / ".join(part for part in (item.name_ko, item.name_en) if part)
+        print(
+            f"{prefix}split {item.membership_id} → {item.new_ledger_id} {item.new_gy_id} "
+            f"({name}, name from {item.name_from}) activities={len(item.moved_activities)}"
+        )
+    return 0
+
+
 def _hide(args: argparse.Namespace) -> int:
     from giye.ledger.ledger import Ledger
     from giye.resolve.decide import hide_person
@@ -530,7 +559,7 @@ def _add_stage_parsers(sub: argparse._SubParsersAction) -> None:
 
 
 def _add_tool_parsers(sub: argparse._SubParsersAction) -> None:
-    """Commands that are not a pipeline stage: keys, demo, render, export, queue, merge, hide."""
+    """Commands that are not a pipeline stage: keys, demo, render, export, queue, merge, split, hide."""
     nk = sub.add_parser("name-keys", help="print romanized matching keys for names (rule X1)")
     nk.add_argument("names", nargs="+")
     demo = sub.add_parser("demo", help="run the synthetic field offline and print a summary")
@@ -594,7 +623,22 @@ def _add_tool_parsers(sub: argparse._SubParsersAction) -> None:
     merge_cmd.add_argument(
         "--override-distinct", action="store_true", help="allow merging a pair decided distinct (recorded)"
     )
-    hide_cmd = sub.add_parser("hide", help="hide a page (HIDDEN_BY_REQUEST tombstone)")
+    split_cmd = sub.add_parser(
+        "split", help="move a wrongly attached roster membership to a new record (new gy_id)"
+    )
+    split_cmd.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
+    split_cmd.add_argument("--membership", default=None, help="<ledger_id>@<frame_code> (a gy_id may stand for the ledger id)")
+    split_cmd.add_argument("--evidence", default=None, help='H with the reason and the date: "H <reason>; YYYY-MM-DD"')
+    split_cmd.add_argument("--name-ko", default=None, help="name of the new record (default: the roster line's)")
+    split_cmd.add_argument("--name-en", default=None, help="name of the new record (default: the roster line's)")
+    split_cmd.add_argument(
+        "--from",
+        dest="from_csv",
+        default=None,
+        help="CSV with membership_id, evidence and optional name_ko, name_en; all rows under one backup",
+    )
+    split_cmd.add_argument("--dry-run", action="store_true", help="check and report without writing the ledger")
+    hide_cmd = sub.add_parser("hide",help="hide a page (HIDDEN_BY_REQUEST tombstone)")
     hide_cmd.add_argument("gy_id")
     hide_cmd.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
     hide_cmd.add_argument("--reason", required=True)
@@ -677,6 +721,8 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _queue_decide(args)
     if args.cmd == "merge":
         return _merge_people(args)
+    if args.cmd == "split":
+        return _split(args)
     if args.cmd == "hide":
         return _hide(args)
     if args.cmd == "unhide":

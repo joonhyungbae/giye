@@ -74,7 +74,9 @@ LINKS_FIELDS = [
 # programme are activities, not extra membership rows.
 # attach_rule is `first` when this membership created the person row, A1–A6
 # when the roster row joined someone already there, and `team:<team ledger id>`
-# when team expansion put a named member on the team's edition. Empty on rows
+# when team expansion put a named member on the team's edition. `split:<rule>`
+# marks a membership a person split off the record <rule> had attached it to
+# (`giye split`); it now belongs to the record made for it. Empty on rows
 # written before the column existed.
 MEMBERSHIP_FIELDS = [
     "ledger_id",

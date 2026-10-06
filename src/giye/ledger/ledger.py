@@ -564,6 +564,8 @@ class _RosterState:
     created: set[str] = dc_field(default_factory=set)
     # People an earlier line of this edition was put on, in line order.
     edition: list[str] = dc_field(default_factory=list)
+    # (record, edition code) a person split off → the record it went to (giye split).
+    split_to: dict[tuple[str, str], str] = dc_field(default_factory=dict)
 
 
 def _require_roster_frame(frame: str) -> None:
@@ -589,7 +591,14 @@ def _load_roster_tables(ledger: Ledger, field: Any, frame_family: Any) -> _Roste
         for row in review
         if row.get("status") == "open"
     }
+    # Imported here: giye.resolve imports this module.
+    from giye.resolve.candidates import absorption_map
+    from giye.resolve.split import split_targets
+
+    absorbed = absorption_map(artists)
+    split_to = {key: absorbed.get(target, target) for key, target in split_targets(artists).items()}
     return _RosterState(
+        split_to=split_to,
         artists=artists,
         activities=activities,
         membership=membership,
@@ -677,6 +686,7 @@ def _attach_one_roster_row(
     )
     if not decision.ledger_id and pool is not state.artists:
         decision = _same_edition_miss(decision, raw_ko, raw_en, aliases, state)
+    decision = _follow_split(decision, frame, state)
     stored_ko, stored_en = _stored_name(raw_ko, raw_en)
     attached = bool(decision.ledger_id and decision.ledger_id in state.by_id)
     before: dict[str, str] = {}
@@ -703,6 +713,24 @@ def _attach_one_roster_row(
         ledger, frame, lid, raw_ko, raw_en, stored_ko, decision, attached, state
     )
     return lid, rule, added_link, added_review
+
+
+def _follow_split(decision: Any, frame: str, state: _RosterState) -> Any:
+    """Put a line on the record its membership was split to, not on the record it was split from.
+
+    A person judged (``giye split``) that this edition's line on that record
+    names someone else. Re-collecting the same page would otherwise attach the
+    line to the old record again under the same rule. Two lines of one edition
+    are two people, so the one line that attaches to the old record is the
+    line that was split. The rule is ``split:<rule>``, as on the moved
+    membership; it is written only if that membership is gone.
+    """
+    from dataclasses import replace
+
+    target = state.split_to.get((decision.ledger_id or "", frame))
+    if not target or target not in state.by_id or target in state.edition:
+        return decision
+    return replace(decision, ledger_id=target, rule=f"split:{decision.rule or 'unrecorded'}")
 
 
 def _same_edition_miss(decision: Any, raw_ko: str, raw_en: str, aliases: str, state: _RosterState) -> Any:
