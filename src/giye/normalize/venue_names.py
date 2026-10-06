@@ -107,6 +107,25 @@ GENERIC = {
     "park",
     "complex",
 }
+# N-5: the generic words that name a kind of place (a museum, a hall), not a
+# quality of one (art, modern, new). A fragment with one of them looks like a
+# venue; a fragment without one, before a fragment with one, is read as a title.
+VENUE_NOUNS = GENERIC - {
+    "art",
+    "culture",
+    "cultural",
+    "media",
+    "international",
+    "contemporary",
+    "modern",
+    "national",
+    "new",
+    "fine",
+    "creative",
+    "creation",
+    "design",
+    "project",
+}
 DATE_RE = re.compile(r"\d+\s?(?:월|일|년)")
 ACRONYM_SPELLING_RE = re.compile(r"(?=.{2,8}$)(?=.*[A-Z])[A-Z0-9.&]+")
 # N-1: an entity key whose name is generic venue words only carries the row's
@@ -380,6 +399,27 @@ def ambiguous_readings(keys: dict[str, str], lang: LanguageModule) -> set[tuple[
         for bag, by_signature in seen.items()
         if len(by_signature) >= 2 and len(set().union(*by_signature.values())) >= 2
     }
+
+
+def has_venue_word(text: str, lang: LanguageModule) -> bool:
+    """N-5: ``text`` holds a word that names a kind of venue (museum, gallery, 미술관, 극장…).
+
+    Latin: a word in ``VENUE_NOUNS``. Hangul: a glossary word of two or more
+    syllables whose reading holds one, anywhere in the name (예시미술관), or a
+    one-syllable glossary word (역, 홀) at the end of the name.
+    """
+    folded = text.casefold()
+    if any(_latin_word(word) in VENUE_NOUNS for word in re.findall(r"[a-z]+", folded)):
+        return True
+    compact = re.sub(r"\s+", "", folded)
+    if not HANGUL_RE.search(compact):
+        return False
+    for word, readings in lang.glossary.items():
+        if not any(token in VENUE_NOUNS for reading in readings for token in reading):
+            continue
+        if (len(word) >= 2 and word in compact) or compact.endswith(word):
+            return True
+    return False
 
 
 def specific(key: str, lang: LanguageModule) -> bool:

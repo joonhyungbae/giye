@@ -24,7 +24,7 @@ from pathlib import Path
 
 from giye.normalize import venue_names
 from giye.normalize.language import LanguageModule, load_language
-from giye.normalize.rules import norm_text
+from giye.normalize.rules import match_key, norm_text
 
 VENUE_FIELDS = [
     "venue_id",
@@ -392,11 +392,46 @@ def _funder_acronyms(fragments: list[Fragment], alias_pairs: list[tuple[str, str
     ]
 
 
+def _titles_before_venues(
+    fragments: list[Fragment], alias_pairs: list[tuple[str, str]], title: str | None, lang: LanguageModule
+) -> list[Fragment]:
+    """N-5: in a row with two or more institution fragments, a title is not the venue.
+
+    CV readings often write "Title, Venue, City" without brackets. A fragment
+    is read as a title (kind ``title``, not an entity) when it equals the row's
+    title, or when it names no kind of venue (``has_venue_word``) while another
+    institution fragment of the row does. An acronym and a fragment written as
+    the bracketed alias of another are names, not titles. With one institution
+    fragment, or none that names a kind of venue, nothing changes.
+    """
+    named = [fragment for fragment in fragments if fragment.kind == "institution"]
+    if len(named) < 2:
+        return fragments
+    title_key = match_key(title)
+    aliases = {text for pair in alias_pairs for text in pair}
+    venue_like = {fragment.text for fragment in named if venue_names.has_venue_word(fragment.text, lang)}
+
+    def is_title(fragment: Fragment) -> bool:
+        if fragment.kind != "institution" or fragment.text in aliases:
+            return False
+        if title_key and match_key(fragment.text) == title_key:
+            return True
+        return bool(venue_like) and fragment.text not in venue_like and not _acronym_symbols(fragment.text)
+
+    titles = [fragment for fragment in named if is_title(fragment)]
+    if len(titles) == len(named):
+        titles = titles[1:]  # every fragment equals the title: the first stays the venue
+    drop = {id(fragment) for fragment in titles}
+    return [replace(fragment, kind="title") if id(fragment) in drop else fragment for fragment in fragments]
+
+
 def parse_venue(row: dict, lang: LanguageModule) -> ParsedVenue:
     """V2 split and V3 classification of one activity row's venue."""
     venue_norm = norm_text(row.get("venue"))
     pieces, alias_pairs = split_venue(venue_norm)
-    fragments = _funder_acronyms(classify_fragments(pieces, lang), alias_pairs)
+    fragments = _titles_before_venues(
+        _funder_acronyms(classify_fragments(pieces, lang), alias_pairs), alias_pairs, row.get("title"), lang
+    )
     qualifier = place_qualifier(fragments)
     fragments = [
         replace(fragment, key=entity_key(fragment.text, qualifier, lang))

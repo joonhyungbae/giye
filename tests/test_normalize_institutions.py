@@ -146,6 +146,31 @@ def test_n4_a_funder_acronym_is_the_funder() -> None:
     assert all(result.annotations[row["activity_id"]]["venue_id"] != center for row in rows[2:])
 
 
+def test_n5_a_title_before_the_venue_is_not_the_venue() -> None:
+    """N-5: "Title, Venue, City" counts the row at the venue, and the title is no entity."""
+    venues = [
+        "Light Garden, Example Museum of Art",
+        "Example Museum of Art",
+        "Light Garden, Example Gallery, Busan",
+        "예시의 정원, 예시미술관",
+        "예시미술관",
+    ]
+    groups = _groups(venues)
+    assert {"Light Garden, Example Museum of Art", "Example Museum of Art"} in groups
+    assert {"Light Garden, Example Gallery, Busan"} in groups
+    assert {"예시의 정원, 예시미술관", "예시미술관"} in groups
+    rows = [_row(index, venue) for index, venue in enumerate(venues)]
+    names = {venue["name"] for venue in build(rows, write=False, lang=LANG).venues}
+    assert "Light Garden" not in names and "예시의 정원" not in names
+    # The fragment equal to the row's title is not the venue even when it names a kind of venue.
+    rows = [_row(0, "Example Festival, Example Hall", title="Example Festival"), _row(1, "Example Hall")]
+    result = build(rows, write=False, lang=LANG)
+    assert result.annotations["a000"]["venue_id"] == result.annotations["a001"]["venue_id"]
+    # A bracketed alias and an acronym stay names; two venue-like fragments keep the first.
+    assert _together(["Nabi Example (Example Art Center)", "Nabi Example"], "Nabi Example (Example Art Center)", "Nabi Example")
+    assert _together(["XYZ, Example Gallery", "XYZ"], "XYZ, Example Gallery", "XYZ")
+
+
 def test_n3_x2_does_not_fold_through_an_ambiguous_reading() -> None:
     from giye.extract.crosslang import clear_marks, fold_cross_language
 
