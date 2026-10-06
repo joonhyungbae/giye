@@ -149,7 +149,7 @@ function ActivityYear({ year, sources }: { year: PageYear; sources: PageSource[]
   return (
     <div
       id={`y${year.year}`}
-      className="grid scroll-mt-24 gap-2 border-t border-border py-5 first:border-t-0 first:pt-0 sm:grid-cols-[5rem_minmax(0,1fr)]"
+      className="grid scroll-mt-24 gap-2 border-t border-border py-5 first:border-t-0 first:pt-0 sm:grid-cols-[2.75rem_minmax(0,1fr)] sm:gap-x-4"
     >
       <h3 className="font-mono text-xs leading-6 text-primary">{year.year}</h3>
       <ul className="space-y-1.5">
