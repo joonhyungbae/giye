@@ -106,7 +106,11 @@ code, so a rebuild of the same registry does not mint a new id. Counts:
 - `published_count`: how many of those are in the published set
 - `roster_count`: the greater of the declared `roster_count` and `included_count`
   (production's comment says the declared size is used when set; the code uses the maximum)
-- `coverage_pct`: `round(100 * included_count / roster_count, 1)`, or null when the roster size is 0 (F4)
+- `roster_size_declared`, `roster_size_source`: the size the programme states itself and the page
+  that states it (`frames.yml`), or null when none is declared
+- `coverage_pct`: `round(100 * included_count / max(roster_size_declared, included_count), 1)`, or
+  null (unknown) when no size is declared (F4). `roster_count` is not used as the denominator,
+  because it is written from what was collected and would read 100% by construction
 
 `editions` breaks membership into edition years. `eligibility` is the F1–F5 judgement
 as written in `frames.yml`. `status`, `stage`, and `last_fetched_at` are copied when present.
@@ -116,7 +120,8 @@ as written in `frames.yml`. `status`, `stage`, and `last_fetched_at` are copied 
 ### `coverage.json`
 
 `generated_at`, `published_artists`, `ledger_artists`, `frame_count_active` (status
-`active`), `frame_count_total`, a `frames` array with the same coverage numbers, and
+`active`), `frame_count_total`, a `frames` array with the same coverage numbers (`roster_count`, `included_count`,
+`roster_size_declared`, `coverage_pct`), and
 a `cadence` table only when `[publish.cadence]` declares one (label → what runs). Without it the
 key is absent and the site states no maintenance schedule.
 

@@ -6,6 +6,8 @@ frames:
     name_ko: 예시 레지던시
     source_url: https://example.org/residency/alumni
     roster_count: 12
+    roster_size_declared: 12
+    roster_size_source: https://example.org/residency/alumni
     eligibility:
       decision: included
       f1_purpose: The programme page states media art and art-and-technology as its purpose.

@@ -4,6 +4,8 @@ frames:
     name_en: Example Residency
     source_url: https://example.org/residency/alumni
     roster_count: 4
+    roster_size_declared: 4
+    roster_size_source: https://example.org/residency/alumni
     included_count: 2
     eligibility:
       decision: included

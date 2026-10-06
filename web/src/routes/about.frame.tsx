@@ -154,7 +154,13 @@ function FramePage() {
             ))}
           </dl>
         </section>
-        <table className="mt-8 w-full text-sm [&_td]:pr-3 [&_th]:pr-3">
+        <p className="mt-8 text-sm leading-7 text-muted-foreground">
+          {t(
+            "수록률은 프로그램이 스스로 밝힌 명단 규모(공식 페이지, 도록, 보도자료)가 있을 때만 계산합니다. 그런 규모가 없으면 '미상'으로 둡니다. 수집한 명단의 인원으로 나누면 언제나 100%가 되기 때문입니다.",
+            "Coverage is computed only where the programme states its own roster size (official page, catalogue or press release). Where it does not, coverage is unknown: dividing by the roster as collected would always give 100%.",
+          )}
+        </p>
+        <table className="mt-4 w-full text-sm [&_td]:pr-3 [&_th]:pr-3">
           <thead>
             <tr className="border-b border-border text-left label-caps">
               <th className="py-2">{t("코드", "Code")}</th>
@@ -171,11 +177,10 @@ function FramePage() {
             {entries.map((e) => {
               const roster = e.roster_count ?? 0;
               const included = e.included_count ?? 0;
-              const pct =
-                e.coverage_pct ??
-                (roster > 0
-                  ? Math.round((1000 * included) / roster) / 10
-                  : null);
+              // Coverage is computed by the snapshot only against a roster size the programme
+              // states itself (F4, docs/RULES.md). No fallback here: dividing by roster_count
+              // would read 100% by construction.
+              const pct = e.coverage_pct ?? null;
               return (
                 <tr key={e.id} className="border-b border-border align-top">
                   <td className="py-2 font-mono">{e.code}</td>
@@ -232,7 +237,24 @@ function FramePage() {
                   </td>
                   <td className="font-mono">{roster || "—"}</td>
                   <td className="font-mono">{included}</td>
-                  <td className="font-mono">{pct == null ? "—" : `${pct}%`}</td>
+                  <td className="font-mono">
+                    {pct == null ? (
+                      included > 0 ? (
+                        t("미상", "unknown")
+                      ) : (
+                        "—"
+                      )
+                    ) : e.roster_size_source ? (
+                      <a
+                        href={e.roster_size_source}
+                        className="hover:text-primary hover:underline"
+                        target="_blank"
+                        rel="noreferrer"
+                      >{`${pct}%`}</a>
+                    ) : (
+                      `${pct}%`
+                    )}
+                  </td>
                   <td className="font-mono text-xs">
                     {e.last_fetched_at ?? "—"}
                   </td>

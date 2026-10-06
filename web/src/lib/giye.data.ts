@@ -33,6 +33,10 @@ export type FrameEntry = {
   source_url: string;
   included_count: number;
   roster_count?: number;
+  /** A roster size the programme states itself (F4); null when none is declared. */
+  roster_size_declared?: number | null;
+  roster_size_source?: string | null;
+  /** Null (unknown) unless a roster size is declared independently of collection. */
   coverage_pct?: number | null;
   status?: string | null;
   stage?: number | null;
@@ -75,6 +79,7 @@ export type CoverageSnapshot = {
     code: string;
     roster_count: number;
     included_count: number;
+    roster_size_declared?: number | null;
     coverage_pct: number | null;
     status?: string | null;
     last_fetched_at?: string | null;

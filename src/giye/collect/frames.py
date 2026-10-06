@@ -34,8 +34,13 @@ single edition counts only when it represents the field that year. The year
 bound is the census rule and is stored in the frame's own sentence; it is
 not hard-coded here (docs/RULES.md, F5).
 
-Coverage is members recorded / roster size (the ratio the site prints as a
-percentage). ``None`` when the roster size is unknown or zero.
+Coverage is members recorded / max(declared roster size, members recorded)
+(the ratio the site prints as a percentage). The declared size is
+``roster_size_declared``: a size the programme states itself (its own page,
+catalogue, or press release), cited by ``roster_size_source``. ``roster_count``
+is not a declared size: in practice it is written from what the collector
+found, so dividing by it would give 100% by construction. Coverage is
+``None`` (unknown) when no size is declared independently.
 """
 
 from __future__ import annotations
@@ -80,6 +85,10 @@ class Frame:
     eligibility: Eligibility
     name_ko: str = ""
     roster_count: int | None = None
+    # A roster size the programme states itself, and where it says so. Only
+    # this size is a coverage denominator (see the module docstring).
+    roster_size_declared: int | None = None
+    roster_size_source: str = ""
     included_count: int | None = None
     years_covered: str = ""
     status: str = ""
@@ -88,16 +97,17 @@ class Frame:
     collector: str = ""
 
     def coverage(self, members_recorded: int | None = None) -> float | None:
-        """Members recorded / roster size. Defaults to ``included_count`` when set.
+        """Members recorded / max(declared size, members recorded), or ``None``.
 
-        At this stage ``included_count`` is the number of roster rows collected.
-        Coverage is membership size / roster size (F4). Counting only rows that
-        have a CV link would understate the roster.
+        ``members_recorded`` defaults to ``included_count``, the number of
+        roster rows collected. Counting only rows that have a CV link would
+        understate the roster. Without ``roster_size_declared`` the result is
+        ``None``: ``roster_count`` is not an independent size (F4).
         """
         recorded = self.included_count if members_recorded is None else members_recorded
-        if recorded is None or not self.roster_count:
+        if recorded is None or not self.roster_size_declared:
             return None
-        return coverage(recorded, self.roster_count)
+        return coverage(recorded, max(self.roster_size_declared, recorded))
 
 
 @dataclass(frozen=True)
@@ -178,6 +188,12 @@ def _frame(entry: object, path: Path) -> Frame:
     if not transcribed_without_page and not source_url.startswith(("http://", "https://")):
         raise ValueError(f"{code}: source_url must be an http(s) URL")
     eligibility = _eligibility(code, entry.get("eligibility"))
+    # A declared size is a fact about the programme, so it needs a source like
+    # any other fact (F4). A size without one is refused rather than ignored.
+    declared_size = _optional_int(entry.get("roster_size_declared"))
+    declared_source = str(entry.get("roster_size_source") or "").strip()
+    if declared_size is not None and not declared_source.startswith(("http://", "https://")):
+        raise ValueError(f"{code}: roster_size_declared needs an http(s) roster_size_source (F4)")
     return Frame(
         code=code,
         name_en=name_en,
@@ -185,6 +201,8 @@ def _frame(entry: object, path: Path) -> Frame:
         source_url=source_url,
         eligibility=eligibility,
         roster_count=_optional_int(entry.get("roster_count")),
+        roster_size_declared=declared_size,
+        roster_size_source=declared_source,
         included_count=_optional_int(entry.get("included_count")),
         years_covered=str(entry.get("years_covered") or ""),
         status=str(entry.get("status") or ""),

@@ -31,6 +31,8 @@ frames:
     name_ko: 예시 레지던시
     source_url: https://example.org/residency/alumni
     roster_count: 4
+    roster_size_declared: 4
+    roster_size_source: https://example.org/residency/alumni
     years_covered: "2019"
     status: active
     eligibility:
@@ -359,6 +361,34 @@ def test_roster_member_without_a_source_is_refused(tmp_path: Path):
     ]
     with pytest.raises(SystemExit, match="not published"):
         _publish(tmp_path, artists, membership=membership)
+
+
+def test_coverage_is_unknown_without_a_declared_roster_size(tmp_path: Path):
+    """F4: ``roster_count`` alone is not an independent size, so coverage is null, not 100%."""
+    frames = FRAMES.replace(
+        "    roster_size_declared: 4\n    roster_size_source: https://example.org/residency/alumni\n", ""
+    )
+    artists = [_artist("LED-haneul", "김하늘"), _artist("LED-seoyeon", "박서연")]
+    membership = [_member("LED-haneul", "EXAMPLE-RESIDENCY"), _member("LED-seoyeon", "EXAMPLE-RESIDENCY")]
+    site = _publish(tmp_path, artists, [], membership, frames=frames)
+    frame = site["frames.json"][0]
+    assert frame["included_count"] == 2
+    assert frame["roster_count"] == 4
+    assert frame["roster_size_declared"] is None
+    assert frame["coverage_pct"] is None
+    assert site["coverage.json"]["frames"][0]["coverage_pct"] is None
+
+
+def test_declared_roster_size_smaller_than_the_rows_reads_100(tmp_path: Path):
+    """A declared size below the rows on file does not push coverage over 100%."""
+    frames = FRAMES.replace("roster_size_declared: 4", "roster_size_declared: 1")
+    artists = [_artist("LED-haneul", "김하늘"), _artist("LED-seoyeon", "박서연")]
+    membership = [_member("LED-haneul", "EXAMPLE-RESIDENCY"), _member("LED-seoyeon", "EXAMPLE-RESIDENCY")]
+    site = _publish(tmp_path, artists, [], membership, frames=frames)
+    frame = site["frames.json"][0]
+    assert frame["roster_size_declared"] == 1
+    assert frame["roster_size_source"] == "https://example.org/residency/alumni"
+    assert frame["coverage_pct"] == 100.0
 
 
 def test_rows_without_a_collection_date_are_not_published(tmp_path: Path):

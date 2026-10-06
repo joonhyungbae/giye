@@ -20,15 +20,21 @@ survivor's current id (the ledger already points every retirement at the final
 survivor).
 
 F4 coverage is members recorded / roster size, printed as
-``round(100 * included / roster, 1)``. ``roster`` is the greater of the declared
-``roster_count`` and the membership count, so a declared size smaller than the
-rows on file does not hide members.
+``round(100 * included / max(declared, included), 1)``. ``declared`` is
+``roster_size_declared``, a size the programme states itself with a
+``roster_size_source``; the greater of it and the membership count is taken so
+a declared size smaller than the rows on file does not hide members. Without a
+declared size coverage is null (unknown): ``roster_count`` in ``frames.yml`` is
+written from what was collected, and dividing by it would read 100% by
+construction. ``roster_count`` in the snapshot stays the greater of that key
+and the membership count, the roster size the site displays.
 """
 
 from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -339,7 +345,7 @@ def _coverage_document(
     config: Config,
     active: int,
 ) -> dict:
-    """F4 coverage. ``roster`` was already set to the greater of the declared size and the membership count.
+    """F4 coverage, copied from the rows :func:`_frames` already counted.
 
     Only a schedule the archive declares is stated publicly. Nothing is claimed by default.
     """
@@ -354,7 +360,8 @@ def _coverage_document(
                 "code": row["code"],
                 "roster_count": row.get("roster_count") or 0,
                 "included_count": row.get("included_count") or 0,
-                "coverage_pct": _coverage_pct(int(row.get("included_count") or 0), int(row.get("roster_count") or 0)),
+                "roster_size_declared": row.get("roster_size_declared"),
+                "coverage_pct": row.get("coverage_pct"),
                 "status": row.get("status"),
                 "last_fetched_at": row.get("last_fetched_at"),
             }
@@ -872,8 +879,11 @@ def _frames(frame_rows, membership, edition_of, ledger_to_gy, scope) -> list[dic
         roster = max(declared, len(matched)) if matched or declared else 0
         included = len(matched)
         published = sum(1 for lid in matched if lid in ledger_to_gy)
+        declared_size = _declared_size(row)
+        pct = _coverage_pct(included, max(declared_size, included)) if declared_size else None
         row["roster_count"] = roster
         row["included_count"] = included
+        row["coverage_pct"] = pct
         out.append(
             {
                 "id": mint_id(f"site-frame\x1f{code}"),
@@ -885,7 +895,9 @@ def _frames(frame_rows, membership, edition_of, ledger_to_gy, scope) -> list[dic
                 "included_count": included,
                 "published_count": published,
                 "roster_count": roster,
-                "coverage_pct": _coverage_pct(included, roster),
+                "roster_size_declared": declared_size or None,
+                "roster_size_source": (row.get("roster_size_source") or None) if declared_size else None,
+                "coverage_pct": pct,
                 "status": row.get("status"),
                 "stage": row.get("stage"),
                 "last_fetched_at": row.get("last_fetched_at"),
@@ -901,6 +913,12 @@ def _matches(edition_of, frame_code: str, mem_code: str) -> bool:
     """True when the membership code resolves to this frame."""
     edition = edition_of(mem_code)
     return bool(edition) and edition[0] == frame_code
+
+
+def _declared_size(row: Mapping) -> int:
+    """``roster_size_declared`` as an int, 0 when unset. The loader already required its source."""
+    value = row.get("roster_size_declared")
+    return int(value) if value not in (None, "") else 0
 
 
 def _coverage_pct(included: int, roster: int) -> float | None:

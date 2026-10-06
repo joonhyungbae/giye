@@ -43,11 +43,27 @@ def test_demo_frames_cover_included_excluded_and_adjacent():
     }
     residency = registry.by_code("EXAMPLE-RESIDENCY")
     assert residency is not None
+    assert residency.roster_size_declared == 12
     assert residency.coverage(12) == 1.0
+    assert residency.coverage(6) == 0.5
+    workshop = registry.by_code("EXAMPLE-WORKSHOP")
+    assert workshop is not None
+    # roster_count is set, but no size is declared independently: unknown, not 100%.
+    assert workshop.roster_count == 10
+    assert workshop.coverage(10) is None
     grant = registry.by_code("EXAMPLE-GRANT")
     assert grant is not None
     assert grant.coverage(0) is None
     assert grant.eligibility.note.startswith("Excluded")
+
+
+def test_declared_roster_size_needs_a_source(tmp_path: Path):
+    text = (FIXTURES / "frames_valid.yml").read_text(encoding="utf-8")
+    text = text.replace("    roster_size_source: https://example.org/residency/alumni\n", "")
+    path = tmp_path / "frames.yml"
+    path.write_text(text, encoding="utf-8")
+    with pytest.raises(ValueError, match="roster_size_source"):
+        load_frames(path)
 
 
 def test_missing_criterion_names_the_rule(tmp_path: Path):
