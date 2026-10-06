@@ -75,12 +75,16 @@ One object per published person, in name order (`name_ko`, then `name_en`).
 | `frame_editions` | `{frame, edition, role?}` resolved against `frames.yml` |
 | `verification`, `cv_status` | `found` / `pending` / `none` |
 | `same_name` | Other published ids in an open `possible_same_person` item |
+| `members` | On a team: the published ids the ledger credits as its members, sorted. Empty otherwise |
+| `member_of` | On a member: the published ids of the teams that credit them, sorted. Empty otherwise |
 | `status` | Always `PUBLISHED` in this file |
 | `source_url`, `source_type`, `collected_at` | Provenance of the person row |
 | `external_ids.ledger_id` | Internal id |
 | `created_at`, `updated_at` | Build time, or the ledger's `updated_at` |
 
 `frame_editions` follows the registry. An edition alias in the field file maps a membership code to a frame and an edition when that frame is registered. A code equal to a registry row uses `years_covered` when that cell is a single year. Otherwise the longest matching registry code wins, and a trailing `-YYYY` is the edition. `role` is the roster activity's role for that membership code (the last such row wins).
+
+`members` and `member_of` read the markers team expansion (rule T2, `giye.resolve.teams.expand_teams`) writes in the ledger, through `giye.resolve.teams.team_credits`: a `팀 구성원: <team> (<team ledger id>)` note on a record it created, a membership whose `attach_rule` is `team:<team ledger id>`, and an activity whose role is `<team prefix> <team name>` on one of the team's own editions. A name alone links nobody. Only published records are linked, and the link is written on both sides.
 
 ### `activities.json`
 

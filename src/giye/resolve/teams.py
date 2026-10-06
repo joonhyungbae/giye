@@ -496,7 +496,7 @@ def _record_keys(row: Mapping[str, str]) -> set[str]:
     return {_name_key(name) for name in names} - {""}
 
 
-def _team_credited(
+def team_credits(
     artists: list[dict], membership: list[dict], activities: list[dict], team_prefix: str
 ) -> dict[str, set[str]]:
     """Records the ledger already credits through each team, keyed by the team's ledger id.
@@ -535,7 +535,7 @@ def _credited_member(
 ) -> dict | None:
     """The record the ledger already credits as this member of this team, or None.
 
-    The record carries one of the team's markers (``_team_credited``) and one
+    The record carries one of the team's markers (``team_credits``) and one
     of its names or aliases is the member's spelling (case, spaces, and
     punctuation ignored). Several such records (duplicates written before
     this rule) give the lowest ``gy_id``, so the choice does not depend on
@@ -649,7 +649,7 @@ def expand_teams(ledger: Ledger, *, dry_run: bool = False, frames: Iterable[str]
     team_prefix = ledger.config.field_config.team_prefix or "팀:"
     id_prefix = ledger.config.id_prefix or "GY"
     team_words = field.compiled_team_words()
-    credited = _team_credited(artists, membership, activities, team_prefix)
+    credited = team_credits(artists, membership, activities, team_prefix)
     for artist in list(artists):
         members = members_of(artist, language, words=team_words)
         if not members:

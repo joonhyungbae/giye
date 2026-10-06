@@ -155,6 +155,9 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
     same_name = _same_name(ledger.read("review_queue"), ledger_to_gy)
     tags = config.field_config.resolved()
     collective = _team_ids(config, publishable)
+    members, member_of = _team_links(
+        artists_in, membership, acts_in, ledger_to_gy, config.field_config.team_prefix or "팀:"
+    )
     artists_out = [
         _artist_record(
             artist,
@@ -168,6 +171,8 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
             stamp=stamp,
             tags=tags,
             collective=artist["ledger_id"] in collective,
+            members=members.get(artist["ledger_id"], []),
+            member_of=member_of.get(artist["ledger_id"], []),
         )
         for artist in publishable
     ]
@@ -322,6 +327,43 @@ def _team_ids(config: Config, publishable: list[dict]) -> set[str]:
     return {
         artist["ledger_id"] for artist in publishable if team_like(artist, words=words, language=language)
     }
+
+
+def _team_links(
+    artists_in: list[dict],
+    membership: list[dict],
+    acts_in: list[dict],
+    ledger_to_gy: dict[str, str],
+    team_prefix: str,
+) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    """Team → published member ids, and member → published team ids, keyed by ledger id.
+
+    The ledger already records who belongs to which team: the markers
+    ``expand_teams`` (rule T2) writes, read by
+    ``giye.resolve.teams.team_credits`` (a ``팀 구성원: <team> (<id>)`` note,
+    a ``team:<id>`` membership, a ``<team prefix> <team>`` role on one of the
+    team's editions). Only published records are linked, both ways, so a team
+    page lists its members and a member's page names the team without the site
+    deriving either. Ids are sorted so the snapshot does not depend on row order.
+    """
+    from giye.resolve.teams import team_credits
+
+    members: dict[str, set[str]] = {}
+    member_of: dict[str, set[str]] = {}
+    for team_lid, lids in team_credits(artists_in, membership, acts_in, team_prefix).items():
+        team_gy = ledger_to_gy.get(team_lid)
+        if not team_gy:
+            continue
+        for lid in lids:
+            gy = ledger_to_gy.get(lid)
+            if not gy or lid == team_lid:
+                continue
+            members.setdefault(team_lid, set()).add(gy)
+            member_of.setdefault(lid, set()).add(team_gy)
+    return (
+        {lid: sorted(ids) for lid, ids in members.items()},
+        {lid: sorted(ids) for lid, ids in member_of.items()},
+    )
 
 
 def _publishable_people(artists_in: list[dict], published: set[str]) -> list[dict]:
@@ -702,8 +744,14 @@ def _artist_record(
     stamp: str,
     tags: Field | None = None,
     collective: bool = False,
+    members: list[str] | None = None,
+    member_of: list[str] | None = None,
 ) -> dict:
-    """One ``artists.json`` record. ``collective`` is the T1 team test's verdict for this row."""
+    """One ``artists.json`` record. ``collective`` is the T1 team test's verdict for this row.
+
+    ``members`` and ``member_of`` are the published ids linked through team
+    membership (see ``_team_links``).
+    """
     editions = []
     seen = []
     for code in codes:
@@ -745,6 +793,8 @@ def _artist_record(
         "verification": artist.get("verification") or "UNVERIFIED",
         "cv_status": cv_status,
         "same_name": same_name,
+        "members": members or [],
+        "member_of": member_of or [],
         "status": "PUBLISHED",
         "source_url": artist["source_url"],
         "source_type": artist.get("source_type") or "PUBLIC_RECORD",

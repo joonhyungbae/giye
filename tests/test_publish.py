@@ -611,6 +611,30 @@ def test_team_records_are_published_as_collective(tmp_path: Path):
     assert kinds == {"노을 스튜디오": "collective", "김하늘": "individual"}
 
 
+def test_team_and_members_are_linked_both_ways(tmp_path: Path):
+    """A team lists its credited members' ids and each member lists the team's id.
+
+    Two of the markers ``expand_teams`` writes are used: the ``팀 구성원`` note on
+    a record it created, and a ``team:<id>`` membership on an existing person. A
+    person with the same name and no marker is not linked.
+    """
+    artists = [
+        _artist("LED-team", "노을 스튜디오", reviewer_note="members=김하늘|박서연", gy_id="GY-000001"),
+        _artist("LED-a", "김하늘", reviewer_note="팀 구성원: 노을 스튜디오 (LED-team)", gy_id="GY-000002"),
+        _artist("LED-b", "박서연", gy_id="GY-000003"),
+        _artist("LED-c", "김하늘", gy_id="GY-000004"),
+    ]
+    membership = [_member(lid, "EXAMPLE-RESIDENCY") for lid in ("LED-team", "LED-a", "LED-c")]
+    membership.append({**_member("LED-b", "EXAMPLE-RESIDENCY"), "attach_rule": "team:LED-team"})
+    site = _publish(tmp_path, artists, [], membership)
+    by_id = {row["id"]: row for row in site["artists.json"]}
+    assert by_id["GY-000001"]["members"] == ["GY-000002", "GY-000003"]
+    assert by_id["GY-000001"]["member_of"] == []
+    assert by_id["GY-000002"]["member_of"] == ["GY-000001"]
+    assert by_id["GY-000003"]["member_of"] == ["GY-000001"]
+    assert by_id["GY-000004"]["member_of"] == [] and by_id["GY-000004"]["members"] == []
+
+
 def test_background_drops_ungrounded_and_suppressed_lines(tmp_path: Path):
     """A background row's ``publishable`` is a section marker, so grounding and
     a curator use note keys: ``ungrounded=`` and ``suppressed=`` keep it off."""

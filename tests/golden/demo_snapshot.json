@@ -516,6 +516,8 @@
         "same_name": [
           "GY-000010"
         ],
+        "members": [],
+        "member_of": [],
         "status": "PUBLISHED",
         "source_url": "https://example.org/workshop/fellows",
         "source_type": "PUBLIC_RECORD",
@@ -557,6 +559,8 @@
         "same_name": [
           "GY-000001"
         ],
+        "members": [],
+        "member_of": [],
         "status": "PUBLISHED",
         "source_url": "https://example.org/forum/guests",
         "source_type": "PUBLIC_RECORD",
@@ -600,6 +604,8 @@
         "verification": "UNVERIFIED",
         "cv_status": "found",
         "same_name": [],
+        "members": [],
+        "member_of": [],
         "status": "PUBLISHED",
         "source_url": "https://example.org/residency/alumni",
         "source_type": "PUBLIC_RECORD",
@@ -646,6 +652,8 @@
         "verification": "UNVERIFIED",
         "cv_status": "none",
         "same_name": [],
+        "members": [],
+        "member_of": [],
         "status": "PUBLISHED",
         "source_url": "https://example.org/workshop/fellows",
         "source_type": "PUBLIC_RECORD",
@@ -686,6 +694,10 @@
         "verification": "UNVERIFIED",
         "cv_status": "none",
         "same_name": [],
+        "members": [],
+        "member_of": [
+          "GY-000009"
+        ],
         "status": "PUBLISHED",
         "source_url": "https://example.org/residency/alumni",
         "source_type": "PUBLIC_RECORD",
@@ -726,6 +738,10 @@
         "verification": "UNVERIFIED",
         "cv_status": "none",
         "same_name": [],
+        "members": [],
+        "member_of": [
+          "GY-000019"
+        ],
         "status": "PUBLISHED",
         "source_url": "https://example.org/workshop/fellows",
         "source_type": "PUBLIC_RECORD",
@@ -776,6 +792,8 @@
         "same_name": [
           "GY-000022"
         ],
+        "members": [],
+        "member_of": [],
         "status": "PUBLISHED",
         "source_url": "https://example.org/residency/alumni",
         "source_type": "PUBLIC_RECORD",
@@ -815,6 +833,11 @@
         "verification": "UNVERIFIED",
         "cv_status": "none",
         "same_name": [],
+        "members": [
+          "GY-000023",
+          "GY-000024"
+        ],
+        "member_of": [],
         "status": "PUBLISHED",
         "source_url": "https://example.org/residency/alumni",
         "source_type": "PUBLIC_RECORD",
@@ -861,6 +884,8 @@
         "verification": "UNVERIFIED",
         "cv_status": "none",
         "same_name": [],
+        "members": [],
+        "member_of": [],
         "status": "PUBLISHED",
         "source_url": "https://example.org/residency/alumni",
         "source_type": "PUBLIC_RECORD",
@@ -901,6 +926,10 @@
         "verification": "UNVERIFIED",
         "cv_status": "none",
         "same_name": [],
+        "members": [],
+        "member_of": [
+          "GY-000009"
+        ],
         "status": "PUBLISHED",
         "source_url": "https://example.org/residency/alumni",
         "source_type": "PUBLIC_RECORD",
@@ -944,6 +973,8 @@
         "verification": "UNVERIFIED",
         "cv_status": "found",
         "same_name": [],
+        "members": [],
+        "member_of": [],
         "status": "PUBLISHED",
         "source_url": "https://example.org/residency/alumni",
         "source_type": "PUBLIC_RECORD",
@@ -984,6 +1015,10 @@
         "verification": "UNVERIFIED",
         "cv_status": "none",
         "same_name": [],
+        "members": [],
+        "member_of": [
+          "GY-000019"
+        ],
         "status": "PUBLISHED",
         "source_url": "https://example.org/workshop/fellows",
         "source_type": "PUBLIC_RECORD",
@@ -1025,6 +1060,8 @@
         "same_name": [
           "GY-000019"
         ],
+        "members": [],
+        "member_of": [],
         "status": "PUBLISHED",
         "source_url": "https://example.org/residency/alumni",
         "source_type": "PUBLIC_RECORD",
@@ -1066,6 +1103,11 @@
         "same_name": [
           "GY-000008"
         ],
+        "members": [
+          "GY-000025",
+          "GY-000026"
+        ],
+        "member_of": [],
         "status": "PUBLISHED",
         "source_url": "https://example.org/workshop/fellows",
         "source_type": "PUBLIC_RECORD",
@@ -1107,6 +1149,8 @@
         "same_name": [
           "GY-000021"
         ],
+        "members": [],
+        "member_of": [],
         "status": "PUBLISHED",
         "source_url": "https://example.org/residency/alumni",
         "source_type": "PUBLIC_RECORD",
@@ -1146,6 +1190,8 @@
         "verification": "UNVERIFIED",
         "cv_status": "none",
         "same_name": [],
+        "members": [],
+        "member_of": [],
         "status": "PUBLISHED",
         "source_url": "https://example.org/workshop/fellows",
         "source_type": "PUBLIC_RECORD",
@@ -1190,6 +1236,8 @@
         "verification": "UNVERIFIED",
         "cv_status": "none",
         "same_name": [],
+        "members": [],
+        "member_of": [],
         "status": "PUBLISHED",
         "source_url": "https://example.org/residency/alumni",
         "source_type": "PUBLIC_RECORD",
@@ -1231,6 +1279,8 @@
         "same_name": [
           "GY-000018"
         ],
+        "members": [],
+        "member_of": [],
         "status": "PUBLISHED",
         "source_url": "https://example.org/residency/alumni",
         "source_type": "PUBLIC_RECORD",
@@ -1272,6 +1322,8 @@
         "same_name": [
           "GY-000007"
         ],
+        "members": [],
+        "member_of": [],
         "status": "PUBLISHED",
         "source_url": "https://example.org/workshop/fellows",
         "source_type": "PUBLIC_RECORD",
@@ -1316,6 +1368,8 @@
         "verification": "UNVERIFIED",
         "cv_status": "none",
         "same_name": [],
+        "members": [],
+        "member_of": [],
         "status": "PUBLISHED",
         "source_url": "https://example.org/residency/alumni",
         "source_type": "PUBLIC_RECORD",
@@ -1362,6 +1416,8 @@
         "verification": "UNVERIFIED",
         "cv_status": "none",
         "same_name": [],
+        "members": [],
+        "member_of": [],
         "status": "PUBLISHED",
         "source_url": "https://example.org/residency/alumni",
         "source_type": "PUBLIC_RECORD",
@@ -1675,13 +1731,13 @@
     },
     "dataset_versions.json": [
       {
-        "id": "a0519fe3-a3a5-58ec-b2ec-704d0d205db1",
+        "id": "c3b1e399-5f49-5226-944e-a14939e9ccd8",
         "version": "0.2",
         "released_at": "DATE",
         "doi": null,
         "notes": "Ledger snapshot · frames active=0 · published=21 · generated TIMESTAMP",
         "artist_count": 21,
-        "content_digest": "05e16cd3fe36950add2ea2b71cf6fef9b7464a0f6c0040cf7b6b0c6d9618c05f"
+        "content_digest": "8d1a87d80d7bff58d17712cd5f2822c4e0627c670318a347336b76e0d72df3b3"
       }
     ],
     "frames.json": [
