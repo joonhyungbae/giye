@@ -113,3 +113,43 @@ def test_second_run_is_idempotent_and_the_mark_is_reversible():
     assert clear_marks(rows) == 1
     assert rows[1]["publishable"] == "yes"
     assert rows[1]["reviewer_note"] == "cv_section=exhibition"
+
+
+def test_two_unrelated_latin_titles_do_not_fold():
+    """Review round 5: a Korean-CV row with a Latin title folded into an unrelated English show."""
+    rows = [
+        _row("ko", "Noise Garden", "서울시립미술관", origin="cv:CV-TEST-ko"),
+        _row("en", "Machine Dreams", "Seoul Museum of Art"),
+    ]
+    assert _fold(rows) == []
+    assert all(row["publishable"] == "yes" for row in rows)
+
+
+def test_two_unrelated_hangul_titles_do_not_fold():
+    rows = [
+        _row("ko", "물의 기억", "서울시립미술관"),
+        _row("en", "빛의 정원", "Seoul Museum of Art", origin="cv:CV-TEST-en"),
+    ]
+    assert _fold(rows) == []
+
+
+def test_same_latin_title_with_an_edition_mark_folds():
+    rows = [
+        _row("ko", "Example Digital Art Exhibition", "서울시립미술관", origin="cv:CV-TEST-ko"),
+        _row("en", "Example '05' Digital Art Exhibition", "Seoul Museum of Art"),
+    ]
+    assert [fold.folded["activity_id"] for fold in _fold(rows)] == ["en"]
+
+
+def test_cross_script_titles_keep_the_venue_rule():
+    """A Hangul and a Latin title cannot be compared without a translation; the venue decides."""
+    rows = [_row("ko", "물의 기억", "서울시립미술관"), _row("en", "Machine Dreams", "Seoul Museum of Art")]
+    assert [fold.folded["activity_id"] for fold in _fold(rows)] == ["en"]
+
+
+def test_title_bag_drops_numbers_and_one_letter_tokens():
+    from giye.extract.crosslang import title_bag, titles_agree
+
+    assert title_bag("Signal 2022 — a Show") == frozenset({"signal", "show"})
+    assert titles_agree("Signal", "Signal 2022")
+    assert not titles_agree("Signal Exhibition", "Noise Exhibition Garden")

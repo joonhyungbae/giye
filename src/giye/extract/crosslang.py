@@ -25,7 +25,14 @@ The rule is conservative. Two publishable ``cv:`` rows of one person fold when
   a place, names no institution and never folds,
 - the match is one to one: in that (person, year, type) neither row matches
   any other row on the other side, from any document. Two shows at one museum
-  in one year stay separate.
+  in one year stay separate,
+- when the two titles are in the same script (both Latin, or both Hangul),
+  their word bags overlap: Jaccard at least ``TITLE_JACCARD`` over tokens of
+  two or more characters, numbers removed (:func:`titles_agree`). A Korean CV
+  may write an English title, so a "Korean" row can carry a Latin title, and
+  then the two titles can be compared; two unrelated Latin titles at one museum
+  in one year are two shows. A Hangul and a Latin title cannot be compared
+  without a translation, so a cross-script pair keeps the venue rule alone.
 
 Folding never deletes. The row in the archive's first configured language
 (``[archive] languages``; Korean first keeps the Korean row) stays. The other
@@ -50,6 +57,13 @@ RULE = "X2"
 HANGUL_RE = re.compile(r"[가-힣]")
 LATIN_RE = re.compile(r"[A-Za-z]")
 MARK_RE = re.compile(rf"(?:^|;\s*)superseded_by=[^;]*;\s*rule={RULE}(?=;|$)")
+# Same-script titles must share at least half their word bag (Jaccard). Why
+# 0.5: the production folds of one show differ by an edition mark ("ISIMD '05'
+# Digital Art Exhibition" against "ISIMD Digital Art Exhibition", Jaccard 1.0
+# once the number is dropped), while two different shows share at most a
+# generic word or two ("exhibition"), which stays under half of the bag.
+TITLE_JACCARD = 0.5
+TITLE_TOKEN_RE = re.compile(r"[^\W\d_]+")
 
 
 @dataclass(frozen=True)
@@ -85,6 +99,31 @@ def _side(row: dict[str, str]) -> str:
     if LATIN_RE.search(title):
         return "latin"
     return ""
+
+
+def _title_script(title: str) -> str:
+    """``hangul`` if the title has Hangul, ``latin`` if it has a Latin letter and no Hangul, else ""."""
+    if HANGUL_RE.search(title):
+        return "hangul"
+    if LATIN_RE.search(title):
+        return "latin"
+    return ""
+
+
+def title_bag(title: str) -> frozenset[str]:
+    """Case-folded letter runs of two or more characters; digits (years, edition numbers) are dropped."""
+    return frozenset(token for token in TITLE_TOKEN_RE.findall(norm_text(title).casefold()) if len(token) >= 2)
+
+
+def titles_agree(left: str, right: str) -> bool:
+    """The X2 title guard. Same script: word-bag Jaccard >= ``TITLE_JACCARD``. Otherwise True (not comparable)."""
+    script = _title_script(left)
+    if not script or script != _title_script(right):
+        return True
+    left_bag, right_bag = title_bag(left), title_bag(right)
+    if not left_bag or not right_bag:
+        return False
+    return len(left_bag & right_bag) / len(left_bag | right_bag) >= TITLE_JACCARD
 
 
 def institutions(venue: str, lang: LanguageModule) -> list[str]:
@@ -166,6 +205,8 @@ def fold_cross_language(
                 continue  # one CV document: a Korean and an English line there are two entries
             if len(keys_of[ko["activity_id"]]) != 1 or len(keys_of[latin["activity_id"]]) != 1:
                 continue
+            if not titles_agree(ko.get("title") or "", latin.get("title") or ""):
+                continue  # same-script titles that share too few words are two shows
             kept, folded = (ko, latin) if keep_korean else (latin, ko)
             folded["publishable"] = "no"
             note = folded.get("reviewer_note") or ""
