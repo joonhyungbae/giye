@@ -238,6 +238,7 @@ class Ledger:
         """
         # Imported here: giye.resolve imports this module.
         from giye.config import GiyeError
+        from giye.resolve.cv import fold_merged_cvs
         from giye.resolve.decide import check_merge_evidence, merge_people
 
         if not isinstance(evidence, str) or not evidence.strip():
@@ -250,8 +251,11 @@ class Ledger:
         code = check_merge_evidence(self, evidence)
         if code != rule.strip():
             raise GiyeError(f"merge refused: rule {rule.strip()!r} is not the rule the evidence names ({code})")
+        # One CV fold after the last drop: the fold re-applies every extraction, so
+        # once at the end gives the same ledger as once per drop (see merge_people).
         for item in drop_ids:
-            merge_people(self, kept, item, evidence=evidence, override_distinct=override_distinct)
+            merge_people(self, kept, item, evidence=evidence, override_distinct=override_distinct, fold=False)
+        fold_merged_cvs(self)
 
     def _merge_rows(self, kept: str, dropped: str | Iterable[str], *, evidence: str, rule: str) -> None:
         """Absorb ``dropped`` into ``kept`` without checking what the evidence says.

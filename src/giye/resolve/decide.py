@@ -107,6 +107,7 @@ def merge_people(
     *,
     evidence: str,
     override_distinct: bool = False,
+    fold: bool = True,
 ) -> tuple[str, str]:
     """Merge two people. Returns ``(kept ledger id, dropped ledger id)``.
 
@@ -120,6 +121,13 @@ def merge_people(
     "overrides distinct decision of <date>" and that queue item is rewritten
     so it no longer reads ``decided=different``. The dropped ``gy_id`` is
     retired with a redirect, the same path an automatic merge uses.
+
+    ``fold=False`` skips re-applying the CV extractions after the merge, for a
+    caller that merges many pairs in one run and then calls
+    :func:`giye.resolve.cv.fold_merged_cvs` once. Why: the fold re-applies every
+    extraction on the ledger, not only the two merged records, so the result of
+    one fold after the last merge equals a fold after each merge, and a fold per
+    merge made a batch of about a hundred judged merges take hours (2026-10-06).
     """
     check_merge_evidence(ledger, evidence)
     artists = ledger.read("artists")
@@ -160,7 +168,8 @@ def merge_people(
     ledger._merge_rows(keep_id, drop_id, evidence=text, rule=code)
     if distinct:
         _clear_distinct(ledger, {item.get("queue_id") or "" for item in distinct}, dates)
-    fold_merged_cvs(ledger)
+    if fold:
+        fold_merged_cvs(ledger)
     return keep_id, drop_id
 
 
