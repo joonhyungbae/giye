@@ -9,7 +9,7 @@ E1. The same personal website. The key is the host, or host plus path on a
 shared platform, so two accounts on one host stay apart.
 
 E2. One row's CV names the event on the other's roster in that edition's year,
-give or take one year. The event regex comes from the field file
+give or take one year. An edition both rows are on is not used. The event regex comes from the field file
 (``[resolve.events]``) plus ``[resolve.event_patterns]`` in the archive config.
 A prefix in the config replaces the field file's pattern for that prefix.
 
@@ -321,7 +321,9 @@ def evidence_e2_e4(
     """
     evidence = None
     for this, other in ((left, right), (right, left)):
-        for frame_code in frames.get(other, ()):
+        # An edition both records are on does not tie them: the CV's owner
+        # lists their own appearance (software review, round 6).
+        for frame_code in sorted(frames.get(other, set()) - frames.get(this, set())):
             years = edition_years(frame_code, rows_of.get(other, []))
             hit = cv_mentions(cvs.get(this, []), frame_code, years, patterns)
             if hit:

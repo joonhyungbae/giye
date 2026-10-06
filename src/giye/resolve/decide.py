@@ -209,18 +209,32 @@ def verify_merge_evidence(ledger: Ledger, keep: str, drop: str, evidence: str) -
     evidence must hold for this pair of ledger ids, by the same code the
     resolver runs (``giye.resolve.evidence``):
 
-    - ``E1``: a cited URL's site (``url_key``, the E1 key) is a website of both records.
+    - ``E1``: a cited URL's site (``url_key``, the E1 key) is a website of
+      these two records and of no other living record, and the names overlap
+      as the resolver's E1 requires (Hangul with spaces removed, otherwise the
+      lower-cased string; aliases included).
     - ``E2``: a cited CV source (``cv_sources`` id or its URL) belongs to one
-      record, and that CV lists a roster edition of the other (``cv_mentions``
-      with the edition years, ± one year).
+      record, and that CV lists a roster edition of the other that the CV's
+      owner is not on (``cv_mentions`` with the edition years, ± one year).
     - ``E3``: the cited work title (normalised) is a bracketed work both rosters
       credit, or one roster credits and the other's CV lists, in the year window,
       and it is not a generic title (``evidence.generic_titles``).
     - ``E4``: the cited team name is a team both rosters credit with the team prefix.
+    - ``E2``–``E4`` also need the two records to be a candidate pair, as the
+      resolver only tries these rules on one: the same name or the names meet
+      (``giye.resolve.attach.names_meet``: Hangul spelling, a name key, or a
+      romanisation key).
     - ``X1+E*``: the two records' name keys (``LanguageModule.name_keys`` over
-      ``name_ko`` and ``name_en``) intersect, and the E part holds as above.
+      ``name_ko`` and ``name_en``) intersect, and the E part holds as above
+      (the X1 keys are the candidate condition).
     - ``H``: every ISO date in the string is a real date no later than today,
       and the reason has at least three words.
+
+    Why the candidate conditions (software review, round 6, MAJOR-1): the cited
+    fact alone does not tie two people. Two members of one team share the
+    team credit (E4), two residents of one edition both appear in one CV's
+    listing of it (E2), and a duo site lists both members (E1). The resolver
+    never tries those pairs; a manual merge of them needs ``H``.
     """
     code = check_merge_evidence(ledger, evidence)
     text = evidence.strip()
@@ -238,15 +252,30 @@ def verify_merge_evidence(ledger: Ledger, keep: str, drop: str, evidence: str) -
     if keep == drop:
         raise GiyeError("merge needs two different people")
     base = code
+    left, right = state.by_id[keep], state.by_id[drop]
     if code.startswith("X1+"):
         base = code[3:]
-        left, right = state.by_id[keep], state.by_id[drop]
         if not _name_keys_of(left, state.language) & _name_keys_of(right, state.language):
             raise GiyeError(f"merge refused: {code} needs the two records' name keys to meet (X1), and they do not")
     check = {"E1": _verify_e1, "E2": _verify_e2, "E3": _verify_e3, "E4": _verify_e4}[base]
     problem = check(state, keep, drop, rest)
     if problem:
         raise GiyeError(f"merge refused: {code} does not hold on the ledger: {problem}")
+    if code.startswith("X1+"):
+        return code
+    if base == "E1":
+        from giye.resolve.service import _names
+
+        if not _names(left) & _names(right):
+            raise GiyeError(
+                "merge refused: E1 needs the two records' names to overlap, as the resolver's E1 does "
+                "(a shared site alone also joins the members of a duo); use X1+E1 or H"
+            )
+    elif not _candidate_pair(left, right, state.language):
+        raise GiyeError(
+            f"merge refused: {code} is tried only on a candidate pair (the same name, or names whose "
+            "keys meet), and these names do not meet; use H with the reason"
+        )
     return code
 
 
@@ -275,6 +304,19 @@ def _name_keys_of(row: dict[str, str], language) -> set[str]:
     return keys
 
 
+def _candidate_pair(left: dict[str, str], right: dict[str, str], language) -> bool:
+    """The resolver's candidate conditions for E2–E4: the same name, or names that meet."""
+    from giye.resolve.attach import names_meet
+    from giye.resolve.candidates import normalised_full_name, primary_name
+
+    same = normalised_full_name(primary_name(left))
+    if same and same == normalised_full_name(primary_name(right)):
+        return True
+    return names_meet(
+        left.get("name_ko") or "", left.get("name_en") or "", left.get("aliases") or "", right, language
+    )
+
+
 def _cited_urls(rest: str) -> list[str]:
     return [url.rstrip(".,;:)") for url in _URL.findall(rest)]
 
@@ -286,9 +328,13 @@ def _verify_e1(state, keep: str, drop: str, rest: str) -> str:
     if not keys:
         return "E1 cites no website URL"
     shared = state.sites.get(keep, set()) & state.sites.get(drop, set())
-    if keys & shared:
-        return ""
-    return f"the cited site ({', '.join(sorted(keys))}) is not a website of both records"
+    if not keys & shared:
+        return f"the cited site ({', '.join(sorted(keys))}) is not a website of both records"
+    for key in sorted(keys & shared):
+        others = sorted(lid for lid, sites in state.sites.items() if key in sites and lid in state.by_id)
+        if set(others) == {keep, drop}:
+            return ""
+    return "the cited site is also a website of another record, so it does not tie these two"
 
 
 def _verify_e2(state, keep: str, drop: str, rest: str) -> str:
@@ -318,11 +364,13 @@ def _verify_e2(state, keep: str, drop: str, rest: str) -> str:
         tagged = [line for line in lines if line.get("source_id")]
         if tagged:
             lines = [line for line in tagged if line.get("source_id") == row.get("source_id")]
-        for frame_code in sorted(state.frames.get(other, ())):
+        # An edition the CV's owner is on is the owner's own appearance: a
+        # second person on that edition is not tied to the owner by it.
+        for frame_code in sorted(state.frames.get(other, set()) - state.frames.get(owner, set())):
             years = edition_years(frame_code, state.rows_of.get(other, []))
             if cv_mentions(lines, frame_code, years, state.patterns):
                 return ""
-    return "the cited CV does not list a roster edition of the other record"
+    return "the cited CV does not list a roster edition of the other record that its owner is not on"
 
 
 def _verify_e3(state, keep: str, drop: str, rest: str) -> str:

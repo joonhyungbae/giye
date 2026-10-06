@@ -46,13 +46,88 @@ def test_e1_must_cite_a_site_both_records_list(tmp_path):
     assert _live(ledger) == {"LED-a", "LED-b"}
 
     ledger.write("links", [_link("LED-a", "https://haru.example.org/"), _link("LED-b", "https://www.haru.example.org/about")], task="test")
-    assert verify_merge_evidence(ledger, "LED-a", "LED-b", "E1 https://haru.example.org/cv") == "E1"
+    # A site both list is not enough: 이하루 and 김서연 have no name in common
+    # (review round 6, MAJOR-1: a duo site lists both members).
+    with pytest.raises(GiyeError, match="names to overlap"):
+        merge_people(ledger, "LED-a", "LED-b", evidence="E1 https://haru.example.org/cv")
     # X1 on top needs the name keys to meet; Lee Haru and Kim Seoyeon do not.
     with pytest.raises(GiyeError, match="name keys"):
         merge_people(ledger, "LED-a", "LED-b", evidence="X1+E1 https://haru.example.org/cv")
+    assert _live(ledger) == {"LED-a", "LED-b"}
+
+
+def test_e1_holds_for_overlapping_names_on_a_site_only_they_list(tmp_path):
+    links = [_link("LED-a", "https://haru.example.org/"), _link("LED-b", "https://www.haru.example.org/about")]
+    ledger = _pair(tmp_path, links=links, names=(("이하루", "Lee Haru"), ("이하루", "")))
+    assert verify_merge_evidence(ledger, "LED-a", "LED-b", "E1 https://haru.example.org/cv") == "E1"
     keep, _drop = merge_people(ledger, "LED-a", "LED-b", evidence="E1 https://haru.example.org/cv")
     assert _live(ledger) == {keep}
     assert "rule=E1" in ledger.read("artists")[0]["reviewer_note"]
+
+
+def test_e1_refuses_a_site_a_third_record_also_lists(tmp_path):
+    ledger = _pair(tmp_path, names=(("이하루", "Lee Haru"), ("이하루", "")))
+    artists = ledger.read("artists")
+    artists.append(_artist("LED-c", "GY-000003", "정다온", "Daon Jeong"))
+    ledger.write("artists", artists, task="test")
+    ledger.write(
+        "links",
+        [_link(lid, "https://studio.example.org/") for lid in ("LED-a", "LED-b", "LED-c")],
+        task="test",
+    )
+    with pytest.raises(GiyeError, match="another record"):
+        verify_merge_evidence(ledger, "LED-a", "LED-b", "E1 https://studio.example.org/")
+
+
+def test_e1_refuses_two_members_of_a_duo_site(tmp_path):
+    """Review round 6: 김솔 and Lee Haru, a shared duo website, no name in common."""
+    links = [_link("LED-a", "https://duo.example.org/"), _link("LED-b", "https://duo.example.org/")]
+    ledger = _pair(tmp_path, links=links, names=(("김솔", ""), ("Lee Haru", "Lee Haru")))
+    with pytest.raises(GiyeError, match="names to overlap"):
+        merge_people(ledger, "LED-a", "LED-b", evidence="E1 https://duo.example.org/")
+    assert _live(ledger) == {"LED-a", "LED-b"}
+
+
+def test_e4_refuses_two_members_of_one_team(tmp_path):
+    """Review round 6: 김바다 and 박바다 are both credited in team 노을 스튜디오."""
+    ledger = _pair(
+        tmp_path,
+        names=(("김바다", ""), ("박바다", "")),
+        activities=[
+            _act("LED-a", "EXAMPLE-WORKSHOP-2020", 2020, role="팀: 노을 스튜디오"),
+            _act("LED-b", "EXAMPLE-RESIDENCY-2019", 2019, role="팀: 노을 스튜디오"),
+        ],
+        membership=[_mem("LED-a", "EXAMPLE-WORKSHOP-2020"), _mem("LED-b", "EXAMPLE-RESIDENCY-2019")],
+    )
+    with pytest.raises(GiyeError, match="candidate pair"):
+        merge_people(ledger, "LED-a", "LED-b", evidence="E4 team 노을 스튜디오 https://example.org/roster")
+    assert _live(ledger) == {"LED-a", "LED-b"}
+
+
+def test_e2_refuses_a_cv_listing_an_edition_both_records_are_on(tmp_path):
+    """Review round 6: two people on one residency edition; one CV lists that edition."""
+    ledger = _pair(
+        tmp_path,
+        names=(("한별", ""), ("한별", "Han Byeol")),
+        activities=[
+            _act("LED-a", "EXAMPLE-RESIDENCY-2019", 2019),
+            _act("LED-b", "EXAMPLE-RESIDENCY-2019", 2019),
+        ],
+        membership=[_mem("LED-a", "EXAMPLE-RESIDENCY-2019"), _mem("LED-b", "EXAMPLE-RESIDENCY-2019")],
+    )
+    _cv_sources(ledger, [("CV-T-1", "LED-a")])
+    _cv(ledger, "LED-a", [{"title": "Example Residency", "venue": "", "year": 2019, "source_id": "CV-T-1"}])
+    with pytest.raises(GiyeError, match="its owner is not on"):
+        verify_merge_evidence(ledger, "LED-a", "LED-b", "E2 CV-T-1")
+
+
+def test_e2_refuses_a_pair_whose_names_do_not_meet(tmp_path):
+    """Review round 6: 박서연's CV cited to merge her with 정다운."""
+    ledger = _pair(tmp_path, names=(("박서연", ""), ("정다운", "")))
+    _cv_sources(ledger, [("CV-T-1", "LED-a")])
+    _cv(ledger, "LED-a", [{"title": "Example Residency", "venue": "", "year": 2019, "source_id": "CV-T-1"}])
+    with pytest.raises(GiyeError, match="candidate pair"):
+        verify_merge_evidence(ledger, "LED-a", "LED-b", "E2 CV-T-1")
 
 
 def _cv_sources(ledger: Ledger, rows: list[tuple[str, str]]) -> None:
