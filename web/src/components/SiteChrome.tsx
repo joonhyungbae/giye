@@ -53,7 +53,10 @@ export function AboutNav() {
   );
 }
 
-/** Small floating way back home on every page that is not the home itself. */
+/**
+ * Way back home at the top left of every page that is not the home itself. It sits at the top
+ * of the page and scrolls away with it, so it never covers the header or a record while reading.
+ */
 export function HomeReturn() {
   const { t } = useLang();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -61,15 +64,37 @@ export function HomeReturn() {
   return (
     <Link
       to="/"
-      className="fixed left-4 top-4 z-50 border border-border bg-background/85 px-3 py-1.5 font-mono text-[11px] text-foreground no-underline backdrop-blur-sm transition-colors hover:border-primary hover:text-primary"
+      className="absolute left-4 top-4 z-50 border border-border bg-background/85 px-3 py-1.5 font-mono text-[11px] text-foreground no-underline backdrop-blur-sm transition-colors hover:border-primary hover:text-primary"
     >
       ← {t("홈", "Home")}
     </Link>
   );
 }
 
-export function SiteFooter() {
+/**
+ * The language switch, at the top right of every page. Choosing writes a cookie, so the server
+ * renders the next page in that language (see lib/lang-cookie.ts). It scrolls away with the page
+ * like the home link. The home draws its own switch at the top right of the study.
+ */
+export function LangToggle() {
   const { lang, setLang, t } = useLang();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  if (pathname === "/") return null;
+  return (
+    <button
+      type="button"
+      onClick={() => setLang(lang === "ko" ? "en" : "ko")}
+      className="absolute right-4 top-4 z-50 border border-border bg-background/85 px-3 py-1.5 font-mono text-[11px] text-foreground backdrop-blur-sm transition-colors hover:border-primary hover:text-primary"
+      aria-label={t("언어 전환: English", "Switch language: 한국어")}
+      lang={lang === "ko" ? "en" : "ko"}
+    >
+      {lang === "ko" ? "EN" : "한국어"}
+    </button>
+  );
+}
+
+export function SiteFooter() {
+  const { t } = useLang();
   return (
     <footer className="mt-28 border-t border-border py-10 text-xs text-muted-foreground">
       <div className="wrap grid gap-6 md:grid-cols-[13rem_1fr] md:gap-12">
@@ -77,14 +102,6 @@ export function SiteFooter() {
           <p className="font-display text-base font-medium text-foreground">
             기예 Giye / 技藝
           </p>
-          <button
-            type="button"
-            onClick={() => setLang(lang === "ko" ? "en" : "ko")}
-            className="mt-3 border border-input px-2.5 py-1 font-mono text-[11px] text-foreground transition-colors hover:border-primary hover:text-primary"
-            aria-label={t("언어 전환", "Switch language")}
-          >
-            {lang === "ko" ? "EN" : "한국어"}
-          </button>
         </div>
         <div className="space-y-4">
           <nav

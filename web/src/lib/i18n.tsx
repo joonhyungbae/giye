@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { writeLangCookie } from "./lang-cookie";
 
 export type Lang = "ko" | "en";
 
@@ -15,15 +16,31 @@ const LangContext = createContext<Ctx>({
   t: (_ko, en) => en,
 });
 
-export function LanguageProvider({ children }: { children: ReactNode }) {
-  // English is the default (user decision, 2026-10-04): the server renders English and a visitor's
-  // stored choice ("giye-lang") switches to Korean after hydration.
-  const [lang, setLangState] = useState<Lang>("en");
+export function LanguageProvider({
+  children,
+  initial = null,
+}: {
+  children: ReactNode;
+  /** The language cookie read for this render (see lang-cookie.ts); null when there is none. */
+  initial?: Lang | null;
+}) {
+  // English is the default (user decision, 2026-10-04). The server renders the language in the
+  // reader's cookie; without a cookie, a stored choice ("giye-lang" in localStorage) switches
+  // after hydration and is copied into the cookie, so the next page is rendered in it.
+  const [lang, setLangState] = useState<Lang>(initial ?? "en");
 
   useEffect(() => {
-    const stored = window.localStorage.getItem("giye-lang");
-    if (stored === "en" || stored === "ko") setLangState(stored);
-  }, []);
+    if (initial) return;
+    try {
+      const stored = window.localStorage.getItem("giye-lang");
+      if (stored === "en" || stored === "ko") {
+        setLangState(stored);
+        writeLangCookie(stored);
+      }
+    } catch {
+      // Storage blocked: stay on the server's language.
+    }
+  }, [initial]);
 
   useEffect(() => {
     document.documentElement.setAttribute("lang", lang);
@@ -31,7 +48,12 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   const setLang = useCallback((l: Lang) => {
     setLangState(l);
-    window.localStorage.setItem("giye-lang", l);
+    writeLangCookie(l);
+    try {
+      window.localStorage.setItem("giye-lang", l);
+    } catch {
+      // The cookie alone carries the choice.
+    }
   }, []);
 
   const t = useCallback((ko: string, en: string) => (lang === "ko" ? ko : en), [lang]);

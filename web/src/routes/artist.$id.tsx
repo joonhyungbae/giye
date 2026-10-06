@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { createFileRoute, Link, notFound, redirect } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, type MouseEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { getArtistPage, getArtistRedirect } from "@/lib/giye.functions";
 import { ACTIVITY_TYPE_LABEL, LINK_TYPE_LABEL, useLang, VERIFICATION_LABEL } from "@/lib/i18n";
 import { CiteDialog } from "@/components/CiteDialog";
@@ -238,6 +238,63 @@ function PeopleLine({ label, people }: { label: string; people: PagePerson[] }) 
   );
 }
 
+/**
+ * A small bar with the way home and the request links. It shows only while the reader scrolls,
+ * once the header is out of view, and hides a moment after scrolling stops, so at rest it covers
+ * neither the header nor a record. The same links sit inline at the end of the page.
+ */
+function ScrollBar({ id }: { id: string }) {
+  const { t } = useLang();
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onScroll = () => {
+      if (window.scrollY < 320) {
+        setShown(false);
+        return;
+      }
+      setShown(true);
+      clearTimeout(timer);
+      timer = setTimeout(() => setShown(false), 1400);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      clearTimeout(timer);
+    };
+  }, []);
+  const item = "px-2 py-1 no-underline transition-colors hover:text-primary";
+  return (
+    <nav
+      aria-label={t("빠른 이동", "Quick links")}
+      aria-hidden={!shown}
+      className={`fixed bottom-3 right-3 z-40 flex gap-1 border border-border bg-background/95 font-mono text-[11px] shadow-sm backdrop-blur transition-opacity duration-200 ${
+        shown ? "opacity-100" : "pointer-events-none opacity-0"
+      }`}
+    >
+      <Link to="/" className={item} tabIndex={shown ? 0 : -1}>
+        ← {t("홈", "Home")}
+      </Link>
+      <Link
+        to="/request"
+        search={{ type: "correct", artist: id }}
+        className={item}
+        tabIndex={shown ? 0 : -1}
+      >
+        {t("수정 요청", "Correction")}
+      </Link>
+      <Link
+        to="/request"
+        search={{ type: "hide", artist: id }}
+        className={item}
+        tabIndex={shown ? 0 : -1}
+      >
+        {t("비공개 요청", "Hide")}
+      </Link>
+    </nav>
+  );
+}
+
 function ArtistPage() {
   const {
     artist,
@@ -359,7 +416,7 @@ function ArtistPage() {
   const sectionTitle = "font-mono text-[11px] uppercase text-muted-foreground";
 
   return (
-    <div className="wrap py-12 pb-32 lg:py-16">
+    <div className="wrap pb-16 pt-16 lg:pt-20">
       <header className="border-b border-input pb-6">
         <p className="font-mono text-[10px] uppercase text-primary">
           [ ARTIST_RECORD / {artist.id} ]
@@ -735,24 +792,24 @@ function ArtistPage() {
         )}
       </section>
 
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 backdrop-blur">
-        <div className="wrap flex flex-wrap justify-end gap-2 py-3 text-sm">
-          <Link
-            to="/request"
-            search={{ type: "correct", artist: artist.id }}
-            className="border-b border-input px-2 py-1.5 no-underline transition-colors hover:border-primary hover:text-primary"
-          >
-            {t("수정 요청", "Request a correction")}
-          </Link>
-          <Link
-            to="/request"
-            search={{ type: "hide", artist: artist.id }}
-            className="border-b border-input px-2 py-1.5 no-underline transition-colors hover:border-primary hover:text-primary"
-          >
-            {t("비공개 요청", "Request hiding")}
-          </Link>
-        </div>
-      </div>
+      <p className="flex flex-wrap gap-x-5 gap-y-2 border-t border-input pt-6 text-sm">
+        <Link
+          to="/request"
+          search={{ type: "correct", artist: artist.id }}
+          className="border-b border-input no-underline transition-colors hover:border-primary hover:text-primary"
+        >
+          {t("수정 요청", "Request a correction")}
+        </Link>
+        <Link
+          to="/request"
+          search={{ type: "hide", artist: artist.id }}
+          className="border-b border-input no-underline transition-colors hover:border-primary hover:text-primary"
+        >
+          {t("비공개 요청", "Request hiding")}
+        </Link>
+      </p>
+
+      <ScrollBar id={artist.id} />
     </div>
   );
 }

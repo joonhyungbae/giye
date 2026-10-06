@@ -14,7 +14,8 @@ import { type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { archiveSentenceEn, archiveSentenceKo } from "@/config/site";
 import { LanguageProvider } from "@/lib/i18n";
-import { HomeReturn, SiteFooter } from "@/components/SiteChrome";
+import { readLangCookie } from "@/lib/lang-cookie";
+import { HomeReturn, LangToggle, SiteFooter } from "@/components/SiteChrome";
 import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
@@ -59,6 +60,9 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  // The reader's language cookie, read on the server for SSR and from document.cookie in the
+  // browser, so both render the same language and hydration matches.
+  beforeLoad: () => ({ lang: readLangCookie() }),
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -91,8 +95,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: ReactNode }) {
+  const lang = Route.useRouteContext({ select: (c) => c.lang }) ?? "en";
   return (
-    <html lang="en">
+    <html lang={lang}>
       <head>
         <HeadContent />
       </head>
@@ -105,13 +110,13 @@ function RootShell({ children }: { children: ReactNode }) {
 }
 
 function RootComponent() {
-  const { queryClient } = Route.useRouteContext();
+  const { queryClient, lang } = Route.useRouteContext();
   const pathname = useRouterState({ select: (st) => st.location.pathname });
   const isHome = pathname === "/";
 
   return (
     <QueryClientProvider client={queryClient}>
-      <LanguageProvider>
+      <LanguageProvider initial={lang}>
         <a
           href="#main"
           className="sr-only focus:not-sr-only focus:absolute focus:m-2 focus:bg-background focus:p-2"
@@ -119,6 +124,7 @@ function RootComponent() {
           본문 바로가기 / Skip to content
         </a>
         <HomeReturn />
+        <LangToggle />
         <main id="main">
           {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
           <Outlet />
