@@ -70,6 +70,15 @@ function PrivacyPage() {
           </p>
         </section>
         <section>
+          <h2 className="text-xl">{t("요청 한도", "Request limits")}</h2>
+          <p className="mt-3">
+            {t(
+              "대량 복제를 막기 위해 서버는 방문자 IP마다 요청을 셉니다. 1분에 120회를 넘거나, 10분 안에 서로 다른 주소 80개를 넘게 열면 그 IP는 15분 동안 사이트 전체에서 429 응답을 받습니다. 서로 다른 주소에는 작가 페이지, 첫 화면에서 연 기록 한 장, 검색어 하나, 없는 페이지가 각각 하나로 셉니다. 같은 IP를 쓰는 사람들(학교·학회 무선망)은 한도를 함께 씁니다. 검색 엔진 크롤러는 1분에 60회입니다. 사용자 에이전트가 없거나 HTTP 라이브러리·헤드리스 브라우저인 요청은 403을 받으므로, 자동 접근성 검사는 일반 브라우저의 사용자 에이전트로 해야 합니다. 이 IP 계수는 서버 메모리에만 있고 기록으로 남기지 않습니다.",
+              "To stop bulk copying, the server counts requests per visitor IP. More than 120 requests in one minute, or more than 80 distinct addresses within 10 minutes, blocks that IP from the whole site for 15 minutes (HTTP 429). Each artist page, each record opened on the home ring, each search query and each missing page counts as one distinct address. People behind one IP (a university or conference network) share these limits. Search crawlers may make 60 requests a minute. A request with no user agent, or from an HTTP library or a headless browser, gets 403, so automated accessibility checks need a normal browser user agent. The counters live only in the server's memory and are not logged.",
+            )}
+          </p>
+        </section>
+        <section>
           <h2 className="text-xl">{t("수정과 비공개", "Correction and hiding")}</h2>
           <p className="mt-3">
             {t("수정과 비공개는 ", "A correction, or a request to hide a record, is sent through ")}
