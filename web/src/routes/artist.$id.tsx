@@ -153,7 +153,7 @@ function displayTitle(title: string): string {
   return title.replace(/[\s–—-]+$/u, "");
 }
 
-/** One year of activities: one line per record (title · venue · type · role [n]). */
+/** One year of activities: one line per record (title · venue · type · role [n]; type "other" omitted). */
 function ActivityYear({ year, sources }: { year: PageYear; sources: PageSource[] }) {
   const { lang, t } = useLang();
   return (
@@ -167,9 +167,11 @@ function ActivityYear({ year, sources }: { year: PageYear; sources: PageSource[]
           <li key={i} data-record className="max-w-3xl text-sm leading-6">
             <span className="font-medium">{displayTitle(title)}</span>
             {venue && <span className="text-muted-foreground"> · {venue}</span>}
+            {/* The type "other" (기타) says nothing on a record line, so it is not shown there
+                (author's decision, 2026-10-06); every other type is. */}
             <span className="text-muted-foreground">
-              {" · "}
-              {t(ACTIVITY_TYPE_LABEL[type]?.[0] ?? type, ACTIVITY_TYPE_LABEL[type]?.[1] ?? type)}
+              {type !== "other" &&
+                ` · ${t(ACTIVITY_TYPE_LABEL[type]?.[0] ?? type, ACTIVITY_TYPE_LABEL[type]?.[1] ?? type)}`}
               {role ? ` · ${lang === "en" ? (roleEn ?? role) : role}` : ""}
             </span>
             {uncertain === 1 && (
