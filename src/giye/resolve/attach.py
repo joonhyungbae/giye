@@ -24,7 +24,7 @@ A3. The name is positively a group.
     ``name_class`` reads the incoming row: a team word of the field file, a
     ``members=`` / ``rep=`` note, or person-shaped aliases on a non-personal
     name (``team_like``) make a group, and the first same-key row is reused.
-    A name that is not a personal name and not a group (``other``: Han
+    A name that is not a personal name and not a group (``other``: Chinese
     characters, a long transliteration) takes A3 only when a same-key row is a
     recorded group. Not fitting the personal shape is not evidence of a
     group, so such a name is otherwise queued.
@@ -203,7 +203,7 @@ def name_class(
     non-personal name). ``personal`` is a Latin-only name that is not a group,
     or a name the language module calls personal (``personal_name``: for
     Korean–English, the Hangul surname shape, spaced or not). Everything else
-    is ``other``: a name the rules cannot place, such as Han characters or a
+    is ``other``: a name the rules cannot place, such as Chinese characters or a
     long Hangul transliteration. Why ``other`` is not ``group``: a name outside
     the personal shape is not evidence of a group, and before 2026-10-06 A3
     joined such names across programmes on the name alone (``김 하늘``,
