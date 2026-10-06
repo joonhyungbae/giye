@@ -44,13 +44,28 @@ function PrivacyPage() {
               "A published record carries its source. Education and employment entries from a CV are shown on that person's page, as are teaching and press lines from the same CV.",
             )}
           </p>
+          <p className="mt-3">
+            {t(
+              "사람 페이지에는 기록에서 규칙으로 끌어낸 값도 나옵니다. 출생 연도(그 사람의 CV 첫머리에 출생 문구로 적힌 연도가 하나뿐일 때만, 출처 링크와 함께), 활동 시작 연도(가장 이른 공개 기록), 활동 기반 국가(기록의 장소에서 추정, 근거 링크와 함께)입니다.",
+              "A person's page also shows values derived from the records by rule: a birth year (only when the opening of that person's own CV states exactly one, with a link to it), the year active since (the earliest public record), and the country they are based in (inferred from the places of their records, with a link to the evidence).",
+            )}
+          </p>
+        </section>
+        <section>
+          <h2 className="text-xl">{t("첫 화면이 보내는 것", "What one home page load sends")}</h2>
+          <p className="mt-3">
+            {t(
+              "첫 화면의 그림은 공개된 모든 사람과 모든 기록을 한 번에 받아 그립니다. 한 번의 로드는 다음을 보냅니다. 공개된 사람마다: 식별자, 한글·영문 이름, 참여한 프로그램 회차 코드, CV 확인 여부와 상태, 수집일, 활동 시작 연도, 매체 태그, 지역. 공개된 기록마다: 연도, 유형 코드, 수집일, 출처 URL의 도메인(개인 웹사이트라면 그 사람의 사이트 주소), 그리고 두 사람 이상의 기록에 나오는 장소일 때만 그 장소명. 그 밖에 프로그램 목록과 인원, 데이터셋 버전 목록, 첫 화면의 배치 순서가 갑니다. 기록의 제목과 출처 URL 전체는 보내지 않습니다.",
+              "The home image is drawn from every published person and every published record, received at once. One load sends: for each published person, the identifier, Korean and English names, the programme edition codes they took part in, whether a CV was found, status, collection date, the year active since, medium tags and regions; for each published record, its year, type code, collection date, the domain of its source URL (for a personal website, that person's site address), and the venue only when that venue occurs on records of two or more people. It also sends the programme list with counts, the list of dataset versions and the order of the home ring. It does not send record titles or full source URLs.",
+            )}
+          </p>
         </section>
         <section>
           <h2 className="text-xl">{t("하지 않는 일", "What is never done")}</h2>
           <p className="mt-3">
             {t(
-              "데이터셋을 내려받거나 대량으로 내보내는 기능은 없고, 공개 API도 없습니다. 여러 사람을 아우르는 응답에는 식별자, 연도, 유형 코드로 된 구조와 이름만 담깁니다. 제목과 출처 URL은 한 사람씩 제공합니다.",
-              "There is no dataset download, no bulk export, and no public API. A response that covers many people carries only coded structure — identifiers, years and type codes — and names. A title and its source URL are served one person at a time.",
+              "데이터셋을 내려받거나 대량으로 내보내는 기능은 없고, 공개 API도 없습니다. 여러 사람을 아우르는 응답에는 위의 '첫 화면이 보내는 것'에 적은 항목만 담깁니다. 기록의 제목과 출처 URL 전체는 한 사람씩 제공합니다.",
+              "There is no dataset download, no bulk export, and no public API. A response that covers many people carries only the fields listed under “What one home page load sends” above. A record's title and its full source URL are served one person at a time.",
             )}
           </p>
         </section>

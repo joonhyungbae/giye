@@ -443,7 +443,7 @@ function studyOrder(): StudyOrder {
   return value;
 }
 
-/** Everything the home "Archival Study" needs: every artist (including hidden), every sourced record, the frames. */
+/** Everything the home "Archival Study" needs: every published artist (artists.json holds no hidden one), every sourced record, the frames. The fields are listed on /privacy and in docs/DEPLOY.md W1; change them together. */
 function buildStudyData(stamp: string) {
   const artists = loadAllArtists().map((a) => ({
     id: a.id,
