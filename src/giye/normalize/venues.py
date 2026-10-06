@@ -1092,7 +1092,10 @@ def _annotate_rows(
     parsed: list[ParsedVenue], entity_by_root: dict[str, dict], row_roots: dict[str, list[tuple[str, str]]]
 ) -> tuple[dict[str, dict[str, str]], Counter, list[dict]]:
     """Number entities ``VEN-`` by row count, and the venue_kind of each activity."""
-    ordered_entities = sorted(entity_by_root.items(), key=lambda item: (-item[1]["n_rows"], item[1]["name"]))
+    # The root key breaks a tie between two entities with one display name and one row count.
+    ordered_entities = sorted(
+        entity_by_root.items(), key=lambda item: (-item[1]["n_rows"], item[1]["name"], item[0])
+    )
     for index, (_, entity) in enumerate(ordered_entities, 1):
         entity["venue_id"] = f"VEN-{index:06d}"
     annotations: dict[str, dict[str, str]] = {}
@@ -1144,8 +1147,12 @@ def _resolve(
     write: bool,
     lang: LanguageModule,
 ) -> BuildResult:
-    """V2–V6, then whichever of V7e/V8/V9 are in ``rules``. The caller sets V7 spelling."""
-    parsed = [parse_venue(row, lang) for row in activity_rows]
+    """V2–V6, then whichever of V7e/V8/V9 are in ``rules``. The caller sets V7 spelling.
+
+    Rows are processed in activity-id order, so the entities, their ids and
+    names, and the audit sample do not depend on the order of the ledger rows.
+    """
+    parsed = sorted((parse_venue(row, lang) for row in activity_rows), key=lambda row: (row.activity_id, row.norm))
     key_kinds, spell_rows = _index_named_fragments(parsed, lang)
     candidate_artists = _alias_candidates(parsed, lang, key_kinds)
     repeated_pairs, single_pairs = _alias_pair_tiers(candidate_artists, lang)
