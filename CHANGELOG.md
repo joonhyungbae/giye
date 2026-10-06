@@ -11,5 +11,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Explores an entry-generation rim order and scores a division of the field (coverage, adjusted Rand, lift, AUC).
 - Publishes a site snapshot with permanent ids, redirects for retired ids, coverage, dataset versions, and APA, Chicago and BibTeX citations.
 - Renders one plain HTML page per person, and serves the same snapshot from the TanStack Start site in `web/`.
+- Draws the home visualization's heavy layers (record marks, chords, threads, piers) with WebGL2 and keeps text in Canvas 2D; the WebGL output is matched to Chrome's GPU Canvas 2D (same order, alpha quantisation and one-paint-per-call union), and browsers without WebGL2, or a lost context, fall back to Canvas 2D. `?renderer=2d|gl` forces either for comparison.
+- Measures the home canvas with `web/scripts/perf/` (calls and frame times per phase, deterministic screenshots, pixel diffs between renderers).
 - Exports the snapshot store as WARC (optional WACZ) and writes an RO-Crate description of a run.
 - Reproduces the pipeline on a synthetic field with `giye demo`, without fetching the network.

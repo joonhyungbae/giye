@@ -40,6 +40,23 @@ GIYE_SITE_DIR=/tmp/giye-demo-data/site bun run dev
 A published person on that snapshot is `GY-000001` (`/artist/GY-000001`). `giye demo` without
 `--output` uses a fresh temporary directory and prints the path.
 
+## Home renderer
+
+The home visualization (`src/components/study/ArchivalStudy.tsx`) draws its heavy layers (record
+marks, chords, threads, piers) through `src/components/study/glRenderer.ts` with WebGL2, and its
+text in Canvas 2D on stacked canvases that keep the original draw order. Why: Chrome's default
+Canvas 2D backend on Windows (Skia Ganesh) pays a fixed cost per draw call, and the study issues
+thousands per frame; WebGL sends them in a few instanced draws. The WebGL output follows Chrome's
+GPU Canvas 2D: the same blend order, 8-bit alpha quantisation and the rule that one `stroke()` or
+`fill()` paints the union of its marks once. The renderer is chosen by capability in
+`chooseHomeRenderer()` (WebGL2 when available, Canvas 2D otherwise and after a lost context).
+Append `?renderer=2d` or `?renderer=gl` to the address to force one for comparison.
+
+`scripts/perf/` measures the canvas without changing it: `harness.mjs` drives Chrome over the
+DevTools protocol (calls and frame times per phase; `--det` for a virtual clock and fixed-time
+screenshots; `--gpu` for the machine's GPU), `diff.py` compares two runs pixel by pixel and
+`report.py` tabulates a run. See the header of `harness.mjs` for options.
+
 ## Environment
 
 Read by the server process (`bun run dev` and `node .output/server/index.mjs`). A blank value
