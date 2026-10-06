@@ -55,11 +55,13 @@ The coder is one person. The sheet has one `label` column and one `note` column.
 
 `python -m giye.audit score` reports precision per stratum and overall.
 
-Primary denominator: `correct` + `incorrect`. `cannot tell` is counted and excluded. Blank labels and any other text are counted (`unlabeled`, `other`) and excluded, so an unfinished row or a typo is not a success.
+Primary denominator: `correct` + `incorrect`. `cannot tell` is counted and excluded. A blank label is counted (`unlabeled`) and excluded, so an unfinished row is not a success. Any other text is refused: the command names the sheet line, the item and the label and exits 2, because a typo left out silently would shrink the denominator and raise the precision.
 
 Conservative interval: the same successes, with each `cannot tell` added to the denominator as a failure. Blanks stay out.
 
 The 95% interval is the Wilson score interval with the fixed quantile `z = 1.959963984540054` (the 0.975 point of the standard normal). Bounds are clamped to [0, 1]. A denominator of zero has no precision and no interval.
+
+Stratum-weighted estimate: `--weights W` (a CSV with columns `stratum` and `weight`, or `size`, or a JSON object of stratum to weight) adds a pooled precision weighted by stratum population, for a sheet whose strata were not drawn in proportion to their size (the census-plus-sample person-merge sheet). With `W_s = w_s / Σ w`, the estimate is `Σ W_s p_s` over the primary denominators, and its bounds are `Σ W_s low_s` and `Σ W_s high_s`. A stratum whose sheet holds at least `w_s` rows is a census: it has no sampling error and contributes `p_s` to both bounds; a sampled stratum contributes its Wilson bounds. Summing per-stratum 95% bounds is conservative compared with a pooled variance, and unlike a normal approximation it does not give a zero-width interval when a sampled stratum is all correct. The same is reported with `cannot tell` as failures (`conservative_*`). Every sheet stratum needs a weight and every weighted stratum must be on the sheet; a weight of 0 leaves a stratum out. With weights 42 (census, 40 of 42 decided) and 117 (sampled, 37 of 40 decided) this gives the person-merge figures below: lower bound 93.1%, and 93.2% (lower bound 84.1%) with the undecided rows as errors.
 
 ## Commands
 
@@ -199,7 +201,7 @@ path. Run them against the ledger as it stood when the figure was measured
 | Figure | Command | Then |
 |---|---|---|
 | CV extraction, 150 rows | `python -m giye.audit sample cv --config giye.toml --n 150 --seed S --out cv.csv` | `score cv.csv --kind cv` |
-| Person merges, 42 + 40 rows | `python -m giye.audit sample people --config giye.toml --design census-coded --n 40 --seed S --out people.csv` | `score people.csv --kind people`; weight by stratum size as described above |
+| Person merges, 42 + 40 rows | `python -m giye.audit sample people --config giye.toml --design census-coded --n 40 --seed S --out people.csv` | `score people.csv --kind people --weights sizes.csv` (stratum sizes; see Scoring) |
 | A2 attachments, 40 of 270 | `python -m giye.audit sample attach --config giye.toml --rule A2 --n 40 --seed 20261006 --out a2.csv` | `score a2.csv --kind attach` |
 | Institution merges | `python -m giye.audit sample venues --config giye.toml --n 85 --seed S --out venues.csv` (70 for the refined rules) | `score venues.csv --kind venues` |
 | Splink pairs on the name alone (131) | `python -m giye.audit splink --config giye.toml --out splink.csv` | the `name_only` stratum; `score splink.csv --kind splink` gives the coder's same-person share |

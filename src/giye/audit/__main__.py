@@ -4,7 +4,7 @@
     python -m giye.audit sample {cv,people,venues,attach} --config giye.toml --n N --seed S --out sheet.csv
         [--design {proportional,census-coded}] [--rule A2]
     python -m giye.audit splink --config giye.toml --out splink.csv [--threshold 0.9] [--seed S]
-    python -m giye.audit score sheet.csv --kind {cv,people,venues,attach,splink} [--json]
+    python -m giye.audit score sheet.csv --kind {cv,people,venues,attach,splink} [--weights W.csv] [--json]
     python -m giye.audit page sheet.csv --kind {cv,people,venues,attach,splink} --out page.html
     python -m giye.audit serve sheet.csv --port 5181
 
@@ -23,7 +23,7 @@ from pathlib import Path
 from giye.audit.linker import THRESHOLD, compare_sheet
 from giye.audit.page import render_page
 from giye.audit.sample import DESIGNS, SAMPLED_KINDS, load_config, sample_sheet
-from giye.audit.score import format_score, score_sheet
+from giye.audit.score import UnknownLabel, format_score, read_weights, score_sheet
 from giye.audit.serve import serve_sheet
 from giye.audit.sheet import KINDS, read_sheet
 
@@ -59,6 +59,12 @@ def main(argv: list[str] | None = None) -> int:
     score.add_argument("sheet", type=Path)
     score.add_argument("--kind", required=True, choices=KINDS)
     score.add_argument("--json", action="store_true")
+    score.add_argument(
+        "--weights",
+        type=Path,
+        default=None,
+        help="stratum population sizes (CSV stratum,weight or a JSON object): adds a stratum-weighted estimate",
+    )
     score.set_defaults(func=_score)
 
     page = sub.add_parser("page", help="write the static judging page")
@@ -96,7 +102,12 @@ def _splink(args: argparse.Namespace) -> int:
 
 
 def _score(args: argparse.Namespace) -> int:
-    report = score_sheet(args.sheet, args.kind)
+    try:
+        weights = read_weights(args.weights) if args.weights is not None else None
+        report = score_sheet(args.sheet, args.kind, weights)
+    except (UnknownLabel, ValueError) as exc:
+        print(f"giye.audit score: {exc}", file=sys.stderr)
+        return 2
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=1))
     else:

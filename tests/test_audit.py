@@ -166,12 +166,10 @@ def _assert_wilson(block: dict, rows: list[dict[str, str]]) -> None:
     incorrect = sum(row["label"] == "incorrect" for row in rows)
     cannot = sum(row["label"] == "cannot tell" for row in rows)
     unlabeled = sum(row["label"] == "" for row in rows)
-    other = sum(row["label"] not in {"correct", "incorrect", "cannot tell", ""} for row in rows)
     assert block["correct"] == correct
     assert block["incorrect"] == incorrect
     assert block["cannot_tell"] == cannot
     assert block["unlabeled"] == unlabeled
-    assert block["other"] == other
     assert block["n"] == correct + incorrect
     assert block["conservative_n"] == correct + incorrect + cannot
     primary = wilson(correct, correct + incorrect)
@@ -262,3 +260,61 @@ def test_module_command_writes_a_sheet(demo_config: Path, tmp_path: Path):
     assert proc.returncode == 0, proc.stderr
     assert out.is_file()
     assert "V9" in out.read_text(encoding="utf-8")
+
+
+def test_score_refuses_an_unknown_label(tmp_path: Path):
+    from giye.audit.score import UnknownLabel, score_rows
+
+    rows = [
+        {"stratum": "A", "label": "correct", "item_id": "x1"},
+        {"stratum": "A", "label": "wrong", "item_id": "x2"},
+    ]
+    with pytest.raises(UnknownLabel, match=r"line 3 \(x2\).*'wrong'"):
+        score_rows(rows, "cv")
+    rows[1]["label"] = ""
+    assert score_rows(rows, "cv")["overall"]["unlabeled"] == 1
+
+
+def test_weighted_estimate_reproduces_the_census_plus_sample_bound():
+    """docs/EVALUATION.md: 42 census merges (40 decided, all correct) and 40 of 117 sampled (37 correct, 3 undecided)."""
+    from giye.audit.score import score_rows
+
+    rows = [{"stratum": "coded", "label": "correct"} for _ in range(40)]
+    rows += [{"stratum": "coded", "label": "cannot tell"} for _ in range(2)]
+    rows += [{"stratum": "uncoded", "label": "correct"} for _ in range(37)]
+    rows += [{"stratum": "uncoded", "label": "cannot tell"} for _ in range(3)]
+    report = score_rows(rows, "people", {"coded": 42, "uncoded": 117})
+    weighted = report["weighted"]
+    assert weighted["census"] == ["coded"]
+    assert weighted["precision"] == pytest.approx(1.0)
+    low_uncoded = wilson(37, 37)[1]
+    assert weighted["low"] == pytest.approx((42 + 117 * low_uncoded) / 159)
+    assert round(weighted["low"], 3) == 0.931
+    assert round(weighted["conservative_precision"], 3) == 0.932
+    assert round(weighted["conservative_low"], 3) == 0.841
+    with pytest.raises(ValueError, match="no weight"):
+        score_rows(rows, "people", {"coded": 42})
+    with pytest.raises(ValueError, match="not on the sheet"):
+        score_rows(rows, "people", {"coded": 42, "uncoded": 117, "other": 5})
+
+
+def test_score_cli_reads_weights_and_fails_on_a_typo(tmp_path: Path, capsys):
+    from giye.audit.__main__ import main as audit_main
+    from giye.audit.sheet import write_sheet
+
+    path = tmp_path / "s.csv"
+    fields = ["kind", "stratum", "item_id", "label", "note"]
+    rows = [
+        {"kind": "cv", "stratum": "a", "item_id": "1", "label": "correct", "note": ""},
+        {"kind": "cv", "stratum": "b", "item_id": "2", "label": "incorrect", "note": ""},
+    ]
+    write_sheet(path, fields, rows)
+    weights = tmp_path / "w.csv"
+    weights.write_text("stratum,weight\na,3\nb,1\n", encoding="utf-8")
+    assert audit_main(["score", str(path), "--kind", "cv", "--weights", str(weights), "--json"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["weighted"]["precision"] == pytest.approx(0.75)
+    rows[0]["label"] = "Correct!"
+    write_sheet(path, fields, rows)
+    assert audit_main(["score", str(path), "--kind", "cv"]) == 2
+    assert "Correct!" in capsys.readouterr().err
