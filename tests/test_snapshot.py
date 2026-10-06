@@ -192,3 +192,33 @@ def test_recall_reads_a_legacy_post_line(tmp_path: Path):
     kept = store.recall(url, method="POST", body_sha256=hashlib.sha256(b"page=1").hexdigest())
     assert kept is not None and kept.content == b"<p>legacy</p>" and kept.url == url
     assert store.recall(url) is None
+
+
+def test_a_tampered_kept_body_is_refused_on_read(tmp_path: Path):
+    """Review round 5: a body changed on disk was replayed into the ledger without a warning."""
+    import pytest
+
+    from giye.collect.snapshot import SnapshotIntegrityError, verified_bytes
+
+    store = SnapshotStore(tmp_path)
+    path = store.keep("EXAMPLE-FRAME", "https://example.org/roster", b"<p>Lee Haru</p>", content_type="text/html")
+    assert path is not None
+    assert store.recall("https://example.org/roster").content == b"<p>Lee Haru</p>"
+    path.write_bytes(b"<p>Someone Else</p>")
+    with pytest.raises(SnapshotIntegrityError, match=path.name):
+        SnapshotStore(tmp_path).recall("https://example.org/roster")
+    # A legacy line without a digest cannot be checked and is read as it is.
+    assert verified_bytes(path, None) == b"<p>Someone Else</p>"
+
+
+def test_warc_export_refuses_a_tampered_body(tmp_path: Path):
+    import pytest
+
+    from giye.collect.snapshot import SnapshotIntegrityError
+    from giye.export.warc import _entries
+
+    store = SnapshotStore(tmp_path)
+    path = store.keep("EXAMPLE-FRAME", "https://example.org/roster", b"<p>Lee Haru</p>", content_type="text/html")
+    path.write_bytes(b"changed")
+    with pytest.raises(SnapshotIntegrityError, match=path.name):
+        _entries(tmp_path)

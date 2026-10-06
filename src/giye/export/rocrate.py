@@ -36,7 +36,7 @@ from pathlib import Path
 import yaml
 
 from giye import __version__
-from giye.collect.snapshot import servable_rows
+from giye.collect.snapshot import servable_rows, verified_bytes
 from giye.config import Config
 from giye.extract.paths import resolve_stored
 
@@ -318,9 +318,10 @@ def _inputs(config: Config) -> tuple[list[dict], list[Path]]:
     seen_paths: set[Path] = set()
     for row, path in _manifest_files(config):
         if path not in seen_paths:
+            # A body that no longer has its manifest hash is not the capture; refuse it.
+            verified_bytes(path, row.get("sha256"))
             seen_paths.add(path)
             snapshots.append(path)
-        _ = row
 
     roster_urls: dict[str, str] = {}
     for url in _roster_urls(config):

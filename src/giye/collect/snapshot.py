@@ -22,6 +22,13 @@ Manifest version 1 does not keep the original response headers. Version 2 would 
 the first to store them. Until then a WARC export reconstructs a status line and
 Content-Type from these fields and the stored body (see ``giye.export``).
 
+Reading a kept body back (``recall``, and the WARC export through
+:func:`verified_bytes`) recomputes its SHA-256 and compares it with the
+manifest line. A mismatch raises :class:`SnapshotIntegrityError` naming the
+file: the store's name is the hash, so a body that no longer has it is not the
+capture the ledger cites (the trusty-URI property). A legacy line without a
+64-character ``sha256`` cannot be checked and is read as before.
+
 ``recall`` reads the lines back for ``giye collect --from-snapshots``. It scans
 ``<root>/*/snapshots/manifest.jsonl``. A line matches when its ``url`` or
 ``final_url`` equals the requested URL and its request method and body hash
@@ -45,6 +52,8 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+
+from giye.config import GiyeError
 
 # Empty bodies and bodies above 40 MB are not a page capture. The snapshot
 # store and the evidence pass both skip them.
@@ -100,6 +109,27 @@ def servable_rows(rows: list[dict]) -> list[dict]:
             continue
         served.append(row)
     return served
+
+
+class SnapshotIntegrityError(GiyeError):
+    """A kept body whose SHA-256 is not the one its manifest line records."""
+
+
+def verified_bytes(path: Path, expected_sha256: object) -> bytes:
+    """The bytes of ``path``, after checking them against the manifest's ``sha256``.
+
+    Raises :class:`SnapshotIntegrityError` naming the file on a mismatch. A
+    value that is not a 64-character hex digest (a legacy line) is not checked.
+    """
+    content = Path(path).read_bytes()
+    expected = expected_sha256.lower() if isinstance(expected_sha256, str) else ""
+    if len(expected) == 64 and all(c in "0123456789abcdef" for c in expected):
+        actual = hashlib.sha256(content).hexdigest()
+        if actual != expected:
+            raise SnapshotIntegrityError(
+                f"kept snapshot {path} does not match its manifest: sha256 {actual}, manifest says {expected}"
+            )
+    return content
 
 
 @dataclass(frozen=True)
@@ -261,7 +291,7 @@ class SnapshotStore:
         path = self._resolve_stored(self.root / frame / "snapshots", frame, rel)
         if path is None:
             return None
-        return path.read_bytes()
+        return verified_bytes(path, row.get("sha256"))
 
     def _sha_index_for(self, snapshots: Path) -> dict[str, str]:
         """Full sha256 → path from every manifest line. The file is not rewritten."""

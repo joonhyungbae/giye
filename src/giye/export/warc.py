@@ -31,7 +31,7 @@ from warcio.statusandheaders import StatusAndHeaders
 from warcio.warcwriter import WARCWriter
 
 from giye import __version__
-from giye.collect.snapshot import HEADERS_NOT_KEPT, MANIFEST_VERSION, servable_rows
+from giye.collect.snapshot import HEADERS_NOT_KEPT, MANIFEST_VERSION, servable_rows, verified_bytes
 from giye.config import Config
 
 _REASONS = {
@@ -107,7 +107,7 @@ def _entries(root: Path) -> list[tuple[dict, Path, bytes]]:
                 continue
             if not path.is_file():
                 continue
-            found.append((row, path, path.read_bytes()))
+            found.append((row, path, verified_bytes(path, row.get("sha256"))))
     return found
 
 
