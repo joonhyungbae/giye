@@ -22,7 +22,9 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: pip install -e ".[dev]"
       - run: ruff check src tests tools
-      - run: pytest -q
+      # A per-test limit: a hang fails fast with the test's name and a stack dump
+      # instead of holding the runner until the job timeout.
+      - run: pytest -q --timeout=120 --timeout-method=thread
   # Type annotations are reported, not enforced: mypy still finds errors in
   # modules other work is changing. Make this blocking once it passes.
   types:

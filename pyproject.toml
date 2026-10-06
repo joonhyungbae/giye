@@ -42,7 +42,7 @@ dependencies = [
 llm = ["anthropic>=1.0"]
 # Only `python -m giye.audit splink`, the comparison with a probabilistic linker, imports it.
 splink = ["splink>=5.0"]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["pytest>=8", "pytest-timeout>=2.3", "ruff>=0.6"]
 
 [project.urls]
 Homepage = "https://giye.org"
