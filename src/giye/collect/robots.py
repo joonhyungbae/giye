@@ -119,9 +119,12 @@ class RobotsRefused(Exception):
     refused before it was sent.
     """
 
-    def __init__(self, url: str, verdict: str) -> None:
+    def __init__(self, url: str, verdict: str, reason: str = "") -> None:
         self.url = url
         self.verdict = verdict
+        # Why robots.txt was unreachable: "network" (DNS or connection failure:
+        # the host is gone or down), "timeout", "status" (HTTP 5xx), or empty.
+        self.reason = reason
         super().__init__(f"not fetched ({verdict}): {url}")
         log.warning("refusing fetch (%s): %s", verdict, url)
 
@@ -322,7 +325,7 @@ def guarded_request(session: Any, method: str, url: str, *args: Any, **kwargs: A
         decision = decide(current, ua)
         tls_unverified = tls_unverified or decision.tls_unverified
         if not decision.permits:
-            raise RobotsRefused(current, decision.verdict)
+            raise RobotsRefused(current, decision.verdict, decision.error)
         response = requests.Session.request(
             session, method_now, current, *args_now, allow_redirects=False, **kwargs_now
         )

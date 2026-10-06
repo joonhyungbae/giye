@@ -432,7 +432,7 @@ class Fetcher:
             if not decision.permits:
                 if decision.verdict == VERDICT_DISALLOWED:
                     raise RobotsDisallowed(current, decision.verdict)
-                raise RobotsRefused(current, decision.verdict)
+                raise RobotsRefused(current, decision.verdict, decision.error)
             if self._offline_root(current) is not None:
                 return self._offline_page(current, original, decision.verdict, robots_tls)
             response, unverified = self._raw_request(current, self.timeout_s, method, body, body_type)

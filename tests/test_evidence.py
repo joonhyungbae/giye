@@ -159,8 +159,8 @@ def test_unreachable_robots_does_not_fall_back_to_the_archive(tmp_path: Path):
 
     fetcher, session = _fetcher(handler)
     result = settle_url(PAGE, fetcher=fetcher, store=SnapshotStore(tmp_path))
-    assert result["status"] == "robots_disallowed"
-    assert result["reason"] == "robots_unreachable"
+    assert result["status"] == "robots_unreachable"
+    assert result["reason"] == "status"
     assert result["robots"] == VERDICT_UNREACHABLE
     assert session.calls == ["https://example.org/robots.txt"]
 

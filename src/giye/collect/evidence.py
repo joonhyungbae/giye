@@ -19,9 +19,16 @@ For each cited URL (docs/RULES.md, collection policy):
 5. When robots.txt disallows the URL, record the existing capture's URL and
    timestamp (``archive_link_only``, ``direct_failure=robots``) and do not
    download, keep, or serve the bytes. The availability API is the only Archive
-   request. There is no switch that stores those bytes. An unreachable
-   robots.txt (HTTP 5xx, timeout, network error) is ``robots_disallowed`` with
-   reason ``robots_unreachable`` and is not sent to the Archive.
+   request. There is no switch that stores those bytes.
+   A robots.txt that answers HTTP 5xx or times out is a refusal for now
+   (RFC 9309: assume complete disallow), not a verdict: the status is
+   ``robots_unreachable``, nothing is sent to the Archive, and every later run
+   tries again. A host that cannot be reached at all (DNS failure, connection
+   refused) is a gone page: the connection failed, so step 3 applies and an
+   existing capture is looked up (``direct_failure=host unreachable``).
+   Nothing was ever fetched from that host in this run, so no live rule was
+   bypassed. When no capture exists the status is ``unavailable`` and
+   ``retry_unavailable`` tries again.
 6. A config with ``[collect.offline_roots]`` is offline (the demo and tests):
    ``archive_cited`` sends nothing to the Internet Archive, and a cited URL
    outside those roots is not fetched at all (``unavailable``, reason
@@ -34,6 +41,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import re
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -51,6 +59,8 @@ WAYBACK_AVAILABLE = "https://archive.org/wayback/available"
 
 URL_COLUMNS = {"source_url", "url", "fetch_url", "archive_url", "members_source"}
 URL_IN_TEXT = re.compile(r"https?://[^\s,'\"<>）)]+")
+# Statuses a later run does not fetch again. ``robots_unreachable`` is not one:
+# a robots.txt 5xx or timeout is transient (RFC 9309 §2.3.1.4 disallows for now).
 SETTLED = frozenset(
     {
         "fetched",
@@ -62,6 +72,7 @@ SETTLED = frozenset(
     }
 )
 _TIMESTAMP = re.compile(r"\d{1,20}")
+EVIDENCE_FRAME = "_evidence"
 
 
 def settle_url(
@@ -95,10 +106,23 @@ def settle_url(
         return {"status": "platform_excluded", "at": now, "reason": "terms", "robots": exc.verdict}
     except RobotsRefused as exc:
         # A parsed disallow records the capture link and does not download it.
-        # An unreachable robots.txt is not sent to the Archive.
-        reason = "robots_unreachable" if exc.verdict == VERDICT_UNREACHABLE else "robots"
-        if reason != "robots":
-            return {"status": "robots_disallowed", "at": now, "reason": reason, "robots": exc.verdict}
+        if exc.verdict == VERDICT_UNREACHABLE and getattr(exc, "reason", "") == "network":
+            # The host does not answer at all: the page is gone (step 3).
+            reason = "host unreachable"
+            page = None
+            return _from_existing_capture(
+                url, reason, fetcher=fetcher, store=store, frame=frame, collector=collector,
+                run_id=run_id, wayback=wayback, now=now,
+            )
+        if exc.verdict == VERDICT_UNREACHABLE:
+            # 5xx or timeout: a refusal for now, retried on the next run.
+            return {
+                "status": "robots_unreachable",
+                "at": now,
+                "reason": getattr(exc, "reason", "") or "robots_unreachable",
+                "robots": exc.verdict,
+            }
+        reason = "robots"
         if not wayback:
             return {"status": "unavailable", "at": now, "reason": reason, "robots": exc.verdict, "wayback": "offline"}
         linked = _archive_link(url, fetcher)
@@ -144,7 +168,25 @@ def settle_url(
                     result["tls_unverified"] = True
                 return result
         reason = f"http {page.status}" if not page.ok else "too large or empty"
+    return _from_existing_capture(
+        url, reason, fetcher=fetcher, store=store, frame=frame, collector=collector,
+        run_id=run_id, wayback=wayback, now=now,
+    )
 
+
+def _from_existing_capture(
+    url: str,
+    reason: str,
+    *,
+    fetcher: Fetcher,
+    store: SnapshotStore,
+    frame: str,
+    collector: str,
+    run_id: str,
+    wayback: bool,
+    now: str,
+) -> dict:
+    """Keep an existing Internet Archive capture of a gone page, or say there is none."""
     if not wayback:
         return {"status": "unavailable", "at": now, "reason": reason, "wayback": "offline"}
     captured = _existing_capture(url, fetcher)
@@ -336,11 +378,17 @@ def archive_cited(
 
     wayback = wayback_allowed(config)
     have = _already_snapshotted(config)
-    for url in sorted(where):
+    for done, url in enumerate(sorted(where), start=1):
+        if done % CHECKPOINT_EVERY == 0:
+            # A crash or Ctrl-C partway through thousands of URLs keeps what is settled.
+            _write_status(status_path, status)
         if url in have:
             status[url] = {**status.get(url, {}), "status": "collector_or_cv_snapshot"}
             continue
         previous = status.get(url, {}).get("status")
+        if previous == "robots_disallowed" and status.get(url, {}).get("reason") == "robots_unreachable":
+            # Written before an unreachable robots.txt counted as transient.
+            previous = "robots_unreachable"
         if previous in SETTLED:
             continue
         if previous == "unavailable" and not retry_unavailable:
@@ -369,9 +417,23 @@ def archive_cited(
         }
     for url, sources in where.items():
         status.setdefault(url, {})["cited_in"] = sorted(sources)
-    status = {url: value for url, value in status.items() if url in where}
-    status_path.write_text(json.dumps(status, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    if urls is None:
+        # The full citation list: a URL no longer cited leaves the file.
+        status = {url: value for url, value in status.items() if url in where}
+    # A caller's subset leaves every other URL's status as it was.
+    _write_status(status_path, status)
     return status
+
+
+# URLs between two writes of status.json during a run.
+CHECKPOINT_EVERY = 25
+
+
+def _write_status(path: Path, status: dict[str, dict]) -> None:
+    """Write status.json through a temporary file, so a crash leaves the old or the new file."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(status, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def wayback_allowed(config: object) -> bool:
@@ -385,11 +447,19 @@ def wayback_allowed(config: object) -> bool:
 
 
 def _already_snapshotted(config: object) -> set[str]:
+    """URLs a collector or CV pull kept. The evidence pass's own frame is not counted.
+
+    Its lines are this pass's results, whose status (``fetched``, ``archive_org``
+    with ``archived_at``) is already in status.json; counting them would relabel
+    them ``collector_or_cv_snapshot`` on the next run.
+    """
     have: set[str] = set()
     raw = Path(config.raw)  # type: ignore[attr-defined]
     if not raw.is_dir():
         return have
     for manifest in raw.glob("*/snapshots/manifest.jsonl"):
+        if manifest.parent.parent.name == EVIDENCE_FRAME:
+            continue
         parsed: list[dict] = []
         for line in manifest.read_text(encoding="utf-8").splitlines():
             try:
