@@ -5,8 +5,8 @@ The pipeline queues a pair it will not merge. These functions record that
 decision on the ledger the resolver already uses. :func:`merge_people` is the
 one checked merge path; the public ``Ledger.merge`` delegates to it. It runs
 the same team guard automatic merges use, then writes the merge (the dropped
-``gy_id`` is retired and redirects). CV rows are folded the same way; the
-extraction files stay where they are, because CV ownership is read from
+``gy_id`` is retired and redirects). The caller folds CV rows once after its
+last merge (``fold_merged_cvs``); the extraction files stay where they are, because CV ownership is read from
 ``cv_sources`` (``giye.resolve.cv``). Every write is a ledger write, so the dated backup already happens there.
 
 A merge a person makes keeps the same documentary guarantee as an automatic
@@ -40,7 +40,6 @@ from giye.resolve.candidates import (
     review_id_set,
     set_evidence_snapshot,
 )
-from giye.resolve.cv import fold_merged_cvs
 from giye.resolve.teams import team_person_mismatch
 
 
@@ -65,7 +64,8 @@ def decide_queue(
 ) -> dict[str, str]:
     """Close one queue item.
 
-    ``merge`` joins the two ledger ids the item names. Evidence is required,
+    ``merge`` joins the two ledger ids the item names (the caller folds the CV
+    extractions afterwards, see :func:`merge_people`). Evidence is required,
     because ``Ledger.merge`` refuses an empty string. ``distinct`` records
     ``decided=different`` and does not merge. ``dismiss`` records
     ``decided=dismissed`` and sets the status to ``dismissed``. Either decision
@@ -107,7 +107,6 @@ def merge_people(
     *,
     evidence: str,
     override_distinct: bool = False,
-    fold: bool = True,
 ) -> tuple[str, str]:
     """Merge two people. Returns ``(kept ledger id, dropped ledger id)``.
 
@@ -122,12 +121,13 @@ def merge_people(
     so it no longer reads ``decided=different``. The dropped ``gy_id`` is
     retired with a redirect, the same path an automatic merge uses.
 
-    ``fold=False`` skips re-applying the CV extractions after the merge, for a
-    caller that merges many pairs in one run and then calls
-    :func:`giye.resolve.cv.fold_merged_cvs` once. Why: the fold re-applies every
-    extraction on the ledger, not only the two merged records, so the result of
-    one fold after the last merge equals a fold after each merge, and a fold per
-    merge made a batch of about a hundred judged merges take hours (2026-10-06).
+    The CV extractions are not re-applied here: the caller runs
+    :func:`giye.resolve.cv.fold_merged_cvs` once after its last merge, as
+    ``Ledger.merge``, ``giye merge`` and ``giye queue decide`` do. Why: the fold
+    re-applies every extraction on the ledger, not only the two merged records,
+    so one fold after the last merge gives the same ledger as one per merge,
+    and a fold per merge made about a hundred judged merges take hours
+    (2026-10-06).
     """
     check_merge_evidence(ledger, evidence)
     artists = ledger.read("artists")
@@ -168,8 +168,6 @@ def merge_people(
     ledger._merge_rows(keep_id, drop_id, evidence=text, rule=code)
     if distinct:
         _clear_distinct(ledger, {item.get("queue_id") or "" for item in distinct}, dates)
-    if fold:
-        fold_merged_cvs(ledger)
     return keep_id, drop_id
 
 

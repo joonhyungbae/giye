@@ -363,22 +363,27 @@ def _queue_list(args: argparse.Namespace) -> int:
 
 def _queue_decide(args: argparse.Namespace) -> int:
     from giye.ledger.ledger import Ledger
+    from giye.resolve.cv import fold_merged_cvs
     from giye.resolve.decide import decide_queue
 
+    ledger = Ledger.open(_open_config(args.config))
     item = decide_queue(
-        Ledger.open(_open_config(args.config)),
+        ledger,
         args.item_id,
         args.decision,
         evidence=args.evidence or "",
         note=args.note or "",
         override_distinct=args.override_distinct,
     )
+    if args.decision == "merge":
+        fold_merged_cvs(ledger)
     print(f"decide {item.get('queue_id')} {args.decision} status={item.get('status')}")
     return 0
 
 
 def _merge_people(args: argparse.Namespace) -> int:
     from giye.ledger.ledger import Ledger
+    from giye.resolve.cv import fold_merged_cvs
     from giye.resolve.decide import merge_people
 
     ledger = Ledger.open(_open_config(args.config))
@@ -388,6 +393,7 @@ def _merge_people(args: argparse.Namespace) -> int:
     keep, drop = merge_people(
         ledger, args.keep_id, args.drop_id, evidence=args.evidence, override_distinct=args.override_distinct
     )
+    fold_merged_cvs(ledger)
     retired = [row["gy_id"] for row in ledger.read("gy_retired") if row["gy_id"] not in before]
     print(f"merge {drop} → {keep}" + (f" retired {', '.join(retired)}" if retired else ""))
     return 0
