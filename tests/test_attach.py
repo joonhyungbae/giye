@@ -266,3 +266,25 @@ def test_an_attached_row_keeps_a_spelling_the_person_lacks(tmp_path: Path) -> No
     # A re-run adds nothing: the spelling is already listed.
     ledger.apply_roster("SOUTH-2021", [_row("김하늘", "Kim Haneul")], task="collect")
     assert ledger.read("artists")[0]["aliases"] == "Kim Haneul"
+
+
+def test_a_latin_only_row_does_not_join_a_hangul_record_on_its_english_name(tmp_path: Path) -> None:
+    """Review round 6: Latin-only Doyun Lee on another programme joined 이도윤 / Doyun Lee by A2."""
+    ledger = _ledger(tmp_path)
+    ledger.apply_roster("NORTH-2019", [_row("이도윤", "Doyun Lee")], task="collect")
+    ledger.apply_roster("SOUTH-2021", [_row("", "Doyun Lee")], task="collect")
+    assert len(ledger.read("artists")) == 2
+    queued = ledger.read("review_queue")
+    assert len(queued) == 1 and "latin name only" in queued[0]["detail"]
+    # The other direction: a Hangul row whose English name agrees with a Latin-only record.
+    (tmp_path / "reverse").mkdir()
+    other = _ledger(tmp_path / "reverse")
+    other.apply_roster("NORTH-2019", [_row("", "Doyun Lee")], task="collect")
+    other.apply_roster("SOUTH-2021", [_row("이도윤", "Doyun Lee")], task="collect")
+    assert len(other.read("artists")) == 2
+    # Within one series A1 still joins them.
+    (tmp_path / "series").mkdir()
+    series = _ledger(tmp_path / "series")
+    series.apply_roster("NORTH-2019", [_row("이도윤", "Doyun Lee")], task="collect")
+    series.apply_roster("NORTH-2021", [_row("", "Doyun Lee")], task="collect")
+    assert len(series.read("artists")) == 1

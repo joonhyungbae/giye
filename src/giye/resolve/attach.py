@@ -16,9 +16,9 @@ A1. The same name keys are already on a row in this event family.
 A2. The name keys match and the English names agree.
     Agreement is at least two Latin tokens, order ignored, against ``name_en``
     or a Latin alias. One Latin token is too common. Checked before A3, so a
-    group whose English names agree is A2. Two Latin-only personal names are
-    not joined here: the agreeing Latin string is the whole of the evidence.
-    A Hangul name whose English tokens agree is still A2.
+    group whose English names agree is A2. A Latin-only personal name, on
+    either side, is not joined here: the agreeing Latin string is the whole
+    of the evidence. Two Hangul names whose English tokens agree are still A2.
 
 A3. The name is not a bare personal name.
     ``person_like`` asks the language module (``personal_name``). The
@@ -76,8 +76,8 @@ class Attachment:
     """Who a roster row joins, which rule fired, and the same-name rows it did not take.
 
     ``miss`` is why a same-name pair was left for review. Empty for the Korean
-    homonym path. ``latin name only`` when both sides are Latin-only personal
-    names and no rule joined them.
+    homonym path. ``latin name only`` when either side is a Latin-only
+    personal name and no rule joined them.
     """
 
     ledger_id: str | None
@@ -229,11 +229,16 @@ def _a2_ledger_id(
     language: LanguageModule | None,
     words: re.Pattern[str],
 ) -> str | None:
-    """A2. First row whose Latin tokens agree, unless both sides are Latin-only personal names.
+    """A2. First row whose Latin tokens agree, unless either side is a Latin-only personal name.
 
     Two Latin-only personal names are not the same person because the Latin
-    string agrees (author decision 2026-10-05). A stored Latin-only row keeps
-    that string in ``name_ko`` as well, so ``name_ko`` is one of the spellings.
+    string agrees (author decision 2026-10-05). The same holds when only one
+    side is Latin-only: a Hangul record's English spelling agreeing with a
+    Latin-only row is still the Latin string alone, so ``Doyun Lee`` on another
+    programme is not joined to ``이도윤 / Doyun Lee`` (software review, round
+    6). Within a series A1 joins them; elsewhere the pair is queued. A stored
+    Latin-only row keeps that string in ``name_ko`` as well, so ``name_ko`` is
+    one of the spellings.
     """
     incoming = set(latin_tokens(name_en))
     if len(incoming) < 2:
@@ -250,7 +255,7 @@ def _a2_ledger_id(
             words,
             artist,
         )
-        if incoming_latin and other_latin:
+        if incoming_latin or other_latin:
             continue
         return artist["ledger_id"]
     return None
@@ -295,7 +300,11 @@ def match_artist(
         rosterless = _a4_ledger_id(candidates, families_by_lid)
         if rosterless:
             return Attachment(rosterless, "A4", ())
-    miss = "latin name only" if incoming_latin else ""
+    latin_side = incoming_latin or any(
+        _latin_only_personal(artist.get("name_ko") or "", artist.get("name_en") or "", language, words, artist)
+        for artist in candidates
+    )
+    miss = "latin name only" if latin_side else ""
     return Attachment(None, None, tuple(artist["ledger_id"] for artist in candidates), miss)
 
 
