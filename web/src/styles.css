@@ -81,7 +81,8 @@
   --secondary: oklch(0.91 0.012 295);
   --secondary-foreground: oklch(0.195 0.018 295);
   --muted: oklch(0.91 0.012 295);
-  --muted-foreground: oklch(0.57 0.018 295);
+  /* L 0.51: 5.2:1 on --background (WCAG AA 4.5:1 for small text); 0.57 gave 4.0:1. */
+  --muted-foreground: oklch(0.51 0.018 295);
   --accent: oklch(0.5 0.276 286);
   --accent-foreground: oklch(0.985 0.004 295);
   --highlight: oklch(0.5 0.276 286);
