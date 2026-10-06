@@ -217,6 +217,14 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
         "citations.json": citations,
     }
     files = _write_snapshot(config.site, payloads)
+    # The ring reads the same published view. A ring written by an earlier
+    # `giye explore` would still list a person hidden or unpublished since,
+    # so publish rewrites it when one is there (`giye explore` writes it first).
+    rim = config.site / "rim_order.json"
+    if rim.exists():
+        from giye.explore.rim import build_rim_order, write_rim_order
+
+        files.append(write_rim_order(build_rim_order(config, now=clock), config.site))
     print(
         f"site artists={len(artists_out)} activities={len(activities_out)} "
         f"links={len(links_out)} frames={len(frames_out)}"

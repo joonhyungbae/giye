@@ -176,6 +176,8 @@ def test_queue_merge_hide_and_evidence(tmp_path: Path, monkeypatch: pytest.Monke
     published = json.loads((dest / "data" / "site" / "artists.json").read_text(encoding="utf-8"))
     assert stubs[gy] == "HIDDEN_BY_REQUEST"
     assert name not in {row.get("name_ko") for row in published}
+    # publish also rewrites the ring, so the hidden id leaves rim_order.json without `giye explore`.
+    assert gy not in (dest / "data" / "site" / "rim_order.json").read_text(encoding="utf-8")
     assert main(["unhide", gy, "--config", config]) == 0
     capsys.readouterr()
     assert main(["publish", "--config", config]) == 0
