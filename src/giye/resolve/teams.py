@@ -17,7 +17,8 @@ without one the default Korean–English module is used.
 
 A team line also names its members. Each member is on that roster edition in
 their own right. Expanding them adds those rows and does not merge anyone into
-the team. Re-running does not add the same member twice.
+the team. A member is one record across all of the team's editions, and
+re-running does not add the same member twice.
 
 T2. A group record that stores its members only as aliases (two or more
 distinct personal names, no ``members=`` list) names them too; see
@@ -484,76 +485,115 @@ def _create_member(
     return existing
 
 
-def _place_member(
-    artists: list[dict],
-    by_id: dict[str, dict],
+def _member_key(member: Mapping[str, str]) -> str:
+    """One member of one team: the case-folded Hangul spelling, else the Latin one."""
+    return _name_key(member.get("name_ko") or "") or _name_key(member.get("name_en") or "")
+
+
+def _record_keys(row: Mapping[str, str]) -> set[str]:
+    """Name keys of a record: its own names and every alias."""
+    names = [row.get("name_ko") or "", row.get("name_en") or "", *_split_pipe(row.get("aliases") or "")]
+    return {_name_key(name) for name in names} - {""}
+
+
+def _team_credited(
+    artists: list[dict], membership: list[dict], activities: list[dict], team_prefix: str
+) -> dict[str, set[str]]:
+    """Records the ledger already credits through each team, keyed by the team's ledger id.
+
+    Three written markers, all put there by ``expand_teams``: the
+    ``팀 구성원: <team> (<team ledger id>)`` note on a record it created, a
+    membership whose ``attach_rule`` is ``team:<team ledger id>``, and an
+    activity whose role is ``<team prefix> <team name>`` on one of the team's
+    own editions (an existing person keeps a curated note, and a membership
+    they already had is not rewritten, so the credit row is the marker there).
+    """
+    credited: dict[str, set[str]] = {}
+    for row in artists:
+        for match in re.finditer(r"팀 구성원:\s*.*?\s*\(([^()]*)\)", row.get("reviewer_note") or ""):
+            credited.setdefault(match.group(1).strip(), set()).add(row["ledger_id"])
+    frames_of: dict[str, set[str]] = {}
+    for row in membership:
+        frames_of.setdefault(row["ledger_id"], set()).add(row.get("frame_code") or "")
+        rule = row.get("attach_rule") or ""
+        if rule.startswith("team:"):
+            credited.setdefault(rule[len("team:") :], set()).add(row["ledger_id"])
+    by_role: dict[str, list[str]] = {}
+    for row in artists:
+        name = (row.get("name_ko") or "").strip() or (row.get("name_en") or "").strip()
+        if name:
+            by_role.setdefault(f"{team_prefix} {name}", []).append(row["ledger_id"])
+    for row in activities:
+        for team_lid in by_role.get(row.get("role") or "", []):
+            if row["ledger_id"] != team_lid and row.get("origin") in frames_of.get(team_lid, set()):
+                credited.setdefault(team_lid, set()).add(row["ledger_id"])
+    return credited
+
+
+def _credited_member(
+    credited: dict[str, set[str]], by_id: dict[str, dict], team_lid: str, member: Mapping[str, str]
+) -> dict | None:
+    """The record the ledger already credits as this member of this team, or None.
+
+    The record carries one of the team's markers (``_team_credited``) and one
+    of its names or aliases is the member's spelling (case, spaces, and
+    punctuation ignored). Several such records (duplicates written before
+    this rule) give the lowest ``gy_id``, so the choice does not depend on
+    row order.
+    """
+    keys = {_name_key(member.get("name_ko") or ""), _name_key(member.get("name_en") or "")} - {""}
+    hits = [
+        by_id[lid]
+        for lid in credited.get(team_lid, set())
+        if lid in by_id and lid != team_lid and _record_keys(by_id[lid]) & keys
+    ]
+    if not hits:
+        return None
+    return min(hits, key=lambda row: (row.get("gy_id") or "", row["ledger_id"]))
+
+
+def _credit_member(
+    existing: dict,
     families: dict[str, set[str]],
     activities: list[dict],
     membership: list[dict],
-    taken: set[str],
-    issued: list[str],
-    created: list[str],
     frame: str,
     row: Mapping[str, str],
     team_lid: str,
     field: object,
-    language: LanguageModule | None,
     source: str,
     collected: str,
-    stamp: str,
-    id_prefix: str,
-    review: list[dict],
     *,
     dry_run: bool,
 ) -> bool:
-    """Attach or create one member on this edition. Returns whether the tables changed.
+    """Put one member's record on one edition of the team. Returns whether the tables changed.
 
-    A dry run that would create a person appends the name to ``created`` and
-    stops, so the roster is not written. An existing person still receives the
-    credit note and the membership row in memory; the caller skips the write.
-
-    A member whose name keys hit records that A1–A4 do not take (a Latin-only
-    personal name, or a common Korean name on another programme) gets a new
-    record, as a roster row does, and the pair is queued as
-    ``possible_same_person`` (``MEMBER_NAME_ONLY``). The member is never
-    dropped and never joined on the name alone. A re-run attaches the member
-    to that new record under A1, because it is now on this programme.
+    The credit note goes only on a record ``expand_teams`` created
+    (``_create_member`` writes it there). An existing person's note is
+    curated text and a re-run must leave it as it was (docs/FIELD.md,
+    Re-collection).
     """
-    existing, near = _attach_member(artists, by_id, families, frame, row, team_lid, field, language)
-    changed = False
-    if existing is None:
-        if dry_run:
-            created.append(row.get("name_ko") or row.get("name_en") or "")
-            return False
-        existing = _create_member(artists, by_id, taken, issued, row, source, collected, stamp, id_prefix)
-        created.append(existing["ledger_id"])
-        changed = True
-        if near:
-            name = row.get("name_ko") or row.get("name_en") or ""
-            detail = f"{name} ({frame}) shares a name with {', '.join(near)} ({MEMBER_NAME_ONLY})"
-            review.append(
-                empty_row(
-                    REVIEW_FIELDS,
-                    queue_id=str(uuid.uuid4()),
-                    ledger_id=existing["ledger_id"],
-                    reason="possible_same_person",
-                    detail=detail,
-                    status="open",
-                    created_at=stamp,
-                )
-            )
-    # The credit note goes only on a record this run created (_create_member
-    # writes it there). An existing person's note is curated text and a re-run
-    # must leave it as it was (docs/FIELD.md, Re-collection).
-    if _ensure_frame_membership(membership, existing["ledger_id"], frame, source, collected, f"team:{team_lid}"):
-        changed = True
-    families.setdefault(existing["ledger_id"], set()).add(frame_family(frame, field))
-    member_activities = row.get("activities") or []
-    if _copy_member_activities(
-        activities, existing["ledger_id"], frame, member_activities, source, collected, dry_run=dry_run
-    ):
+    lid = existing["ledger_id"]
+    changed = _ensure_frame_membership(membership, lid, frame, source, collected, f"team:{team_lid}")
+    families.setdefault(lid, set()).add(frame_family(frame, field))
+    if _copy_member_activities(activities, lid, frame, row.get("activities") or [], source, collected, dry_run=dry_run):
         changed = True
     return changed
+
+
+def _queue_near(review: list[dict], lid: str, name: str, frame: str, near: list[str], stamp: str) -> None:
+    """Queue a new member record next to same-key records no rule took (``possible_same_person``)."""
+    review.append(
+        empty_row(
+            REVIEW_FIELDS,
+            queue_id=str(uuid.uuid4()),
+            ledger_id=lid,
+            reason="possible_same_person",
+            detail=f"{name} ({frame}) shares a name with {', '.join(near)} ({MEMBER_NAME_ONLY})",
+            status="open",
+            created_at=stamp,
+        )
+    )
 
 
 def expand_teams(ledger: Ledger, *, dry_run: bool = False, frames: Iterable[str] | None = None) -> list[str]:
@@ -570,6 +610,23 @@ def expand_teams(ledger: Ledger, *, dry_run: bool = False, frames: Iterable[str]
     is never that member. A bare personal name those rules do not take gets
     a new record and a ``possible_same_person`` item, not a guessed join. A
     second run adds nothing.
+
+    A member of a team is one person across all of that team's editions,
+    keyed by (team ledger id, member name). The record is chosen once per
+    member, in this order: the record the ledger already credits as this
+    member of this team (``_credited_member``: an earlier run, or an earlier
+    edition); the person A1–A4 attach on one of the team's editions, tried
+    in frame-code order over every edition (also those ``frames`` leaves
+    out); else one new record, created on the first edition being expanded.
+    Every edition then credits that one record. Why: a member who got a new
+    record on one programme was not taken by A1–A4 on the team's other
+    programmes (a name alone does not join across programmes), so one member
+    became one record per programme. The join is written: the new record's
+    note says ``팀 구성원: <team> (<team ledger id>)``, and every membership
+    the expansion adds says ``team:<team ledger id>``.
+
+    A dry run writes nothing; it returns the name of each member it would
+    create, once per member.
     """
     artists = ledger.read("artists")
     activities = ledger.read("activities")
@@ -592,47 +649,74 @@ def expand_teams(ledger: Ledger, *, dry_run: bool = False, frames: Iterable[str]
     team_prefix = ledger.config.field_config.team_prefix or "팀:"
     id_prefix = ledger.config.id_prefix or "GY"
     team_words = field.compiled_team_words()
+    credited = _team_credited(artists, membership, activities, team_prefix)
     for artist in list(artists):
         members = members_of(artist, language, words=team_words)
         if not members:
             continue
         team_lid = artist["ledger_id"]
-        for mem in [
-            row
-            for row in membership
-            if row["ledger_id"] == team_lid and (wanted is None or row.get("frame_code") in wanted)
-        ]:
+        # Frame-code order, so which edition comes first does not depend on ledger row order.
+        editions = sorted(
+            (row for row in membership if row["ledger_id"] == team_lid),
+            key=lambda row: row.get("frame_code") or "",
+        )
+        # Per edition: frame, source, collection date, and one member row per entry of ``members``.
+        shaped: list[tuple[str, str, str, list[dict]]] = []
+        for mem in editions:
             frame = mem["frame_code"]
             team_acts = [row for row in activities if row["ledger_id"] == team_lid and row.get("origin") == frame]
             source = mem.get("source_url") or artist.get("source_url") or ""
             collected = (mem.get("collected_at") or artist.get("collected_at") or "")[:10]
-            for row in member_rows(
+            rows = member_rows(
                 _shaped_team(artist, members, team_acts),
                 team_lid,
                 source_url=source,
                 source_type=artist.get("source_type") or "PUBLIC_RECORD",
                 collected=collected,
                 team_prefix=team_prefix,
-            ):
-                if _place_member(
-                    artists,
-                    by_id,
+            )
+            shaped.append((frame, source, collected, rows))
+        expanded = [item for item in shaped if wanted is None or item[0] in wanted]
+        if not expanded:
+            continue
+        seen: set[str] = set()
+        for index, member in enumerate(members):
+            key = _member_key(member)
+            if key in seen:
+                continue
+            seen.add(key)
+            existing = _credited_member(credited, by_id, team_lid, member)
+            near: list[str] = []
+            if existing is None:
+                for frame, _, _, rows in shaped:
+                    found, ids = _attach_member(artists, by_id, families, frame, rows[index], team_lid, field, language)
+                    if found is not None:
+                        existing = found
+                        break
+                    near.extend(lid for lid in ids if lid not in near)
+            if existing is None:
+                frame, source, collected, rows = expanded[0]
+                if dry_run:
+                    created.append(member.get("name_ko") or member.get("name_en") or "")
+                    continue
+                existing = _create_member(artists, by_id, taken, issued, rows[index], source, collected, stamp, id_prefix)
+                created.append(existing["ledger_id"])
+                changed = True
+                if near:
+                    _queue_near(review, existing["ledger_id"], member.get("name_ko") or member.get("name_en") or "", frame, near, stamp)
+            credited.setdefault(team_lid, set()).add(existing["ledger_id"])
+            for frame, source, collected, rows in expanded:
+                if _credit_member(
+                    existing,
                     families,
                     activities,
                     membership,
-                    taken,
-                    issued,
-                    created,
                     frame,
-                    row,
+                    rows[index],
                     team_lid,
                     field,
-                    language,
                     source,
                     collected,
-                    stamp,
-                    id_prefix,
-                    review,
                     dry_run=dry_run,
                 ):
                     changed = True

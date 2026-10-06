@@ -1062,3 +1062,83 @@ def test_html_cv_shared_by_two_records_is_reported_not_silently_skipped(tmp_path
     assert found == {}
     out = capsys.readouterr().out
     assert "doyun.html" in out and "2 records" in out
+
+
+def _three_programme_team(tmp_path: Path) -> Ledger:
+    """One Latin-named team on three programmes; two Latin-only members A1–A4 do not join across programmes."""
+    ledger = _ledger(tmp_path)
+    frames = ["EXAMPLE-RESIDENCY", "EXAMPLE-WORKSHOP", "EXAMPLE-FORUM"]
+    _seed(
+        ledger,
+        [_artist("LED-team", "GY-000001", "Noeul Studio", "Noeul Studio", note="members=Mira Example|Juno Sample")],
+        [_act("LED-team", frame, 2019 + index) for index, frame in enumerate(frames)],
+        [_mem("LED-team", frame) for frame in frames],
+    )
+    return ledger
+
+
+def test_expand_teams_credits_one_record_per_member_across_the_teams_editions(tmp_path: Path):
+    """A member of a team is one person on every edition of that team, keyed by (team, member name)."""
+    ledger = _three_programme_team(tmp_path)
+    assert sorted(expand_teams(ledger, dry_run=True)) == ["Juno Sample", "Mira Example"]
+    assert len(ledger.read("artists")) == 1
+    created = expand_teams(ledger)
+    assert len(created) == 2
+    artists = {row["ledger_id"]: row for row in ledger.read("artists")}
+    assert sorted(artists[lid]["name_en"] for lid in created) == ["Juno Sample", "Mira Example"]
+    membership = ledger.read("frame_membership")
+    for lid in created:
+        rows = [row for row in membership if row["ledger_id"] == lid]
+        assert sorted(row["frame_code"] for row in rows) == ["EXAMPLE-FORUM", "EXAMPLE-RESIDENCY", "EXAMPLE-WORKSHOP"]
+        assert {row["attach_rule"] for row in rows} == {"team:LED-team"}
+        assert artists[lid]["reviewer_note"] == "팀 구성원: Noeul Studio (LED-team)"
+        credits = [row for row in ledger.read("activities") if row["ledger_id"] == lid]
+        assert len(credits) == 3 and {row["role"] for row in credits} == {"팀: Noeul Studio"}
+    # A second run adds nothing.
+    counts = {name: len(ledger.read(name)) for name in ("artists", "activities", "frame_membership")}
+    assert expand_teams(ledger) == []
+    assert expand_teams(ledger, dry_run=True) == []
+    assert {name: len(ledger.read(name)) for name in counts} == counts
+    # T1 still holds: the resolver merges neither the team with a member nor the members together.
+    resolve_ledger(ledger)
+    assert {row["ledger_id"] for row in ledger.read("artists")} == {"LED-team", *created}
+
+
+def test_expand_teams_reuses_the_members_on_a_new_edition_of_the_team(tmp_path: Path):
+    ledger = _three_programme_team(tmp_path)
+    created = expand_teams(ledger)
+    # A later collection adds an edition; the collector expands only that frame.
+    ledger.write("activities", [*ledger.read("activities"), _act("LED-team", "EXAMPLE-WORKSHOP-2022", 2022)], task="test")
+    ledger.write(
+        "frame_membership", [*ledger.read("frame_membership"), _mem("LED-team", "EXAMPLE-WORKSHOP-2022")], task="test"
+    )
+    assert expand_teams(ledger, frames={"EXAMPLE-WORKSHOP-2022"}) == []
+    assert {row["ledger_id"] for row in ledger.read("artists")} == {"LED-team", *created}
+    on_new = {row["ledger_id"] for row in ledger.read("frame_membership") if row["frame_code"] == "EXAMPLE-WORKSHOP-2022"}
+    assert on_new == {"LED-team", *created}
+
+
+def test_expand_teams_credits_a_member_attached_on_one_edition_on_all_of_them(tmp_path: Path):
+    """A1 on one edition takes the member; the team's other editions credit that person, not a new record."""
+    ledger = _ledger(tmp_path)
+    _seed(
+        ledger,
+        [
+            _artist("LED-team", "GY-000001", "Noeul Studio", "Noeul Studio", note="members=Mira Example|Juno Sample"),
+            _artist("LED-mira", "GY-000002", "Mira Example", "Mira Example", note="curated"),
+        ],
+        [_act("LED-team", "EXAMPLE-RESIDENCY", 2019), _act("LED-team", "EXAMPLE-WORKSHOP", 2021)],
+        [_mem("LED-team", "EXAMPLE-RESIDENCY"), _mem("LED-team", "EXAMPLE-WORKSHOP"), _mem("LED-mira", "EXAMPLE-WORKSHOP")],
+    )
+    created = expand_teams(ledger)
+    assert len(created) == 1
+    membership = ledger.read("frame_membership")
+    assert sorted(row["frame_code"] for row in membership if row["ledger_id"] == "LED-mira") == [
+        "EXAMPLE-RESIDENCY",
+        "EXAMPLE-WORKSHOP",
+    ]
+    artists = {row["ledger_id"]: row for row in ledger.read("artists")}
+    assert set(artists) == {"LED-team", "LED-mira", *created}
+    assert artists["LED-mira"]["reviewer_note"] == "curated"
+    assert not [row for row in ledger.read("review_queue") if row["reason"] == "possible_same_person"]
+    assert expand_teams(ledger) == []
