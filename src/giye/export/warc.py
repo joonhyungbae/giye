@@ -64,6 +64,7 @@ from giye.collect.snapshot import (
     verified_bytes,
 )
 from giye.config import Config
+from giye.export.privacy import Privacy, privacy_for
 from giye.extract.paths import cv_text_path, verified_cv_text
 from giye.ledger.io import read_csv
 
@@ -94,17 +95,30 @@ class WarcExport:
     wacz: Path | None = None
     # Kept bodies missing from disk that ``allow_missing`` skipped.
     missing: tuple[str, ...] = ()
+    # Captures of private URLs left out (``giye.export.privacy``).
+    left_out: int = 0
 
 
 def export_warc(
-    config: Config, dest: Path | None = None, *, wacz: bool = False, allow_missing: bool = False
+    config: Config,
+    dest: Path | None = None,
+    *,
+    wacz: bool = False,
+    allow_missing: bool = False,
+    include_hidden: bool = False,
 ) -> WarcExport:
     """Write ``<data>/work/export/snapshots.warc.gz``, and a ``.wacz`` when asked.
 
     A servable manifest line whose body is gone from disk raises
     ``SnapshotMissingError`` before anything is written, unless
     ``allow_missing``; then the line is left out and listed in ``missing``.
+
+    Kept CVs (``cv_sources``) and captures of a CV URL of a person who is not published, and of a hidden
+    person's own links, are left out (``giye.export.privacy``) unless
+    ``include_hidden``, which keeps the hidden person's links. The warcinfo
+    record and the WACZ data package state which rule applied.
     """
+    privacy = privacy_for(config, include_hidden=include_hidden)
     out = Path(dest) if dest is not None else config.work / "export" / "snapshots.warc.gz"
     if out.suffix == ".gz" or out.name.endswith(".warc"):
         warc_path = out
@@ -115,14 +129,20 @@ def export_warc(
     entries = list(_entries(config.raw, missing))
     if missing and not allow_missing:
         raise SnapshotMissingError(missing_message(missing))
-    cv = _cv_entries(config)
-    created = _newest_date(entries, cv)
-    index = _write_warc(warc_path, entries, name=config.name, created=created, cv=cv)
+    cv = [item for item in _cv_entries(config) if (item.row.get("ledger_id") or "") in privacy.published]
+    kept = [entry for entry in entries if not _private(entry[0], privacy)]
+    left_out = len(entries) - len(kept)
+    created = _newest_date(kept, cv)
+    index = _write_warc(warc_path, kept, name=config.name, created=created, cv=cv, note=privacy.note)
     wacz_path = None
     if wacz:
         wacz_path = _wacz_path(warc_path)
-        _write_wacz(wacz_path, warc_path, index, title=config.name, created=created)
-    return WarcExport(warc=warc_path, wacz=wacz_path, missing=tuple(missing))
+        _write_wacz(wacz_path, warc_path, index, title=config.name, created=created, note=privacy.note)
+    return WarcExport(warc=warc_path, wacz=wacz_path, missing=tuple(missing), left_out=left_out)
+
+
+def _private(row: dict, privacy: Privacy) -> bool:
+    return privacy.private_url(str(row.get("url") or "")) or privacy.private_url(str(row.get("final_url") or ""))
 
 
 def _entries(root: Path, missing: list[str] | None = None) -> list[tuple[dict, Path, bytes]]:
@@ -226,6 +246,7 @@ def _write_warc(
     name: str,
     created: str,
     cv: list[CvEntry] | None = None,
+    note: str = "",
 ) -> list[dict]:
     """Write the WARC. Return one index row per response record, with gzip-member offsets."""
     index: list[dict] = []
@@ -237,6 +258,7 @@ def _write_warc(
             f"description: Snapshot store for {name}\r\n"
             f"headers: {HEADERS_NOT_KEPT}\r\n"
             f"manifest-version: {MANIFEST_VERSION}\r\n"
+            + (f"people: {note}\r\n" if note else "")
         ).encode()
         writer.write_record(
             writer.create_warc_record(
@@ -379,7 +401,9 @@ def _write_cv(
     )
 
 
-def _write_wacz(dest: Path, warc_path: Path, index: list[dict], *, title: str, created: str) -> None:
+def _write_wacz(
+    dest: Path, warc_path: Path, index: list[dict], *, title: str, created: str, note: str = ""
+) -> None:
     """Zip the WARC with pages, a CDXJ index, and a WACZ 1.1.1 data package.
 
     CDX offsets are byte offsets inside the gzip WARC (one member per record).
@@ -422,7 +446,7 @@ def _write_wacz(dest: Path, warc_path: Path, index: list[dict], *, title: str, c
         "title": title or "Giye snapshots",
         "software": f"giye/{__version__}",
         "created": created,
-        "description": HEADERS_NOT_KEPT,
+        "description": HEADERS_NOT_KEPT + (" " + note if note else ""),
         "resources": [
             resource("pages.jsonl", "pages/pages.jsonl", "jsonl", pages_bytes),
             resource(warc_name, f"archive/{warc_name}", "warc", warc_bytes),

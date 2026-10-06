@@ -23,6 +23,13 @@ is the data licence of the run when ``[publish]`` or ``[archive]`` sets
 ``data_license`` (or ``data_licence``). Otherwise it points to a statement that
 no data licence is granted: the software licence does not cover the data.
 
+People hidden by request are left out by default, and CVs are included only
+for published people (``giye.export.privacy``): ledger and processed CSVs are
+copied without those rows, a text file that names a hidden person is left out,
+and captures of private CV and personal-page URLs are not listed. The root
+description says which rule applied and what was left out.
+``include_hidden`` (``--include-hidden``) includes hidden people and says so.
+
 The root's ``author`` and ``publisher`` are one ``Organization``: the archive
 named by ``[publish] citation_author``, identified by ``site_url`` when set.
 Every ``File`` carries an ``encodingFormat`` (a media type from its suffix,
@@ -46,6 +53,7 @@ import yaml
 from giye import __version__
 from giye.collect.snapshot import SnapshotMissingError, missing_message, servable_rows, verified_bytes
 from giye.config import Config
+from giye.export.privacy import Privacy, privacy_for
 from giye.extract.paths import resolve_stored
 
 # Rule ids the stage applies. Empty means the stage has no F/E/P/V letter id
@@ -102,7 +110,12 @@ _STAGE_NOTE = {
 
 
 def export_ro_crate(
-    config: Config, dest: Path | None = None, *, config_path: Path | None = None, allow_missing: bool = False
+    config: Config,
+    dest: Path | None = None,
+    *,
+    config_path: Path | None = None,
+    allow_missing: bool = False,
+    include_hidden: bool = False,
 ) -> Path:
     """Write ``<data>/work/export/ro-crate/ro-crate-metadata.json`` and return that path.
 
@@ -121,7 +134,8 @@ def export_ro_crate(
         meta_path = crate / "ro-crate-metadata.json"
     crate.mkdir(parents=True, exist_ok=True)
     toml = _config_file(config, config_path)
-    graph = _graph(config, crate, toml)
+    privacy = privacy_for(config, include_hidden=include_hidden)
+    graph = _graph(config, crate, toml, privacy)
     document = {
         "@context": [
             "https://w3id.org/ro/crate/1.1/context",
@@ -148,21 +162,26 @@ def _config_file(config: Config, config_path: Path | None) -> Path | None:
     return candidate if candidate.is_file() else None
 
 
-def _graph(config: Config, crate: Path, toml: Path | None) -> list[dict]:
+def _graph(config: Config, crate: Path, toml: Path | None, privacy: Privacy | None = None) -> list[dict]:
     """RO-Crate ``@graph`` for one run: descriptor, dataset, software, works, files, actions."""
-    works, snapshots = _inputs(config)
+    privacy = privacy if privacy is not None else Privacy(include_hidden=True)
+    works, snapshots = _inputs(config, privacy)
     files: list[dict] = []
     file_ids: dict[str, str] = {}
     data = Path(config.data)
     if toml is not None:
-        _crate_file(files, file_ids, crate, toml, encoding="application/toml", data=data, config_file=toml)
+        _crate_file(
+            files, file_ids, crate, toml, encoding="application/toml", data=data, config_file=toml, privacy=privacy
+        )
     snapshot_ids = _crate_paths(files, file_ids, crate, snapshots, data=data)
-    cv_ids = _crate_paths(files, file_ids, crate, _files_under(config.raw / "cv"), data=data)
-    ledger_ids = _crate_paths(files, file_ids, crate, sorted(config.ledger.glob("*.csv")), data=data)
+    cv_root = config.raw / "cv"
+    cv_files = [path for path in _files_under(cv_root) if privacy.cv_file_allowed(path, cv_root)]
+    cv_ids = _crate_paths(files, file_ids, crate, cv_files, data=data)
+    ledger_ids = _crate_paths(files, file_ids, crate, sorted(config.ledger.glob("*.csv")), data=data, privacy=privacy)
     resolve_names = {"review_queue.csv", "gy_retired.csv"}
     resolve_ids = [ident for ident in ledger_ids if Path(ident).name in resolve_names]
-    processed_ids = _crate_paths(files, file_ids, crate, _files_under(config.processed), data=data)
-    site_ids = _crate_paths(files, file_ids, crate, _files_under(config.site), data=data)
+    processed_ids = _crate_paths(files, file_ids, crate, _files_under(config.processed), data=data, privacy=privacy)
+    site_ids = _crate_paths(files, file_ids, crate, _files_under(config.site), data=data, privacy=privacy)
     work_entities, roster_ids, cv_work_ids = _work_entities(works)
     actions = _stage_actions(
         {
@@ -182,7 +201,7 @@ def _graph(config: Config, crate: Path, toml: Path | None) -> list[dict]:
             "publish": site_ids,
         },
     )
-    return _assemble_graph(config, toml, files, work_entities, actions)
+    return _assemble_graph(config, toml, files, work_entities, actions, privacy)
 
 
 def _crate_file(
@@ -194,20 +213,28 @@ def _crate_file(
     encoding: str = "",
     data: Path | None = None,
     config_file: Path | None = None,
+    privacy: Privacy | None = None,
 ) -> str | None:
-    """Add a File entity once. Returns its ``@id``, or None when ``path`` is not a file."""
+    """Add a File entity once. Returns its ``@id``, or None when ``path`` is not a file.
+
+    With ``privacy`` the copy is what ``Privacy.content`` returns: a CSV without
+    a hidden person's rows, or nothing when a text file names them.
+    """
     if not path.is_file():
         return None
     rel = _file_id(crate, path, data=data, config_file=config_file)
     if rel in file_ids:
         return file_ids[rel]
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    _place(path, crate / rel, digest)
+    content = path.read_bytes() if privacy is None else privacy.content(path)
+    if content is None:
+        return None
+    digest = hashlib.sha256(content).hexdigest()
+    _place(path, crate / rel, digest, content)
     entity: dict = {
         "@id": rel,
         "@type": "File",
         "name": path.name,
-        "contentSize": path.stat().st_size,
+        "contentSize": len(content),
         "sha256": digest,
     }
     entity["encodingFormat"] = encoding or media_type(path)
@@ -244,12 +271,18 @@ def media_type(path: Path) -> str:
 
 
 def _crate_paths(
-    files: list[dict], file_ids: dict[str, str], crate: Path, paths: list[Path], *, data: Path
+    files: list[dict],
+    file_ids: dict[str, str],
+    crate: Path,
+    paths: list[Path],
+    *,
+    data: Path,
+    privacy: Privacy | None = None,
 ) -> list[str]:
-    """File ``@id``s for ``paths``, in that order, skipping a path that is not a file."""
+    """File ``@id``s for ``paths``, in that order, skipping a path that is not a file or is left out."""
     ids = []
     for path in paths:
-        ident = _crate_file(files, file_ids, crate, path, data=data)
+        ident = _crate_file(files, file_ids, crate, path, data=data, privacy=privacy)
         if ident:
             ids.append(ident)
     return ids
@@ -301,12 +334,24 @@ def _stage_actions(objects: dict[str, list[str]], results: dict[str, list[str]])
 
 
 def _assemble_graph(
-    config: Config, toml: Path | None, files: list[dict], work_entities: list[dict], actions: list[dict]
+    config: Config,
+    toml: Path | None,
+    files: list[dict],
+    work_entities: list[dict],
+    actions: list[dict],
+    privacy: Privacy | None = None,
 ) -> list[dict]:
     """Root dataset, software, licences, then the works, files, and actions already built."""
     parts = [{"@id": entity["@id"]} for entity in files]
     data_licence = _data_licence(config, toml)
     description = f"One Giye run, software giye/{__version__}."
+    if privacy is not None:
+        description += " " + privacy.note
+        if not privacy.include_hidden:
+            description += (
+                f" Left out: {privacy.left_out_rows} CSV rows, {len(privacy.left_out_files)} files"
+                f" and {privacy.left_out_captures} kept captures."
+            )
     licence_entities: list[dict] = [
         {
             "@id": SOFTWARE_LICENCE,
@@ -365,12 +410,20 @@ def _assemble_graph(
     return [descriptor, root, archive, software, *licence_entities, *work_entities, *files, *actions]
 
 
-def _inputs(config: Config) -> tuple[list[dict], list[Path]]:
-    """Roster and CV works, plus the snapshot files those fetches kept."""
+def _inputs(config: Config, privacy: Privacy | None = None) -> tuple[list[dict], list[Path]]:
+    """Roster and CV works, plus the snapshot files those fetches kept.
+
+    A capture of a private URL (``Privacy.private_url``) is not listed, and
+    neither is its work.
+    """
+    privacy = privacy if privacy is not None else Privacy(include_hidden=True)
     by_url = _manifest_by_url(config)
     snapshots: list[Path] = []
     seen_paths: set[Path] = set()
     for row, path in _manifest_files(config):
+        if privacy.private_url(str(row.get("url") or "")) or privacy.private_url(str(row.get("final_url") or "")):
+            privacy.left_out_captures += 1
+            continue
         if path not in seen_paths:
             # A body that no longer has its manifest hash is not the capture; refuse it.
             verified_bytes(path, row.get("sha256"))
@@ -406,7 +459,7 @@ def _inputs(config: Config) -> tuple[list[dict], list[Path]]:
             }
         )
     for url, row in sorted(cv_rows.items()):
-        if not url.startswith("http") or url in seen:
+        if not url.startswith("http") or url in seen or privacy.hidden_url(url):
             continue
         seen.add(url)
         digest, when = _cv_hash(config, row)
@@ -414,6 +467,9 @@ def _inputs(config: Config) -> tuple[list[dict], list[Path]]:
         if hit:
             digest = hit.get("sha256") or digest
             when = hit.get("fetched_at") or when
+        if privacy.private_url(url):
+            # The text is not in the crate, so its digest is not either.
+            digest = ""
         works.append({"url": url, "role": "cv", "sha256": digest, "dateCreated": when})
     return works, snapshots
 
@@ -587,11 +643,14 @@ def _file_id(crate: Path, path: Path, *, data: Path | None = None, config_file: 
     return f"external/{resolved.name}"
 
 
-def _place(source: Path, target: Path, digest: str) -> None:
-    """Copy ``source`` to ``target`` inside the crate unless the bytes are already there."""
+def _place(source: Path, target: Path, digest: str, content: bytes | None = None) -> None:
+    """Copy ``source`` (or ``content``, its filtered bytes) to ``target`` unless the bytes are already there."""
     if source.resolve() == target.resolve():
         return
     if target.is_file() and hashlib.sha256(target.read_bytes()).hexdigest() == digest:
         return
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source, target)
+    if content is None:
+        shutil.copyfile(source, target)
+    else:
+        target.write_bytes(content)

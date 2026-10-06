@@ -83,7 +83,8 @@ giye export ro-crate --config examples/demo/giye.toml
 record with a reconstructed status line and `Content-Type`. Original response headers were
 not stored before manifest version 2; the file says so. Each kept CV is a response record
 (the page as fetched), a conversion record (the text the pipeline read, checked against
-`content_sha256` first) and a metadata record (its `cv_sources` row). `--wacz` also writes a WACZ package.
+`content_sha256` first) and a metadata record (its `cv_sources` row). `--wacz` also writes a WACZ package. Both exports leave out people hidden by request and CVs of people who are not
+published, and say so in their metadata; `--include-hidden` includes hidden people.
 `giye export ro-crate` writes RO-Crate 1.1 metadata for the run (software version, config
 hash, roster and CV inputs, snapshot files, and one action per stage with its rule ids).
 The root dataset has `name`, `description`, and `datePublished`. The software entity is

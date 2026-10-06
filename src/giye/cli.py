@@ -204,8 +204,17 @@ def _export(args: argparse.Namespace) -> int:
     config = _open_config(args.config)
     output = Path(args.output) if args.output else None
     allow_missing = getattr(args, "allow_missing", False)
+    include_hidden = getattr(args, "include_hidden", False)
+    if include_hidden:
+        print(
+            "giye export: --include-hidden: this export holds people hidden by request; "
+            "share it only under a data-use agreement",
+            file=sys.stderr,
+        )
     if args.export_cmd == "warc":
-        result = export_warc(config, output, wacz=args.wacz, allow_missing=allow_missing)
+        result = export_warc(
+            config, output, wacz=args.wacz, allow_missing=allow_missing, include_hidden=include_hidden
+        )
         for item in result.missing:
             print(f"giye export: kept body missing from disk, left out: {item}", file=sys.stderr)
         print(result.warc)
@@ -213,7 +222,15 @@ def _export(args: argparse.Namespace) -> int:
             print(result.wacz)
         return 0
     if args.export_cmd == "ro-crate":
-        print(export_ro_crate(config, output, config_path=Path(args.config), allow_missing=allow_missing))
+        print(
+            export_ro_crate(
+                config,
+                output,
+                config_path=Path(args.config),
+                allow_missing=allow_missing,
+                include_hidden=include_hidden,
+            )
+        )
         return 0
     print("giye export: expected 'warc' or 'ro-crate'", file=sys.stderr)
     return 2
@@ -524,6 +541,11 @@ def _add_tool_parsers(sub: argparse._SubParsersAction) -> None:
     warc.add_argument(
         "--allow-missing", action="store_true", help="leave out kept bodies gone from disk instead of failing"
     )
+    warc.add_argument(
+        "--include-hidden",
+        action="store_true",
+        help="keep captures of hidden people's own pages (default: left out; the file says which)",
+    )
     crate = export_sub.add_parser("ro-crate", help="RO-Crate 1.1 metadata for this run")
     crate.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
     crate.add_argument(
@@ -533,6 +555,11 @@ def _add_tool_parsers(sub: argparse._SubParsersAction) -> None:
     )
     crate.add_argument(
         "--allow-missing", action="store_true", help="leave out kept bodies gone from disk instead of failing"
+    )
+    crate.add_argument(
+        "--include-hidden",
+        action="store_true",
+        help="include people hidden by request (default: left out; the crate says which)",
     )
     queue = sub.add_parser("queue", help="list or close a review-queue item")
     queue_sub = queue.add_subparsers(dest="queue_cmd", required=True)
