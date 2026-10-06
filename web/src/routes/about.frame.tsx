@@ -53,7 +53,7 @@ const VERDICT_KO: Record<string, string> = {
   adjacent: "인접 (F1 미충족 · 공개 유지)",
 };
 const VERDICT_EN: Record<string, string> = {
-  included: "adopted",
+  included: "admitted",
   planned: "planned",
   excluded: "rejected",
   no_public_roster: "no public roster",
@@ -257,7 +257,10 @@ function FramePage() {
                     )}
                   </td>
                   <td className="font-mono text-xs">
-                    {e.last_fetched_at ?? "—"}
+                    {/* An entry with a roster but no single fetch date (APE-2026: each row was
+                        collected from its own public link) shows that every row carries its own date. */}
+                    {e.last_fetched_at ??
+                      (roster > 0 ? t("행마다 기록", "per row") : "—")}
                   </td>
                   <td className="text-xs">
                     {e.eligibility ? (

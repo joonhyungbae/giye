@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /**
- * How many programmes the sampling frame admits.
+ * How many frame entries the sampling frame admits.
  *
  * `coverage.json` `frame_count_active` counts every row with status "active".
  * That number mixes admitted programmes (`eligibility.decision == "included"`)
@@ -21,14 +21,17 @@ export function countFrameDecisions(
   return { admitted, adjacent };
 }
 
-/** "채택된 프로그램 23개와 인접 갈래 1개" */
+// The counts are frame entries, not programmes: one programme can have several entries (APE CAMP has
+// three, one per public roster page), so "23 admitted programmes" would overstate the number of programmes.
+
+/** "채택된 틀 항목 23개와 인접 갈래 1개" */
 export function admittedProgrammesKo(admitted: number, adjacent: number): string {
-  return `채택된 프로그램 ${admitted}개와 인접 갈래 ${adjacent}개`;
+  return `채택된 틀 항목 ${admitted}개와 인접 갈래 ${adjacent}개`;
 }
 
-/** "23 admitted programmes and 1 adjacent strand" */
+/** "23 admitted frame entries and 1 adjacent strand" */
 export function admittedProgrammesEn(admitted: number, adjacent: number): string {
-  const programmes = admitted === 1 ? "programme" : "programmes";
+  const entries = admitted === 1 ? "frame entry" : "frame entries";
   const strands = adjacent === 1 ? "strand" : "strands";
-  return `${admitted} admitted ${programmes} and ${adjacent} adjacent ${strands}`;
+  return `${admitted} admitted ${entries} and ${adjacent} adjacent ${strands}`;
 }
