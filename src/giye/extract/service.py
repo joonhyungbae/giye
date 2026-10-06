@@ -63,7 +63,14 @@ class ExtractResult:
     skipped_unmatched: list[str] = field(default_factory=list)
     pull: dict[str, int] = field(default_factory=dict)
     extracted: list[str] = field(default_factory=list)
+    # No stored response for the key (replay) or no call made.
     replay_misses: list[str] = field(default_factory=list)
+    # A response whose rows all name sources not sent with it (another
+    # person's reading of the same text). Kept apart from ``replay_misses``:
+    # the cache answered, but the answer is not this person's.
+    unknown_sources: list[str] = field(default_factory=list)
+    # A response with no rows while the ledger holds rows from these sources.
+    empty_readings: list[str] = field(default_factory=list)
     invalid: list[str] = field(default_factory=list)
     # (ledger id, message) for a model call that failed: connection, HTTP error,
     # refusal, truncation. Kept apart from ``invalid`` (a response that did not
@@ -251,8 +258,12 @@ def _extract_pending(ledger: Ledger, config: Config, result: ExtractResult, *, r
                 seen += len(parsed.activities)
             if failed:
                 continue
-        if _drops_everything(seen, activities, source_ids, standing):
-            result.replay_misses.append(ledger_id)
+        dropped = _drops_everything(seen, activities, source_ids, standing)
+        if dropped == "unknown_sources":
+            result.unknown_sources.append(ledger_id)
+            continue
+        if dropped == "empty":
+            result.empty_readings.append(ledger_id)
             continue
         extract_dir.mkdir(parents=True, exist_ok=True)
         payload = {
@@ -359,21 +370,23 @@ def _names_only_other_sources(raw: str, source_ids: set[str]) -> bool:
     return bool(parsed.activities) and not any(row.source_id in source_ids for row in parsed.activities)
 
 
-def _drops_everything(seen: int, kept: list, source_ids: set[str], standing: set[str]) -> bool:
-    """True when this reading would remove every CV row the person has from these sources.
+def _drops_everything(seen: int, kept: list, source_ids: set[str], standing: set[str]) -> str:
+    """Why this reading would remove every CV row the person has from these sources, or "".
 
     Two signs of a reading that is not this person's: the response had rows
-    but none named a source sent with it (a cache entry written for another
-    person who holds the same text), or it has no rows while the ledger holds
-    rows from these sources. Writing it would make apply delete those rows and
-    mark the CV as read. It is counted as a replay miss instead, so the ledger
-    keeps its rows and a later run reads the CV again.
+    but none named a source sent with it (``unknown_sources``: a cache entry
+    written for another person who holds the same text), or it has no rows
+    while the ledger holds rows from these sources (``empty``). Writing it
+    would make apply delete those rows and mark the CV as read. It is not
+    written, so the ledger keeps its rows and a later run reads the CV again.
+    Each sign has its own counter: neither is a replay miss, because the
+    cache did answer.
     """
     if kept:
-        return False
+        return ""
     if seen:
-        return True
-    return any(f"cv:{source_id}" in standing for source_id in source_ids)
+        return "unknown_sources"
+    return "empty" if any(f"cv:{source_id}" in standing for source_id in source_ids) else ""
 
 
 def _pieces(

@@ -116,6 +116,7 @@ def _extract(args: argparse.Namespace) -> int:
     print(
         f"registered={result.registered} pull={result.pull or '-'} "
         f"extracted={len(result.extracted)} replay_miss={len(result.replay_misses)} "
+        f"unknown_sources={len(result.unknown_sources)} empty_reading={len(result.empty_readings)} "
         f"invalid={len(result.invalid)} provider_errors={len(result.provider_errors)}"
     )
     for ledger_id in result.skipped_unmatched:
@@ -124,6 +125,10 @@ def _extract(args: argparse.Namespace) -> int:
         print(f"skip team row {item}")
     for ledger_id in result.replay_misses:
         print(f"replay miss {ledger_id}")
+    for ledger_id in result.unknown_sources:
+        print(f"unknown sources {ledger_id}")
+    for ledger_id in result.empty_readings:
+        print(f"empty reading {ledger_id}")
     for ledger_id in result.invalid:
         print(f"invalid extraction {ledger_id}")
     for ledger_id, message in result.provider_errors:
@@ -153,6 +158,18 @@ def _extract(args: argparse.Namespace) -> int:
             f"{config.extract_base_url or 'the default endpoint'})",
             file=sys.stderr,
         )
+        return 1
+    # --strict: every CV that was not extracted fails the command, so a replay
+    # that silently lost a cached reading cannot pass as reproduced.
+    missed = (
+        len(result.replay_misses)
+        + len(result.unknown_sources)
+        + len(result.empty_readings)
+        + len(result.invalid)
+        + len(result.provider_errors)
+    )
+    if getattr(args, "strict", False) and missed:
+        print(f"giye extract: --strict and {missed} CV(s) not extracted", file=sys.stderr)
         return 1
     return 0
 
@@ -547,6 +564,14 @@ def _add_stage_parsers(sub: argparse._SubParsersAction) -> None:
                 "--replay-only",
                 action="store_true",
                 help="Use the replay cache only. Do not call a model, even when an API key is set.",
+            )
+            sp.add_argument(
+                "--strict",
+                action="store_true",
+                help=(
+                    "Exit 1 when any CV was not extracted: a replay miss, a reading of unknown sources "
+                    "or an empty reading, an invalid response, or a provider error."
+                ),
             )
             sp.add_argument(
                 "--provider",

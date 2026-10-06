@@ -215,6 +215,9 @@ source_id = "CV-TEST-en"
     missed = extract(load(config), replay_only=True, today=TODAY)
     assert missed.replay_misses == ["LED-haneul"]
     assert [row["title"] for row in ledger.read("activities")] == ["First Signal"]
+    # --strict turns the miss into a failed command; without it the run reports and goes on.
+    assert main(["extract", "--config", str(config), "--replay-only"]) == 0
+    assert main(["extract", "--config", str(config), "--replay-only", "--strict"]) == 1
 
     _cache_response(cache, page, "CV-TEST-en", [_entry("CV-TEST-en", "Second Signal", 2019)])
     third = extract(load(config), replay_only=True, today=TODAY)
@@ -1275,11 +1278,13 @@ def test_a_reading_that_would_remove_every_cv_row_is_a_miss(tmp_path: Path, monk
         origin="cv:CV-TEST-en",
     )
     ledger.write("activities", [standing], task="test")
-    for rows in ([], [_entry("CV-OTHER-en", "Example Show", 1990)]):
+    for rows, kind in (([], "empty_readings"), ([_entry("CV-OTHER-en", "Example Show", 1990)], "unknown_sources")):
         monkeypatch.setattr("giye.extract.service._complete", lambda _cache, rows=rows, **_kw: json.dumps({"activities": rows}))
         result = ExtractResult()
         _extract_pending(ledger, cfg, result, replay_only=True)
-        assert result.replay_misses == ["LED-haneul"]
+        # Neither is a replay miss (the cache answered); each has its own counter.
+        assert result.replay_misses == []
+        assert getattr(result, kind) == ["LED-haneul"]
         assert result.extracted == []
         assert not (cfg.work / "cv_extract" / "LED-haneul.json").exists()
 
