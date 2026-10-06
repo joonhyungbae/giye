@@ -10,7 +10,7 @@ Nothing in this stage reads the network. Nothing in it names a real person. The 
 
 `source` is a `Config`, or a mapping with `artists`, `activities`, `frame_membership` and `frames` (and optional `scope`). Frame rows are the `frames.yml` objects. `now` fixes `version` and `computed_at`; without it the clock is the current UTC time. Passing the same `now` makes two calls return the same dict.
 
-The ring lists the people the site builder publishes: in scope, an http(s) source, on a roster or `cv_link_ok=yes`, status empty, `PUBLISHED` or `STAGED`, and who already have a `gy_id`. A publishable row with no `gy_id` is omitted. The collector or the site builder issues that id and writes it; this function does not, and it does not take the ledger lock.
+The ring lists the people the site builder publishes: in scope, an http(s) source, on an admitted roster (an `included` or `adjacent` frame; a verified CV link `cv_link_ok=yes` admits no one), status empty, `PUBLISHED` or `STAGED`, and who already have a `gy_id`. A publishable row with no `gy_id` is omitted. The collector or the site builder issues that id and writes it; this function does not, and it does not take the ledger lock.
 
 ### Rules
 
