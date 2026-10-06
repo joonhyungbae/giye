@@ -32,7 +32,7 @@ CLOCK = datetime(2026, 1, 15, tzinfo=timezone.utc)
 OLD = "LED-0000001140"
 FRAME = "EXAMPLE-WORKSHOP-2022"
 MID = f"{OLD}@{FRAME}"
-EVIDENCE = "H the 2022 fellow is a different person per the programme office; 2026-01-20"
+EVIDENCE = "H the 2022 fellow is a different person per the programme office, by author; 2026-01-20"
 
 
 @pytest.fixture
@@ -81,7 +81,7 @@ def test_split_moves_the_membership_and_its_activities(demo: Path):
     assert marker in old["reviewer_note"] and marker in new["reviewer_note"]
     assert new["reviewer_note"].endswith("; rule=H")
     # The date stays in the evidence segment: a note is split on ";".
-    assert "per the programme office, 2026-01-20; rule=H" in new["reviewer_note"]
+    assert "per the programme office, by author, 2026-01-20; rule=H" in new["reviewer_note"]
     assert new["status"] == "STAGED" and new["source_url"] == "https://example.org/workshop/fellows"
 
     memberships = {(row["ledger_id"], row["frame_code"]): row for row in ledger.read("frame_membership")}
@@ -130,7 +130,7 @@ def test_resolve_and_a_second_collection_do_not_join_them_again(demo: Path, caps
     assert len(ledger.read("activities")) == rows
     # A merge a person makes is refused over the split's decision unless overridden.
     with pytest.raises(GiyeError, match="decided distinct"):
-        merge_people(ledger, OLD, result.new_ledger_id, evidence="H the office corrected itself again; 2026-01-21")
+        merge_people(ledger, OLD, result.new_ledger_id, evidence="H the office corrected itself again, by author; 2026-01-21")
 
 
 def test_publish_treats_the_new_record_as_a_person(demo: Path, capsys: pytest.CaptureFixture[str]):

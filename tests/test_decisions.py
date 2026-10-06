@@ -106,7 +106,7 @@ def test_queue_merge_hide_and_evidence(tmp_path: Path, monkeypatch: pytest.Monke
                 "--decision",
                 "merge",
                 "--evidence",
-                "H the queued pair is one person, checked 2026-01-15",
+                "H the queued pair is one person, checked by the author 2026-01-15",
             ]
         )
         == 0
@@ -238,14 +238,14 @@ def test_merge_over_a_distinct_decision_needs_the_override(tmp_path: Path):
     assert "decided=different" in decided["detail"] and "decided_at=" in decided["detail"]
     left = item["ledger_id"]
     right = min(review_id_set(item) - {left})
-    evidence = "H the press release names both spellings 2026-01-15"
+    evidence = "H the press release names both spellings, read by author 2026-01-15"
     with pytest.raises(GiyeError, match="distinct"):
         merge_people(ledger, left, right, evidence=evidence)
     assert {row["ledger_id"] for row in ledger.read("artists")} >= {left, right}
     # Review round 6: a judgement dated before the decision it overrides is refused.
     with pytest.raises(GiyeError, match="dated before the distinct decision"):
-        merge_people(ledger, left, right, evidence="H the press release names both spellings 1999-01-01", override_distinct=True)
-    evidence = f"H the press release names both spellings {_today()}"
+        merge_people(ledger, left, right, evidence="H the press release names both spellings, read by author 2026-01-20", override_distinct=True)
+    evidence = f"H the press release names both spellings, read by author {_today()}"
 
     keep, drop = merge_people(ledger, left, right, evidence=evidence, override_distinct=True)
     kept = next(row for row in ledger.read("artists") if row["ledger_id"] == keep)
@@ -277,7 +277,7 @@ def test_public_ledger_merge_honours_a_distinct_decision(tmp_path: Path):
     decide_queue(ledger, item["queue_id"], "distinct")
     left = item["ledger_id"]
     right = min(review_id_set(item) - {left})
-    evidence = f"H x y z {_today()}"
+    evidence = f"H x y z by author {_today()}"
     with pytest.raises(GiyeError, match="distinct"):
         ledger.merge(left, right, evidence=evidence, rule="H")
     assert {row["ledger_id"] for row in ledger.read("artists")} >= {left, right}

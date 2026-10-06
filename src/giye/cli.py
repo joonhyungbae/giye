@@ -626,7 +626,7 @@ def _add_tool_parsers(sub: argparse._SubParsersAction) -> None:
     merge_cmd.add_argument("drop_id", help="ledger id or gy_id to retire")
     merge_cmd.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
     merge_cmd.add_argument(
-        "--evidence", required=True, help="E1-E4 (or X1+E) with a citation, or H with a reason and date"
+        "--evidence", required=True, help="E1-E4 (or X1+E) with a citation, or H with a reason, 'by <name or role>' and date"
     )
     merge_cmd.add_argument(
         "--override-distinct", action="store_true", help="allow merging a pair decided distinct (recorded)"
@@ -636,7 +636,7 @@ def _add_tool_parsers(sub: argparse._SubParsersAction) -> None:
     )
     split_cmd.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
     split_cmd.add_argument("--membership", default=None, help="<ledger_id>@<frame_code> (a gy_id may stand for the ledger id)")
-    split_cmd.add_argument("--evidence", default=None, help='H with the reason and the date: "H <reason>; YYYY-MM-DD"')
+    split_cmd.add_argument("--evidence", default=None, help='H with the reason, who judged and the date: "H <reason> by <name or role>; YYYY-MM-DD"')
     split_cmd.add_argument("--name-ko", default=None, help="name of the new record (default: the roster line's)")
     split_cmd.add_argument("--name-en", default=None, help="name of the new record (default: the roster line's)")
     split_cmd.add_argument(

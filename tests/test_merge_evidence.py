@@ -102,7 +102,7 @@ def test_e4_refuses_two_members_of_one_team(tmp_path):
         membership=[_mem("LED-a", "EXAMPLE-WORKSHOP-2020"), _mem("LED-b", "EXAMPLE-RESIDENCY-2019")],
     )
     with pytest.raises(GiyeError, match="candidate pair"):
-        merge_people(ledger, "LED-a", "LED-b", evidence="E4 team 노을 스튜디오 https://example.org/roster")
+        merge_people(ledger, "LED-a", "LED-b", evidence="E4 〈노을 스튜디오〉 https://example.org/roster")
     assert _live(ledger) == {"LED-a", "LED-b"}
 
 
@@ -178,9 +178,33 @@ def test_e3_and_e4_must_cite_the_shared_work_or_team(tmp_path):
     assert verify_merge_evidence(ledger, "LED-a", "LED-b", "E3 〈푸른 신호〉 https://example.org/roster") == "E3"
     with pytest.raises(GiyeError, match="not the work"):
         verify_merge_evidence(ledger, "LED-a", "LED-b", "E3 〈다른 작품〉 https://example.org/roster")
-    assert verify_merge_evidence(ledger, "LED-a", "LED-b", "E4 team 노을크루 https://example.org/roster") == "E4"
+    assert verify_merge_evidence(ledger, "LED-a", "LED-b", "E4 〈노을크루〉 https://example.org/roster") == "E4"
     with pytest.raises(GiyeError, match="not the team"):
-        verify_merge_evidence(ledger, "LED-a", "LED-b", "E4 team 바다크루 https://example.org/roster")
+        verify_merge_evidence(ledger, "LED-a", "LED-b", "E4 〈바다크루〉 https://example.org/roster")
+
+
+def test_e3_and_e4_match_the_bracketed_name_exactly(tmp_path):
+    """Software review 5, minor 3: free text that contains the title is not a citation of it."""
+    ledger = _pair(
+        tmp_path,
+        names=(("한별", ""), ("한별", "Han Byeol")),
+        activities=[
+            _act("LED-a", "EXAMPLE-WORKSHOP-2020", 2020, role="팀: 노을크루", title="〈푸른 신호〉"),
+            _act("LED-b", "EXAMPLE-RESIDENCY-2019", 2019, role="팀: 노을크루", title="〈푸른 신호〉"),
+        ],
+        membership=[_mem("LED-a", "EXAMPLE-WORKSHOP-2020"), _mem("LED-b", "EXAMPLE-RESIDENCY-2019")],
+    )
+    # The bracketed title alone is a citation for E3.
+    assert verify_merge_evidence(ledger, "LED-a", "LED-b", "E3 〈푸른 신호〉") == "E3"
+    with pytest.raises(GiyeError, match="in brackets"):
+        verify_merge_evidence(ledger, "LED-a", "LED-b", "E3 EXAMPLE-WORKSHOP-2020 not the work 푸른 신호 at all")
+    with pytest.raises(GiyeError, match="not the work"):
+        verify_merge_evidence(ledger, "LED-a", "LED-b", "E3 〈푸른 신호등〉 EXAMPLE-WORKSHOP-2020")
+    with pytest.raises(GiyeError, match="in brackets"):
+        verify_merge_evidence(ledger, "LED-a", "LED-b", "E4 team 노을크루 https://example.org/roster")
+    # A bracketed team still needs a citation of its own.
+    with pytest.raises(GiyeError, match="names no citation"):
+        verify_merge_evidence(ledger, "LED-a", "LED-b", "E4 〈노을크루〉")
 
 
 def test_e3_and_e4_refused_when_the_rosters_share_nothing(tmp_path):
@@ -188,15 +212,22 @@ def test_e3_and_e4_refused_when_the_rosters_share_nothing(tmp_path):
     with pytest.raises(GiyeError, match="no work"):
         verify_merge_evidence(ledger, "LED-a", "LED-b", "E3 〈푸른 신호〉 https://example.org/roster")
     with pytest.raises(GiyeError, match="no team"):
-        verify_merge_evidence(ledger, "LED-a", "LED-b", "E4 team 노을크루 https://example.org/roster")
+        verify_merge_evidence(ledger, "LED-a", "LED-b", "E4 〈노을크루〉 https://example.org/roster")
 
 
 def test_h_needs_a_past_date_and_a_reason_of_a_few_words(tmp_path):
     ledger = _pair(tmp_path)
+    artists = ledger.read("artists")
+    for row, when in zip(artists, ("2025-03-01", "2025-11-20T08:00:00Z")):
+        row["collected_at"] = when
+    ledger.write("artists", artists, task="test")
     for bad, reason in (
         ("H same face in both catalogues 2099-01-01", "future"),
         ("H same 2026-01-15", "at least 3 words"),
         ("H same face in both catalogues 2026-01-15 and 2026-02-30", "not a calendar date"),
+        # Software review 5, minor 2: who judged, and not before the records existed.
+        ("H same face in both catalogues 2026-01-15", "by <name or role>"),
+        ("H x y z by author 1900-01-01", r"before the earlier record was collected \(2025-03-01\)"),
     ):
         with pytest.raises(GiyeError, match=reason):
             merge_people(ledger, "LED-a", "LED-b", evidence=bad)
@@ -236,7 +267,7 @@ def test_cli_refuses_an_unchecked_e1_on_the_demo(tmp_path, capsys):
     args = ["merge", seoyeon["gy_id"], haru["gy_id"], "--config", config, "--evidence"]
     assert main([*args, "E1 https://example.org/unrelated"]) == 2
     assert "E1 does not hold" in capsys.readouterr().err
-    assert main([*args, "H the catalogue photo matches, checked 2099-01-01"]) == 2
+    assert main([*args, "H the catalogue photo matches, checked by author 2099-01-01"]) == 2
     assert "future" in capsys.readouterr().err
     assert len(_artists(dest)) == len(artists)
 
@@ -244,8 +275,8 @@ def test_cli_refuses_an_unchecked_e1_on_the_demo(tmp_path, capsys):
 def test_h_dates_must_be_written_as_iso_dates(tmp_path):
     ledger = _pair(tmp_path)
     for bad in (
-        "H same face in both catalogues 2026-01-15, seen again 01/01/2099",
-        "H same face in both catalogues 2026.01.15",
+        "H same face in both catalogues by author 2026-01-15, seen again 01/01/2099",
+        "H same face in both catalogues by author 2026.01.15",
     ):
         with pytest.raises(GiyeError, match="YYYY-MM-DD"):
             merge_people(ledger, "LED-a", "LED-b", evidence=bad)
@@ -289,7 +320,7 @@ def test_a_chain_keeps_every_merge_marker_and_its_evidence(tmp_path):
     artists.append(_artist("LED-c", "GY-000003", "정다온", "Daon Jeong"))
     ledger.write("artists", artists, task="test")
     merge_people(ledger, "LED-a", "LED-b", evidence="E1 https://haru.example.org/cv")
-    h = "H the artist confirmed both spellings by letter 2026-01-15"
+    h = "H the artist confirmed both spellings by letter, recorded by author 2026-01-15"
     merge_people(ledger, "LED-c", "LED-a", evidence=h)
 
     rows = ledger.read("artists")

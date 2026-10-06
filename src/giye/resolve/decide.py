@@ -40,6 +40,7 @@ from giye.resolve.candidates import (
     review_id_set,
     set_evidence_snapshot,
 )
+from giye.resolve.evidence import BRACKETED, norm_title
 from giye.resolve.teams import team_person_mismatch
 
 
@@ -181,8 +182,8 @@ _ISO_DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 _TOKEN_STRIP = "()[]{}<>,;:.'\"“”‘’"
 _EVIDENCE_FORM = (
     "merge evidence must name a rule and a source: an E-code (E1-E4 or X1+E1..E4) followed by a "
-    "citation (an http(s) URL, a CV source id, or a roster edition code), or H followed by the reason "
-    "and the date (YYYY-MM-DD)"
+    "citation (an http(s) URL, a CV source id, a roster edition code, or for E3 the bracketed work title), "
+    "or H followed by the reason, who judged ('by <name or role>') and the date (YYYY-MM-DD)"
 )
 
 
@@ -202,7 +203,10 @@ def check_merge_evidence(ledger: Ledger, evidence: str) -> str:
     matched = _E_EVIDENCE.match(text)
     if matched:
         rest = matched.group("rest").strip()
-        if not _has_citation(ledger, rest):
+        # E3 names the work itself: the bracketed title is what a reader looks
+        # up on both rosters, so it is a citation on its own.
+        bracketed = matched.group("code").endswith("E3") and BRACKETED.search(rest)
+        if not bracketed and not _has_citation(ledger, rest):
             raise GiyeError(f"merge refused: {matched.group('code')} names no citation; {_EVIDENCE_FORM}")
         return matched.group("code")
     matched = _H_EVIDENCE.match(text)
@@ -236,10 +240,13 @@ def verify_merge_evidence(ledger: Ledger, keep: str, drop: str, evidence: str) -
     - ``E2``: a cited CV source (``cv_sources`` id or its URL) belongs to one
       record, and that CV lists a roster edition of the other that the CV's
       owner is not on (``cv_mentions`` with the edition years, ± one year).
-    - ``E3``: the cited work title (normalised) is a bracketed work both rosters
-      credit, or one roster credits and the other's CV lists, in the year window,
-      and it is not a generic title (``evidence.generic_titles``).
-    - ``E4``: the cited team name is a team both rosters credit with the team prefix.
+    - ``E3``: a bracketed title in the evidence (``〈…〉`` and the same family),
+      normalised, equals a bracketed work both rosters credit, or one roster
+      credits and the other's CV lists, in the year window, and it is not a
+      generic title (``evidence.generic_titles``). The bracketed title alone is
+      a citation. A work named only in free text is refused.
+    - ``E4``: a bracketed team name in the evidence, normalised, equals a team
+      both rosters credit with the team prefix.
     - ``E2``–``E4`` also need the two records to be a candidate pair, as the
       resolver only tries these rules on one: the same name or the names meet
       (``giye.resolve.attach.names_meet``: Hangul spelling, a name key, or a
@@ -247,8 +254,10 @@ def verify_merge_evidence(ledger: Ledger, keep: str, drop: str, evidence: str) -
     - ``X1+E*``: the two records' name keys (``LanguageModule.name_keys`` over
       ``name_ko`` and ``name_en``) intersect, and the E part holds as above
       (the X1 keys are the candidate condition).
-    - ``H``: every ISO date in the string is a real date no later than today,
-      and the reason has at least three words.
+    - ``H``: every ISO date in the string is a real date no later than today's
+      UTC date and the judgement is not dated before the earlier record's
+      ``collected_at``; the reason has at least three words and names who
+      judged (``by <name or role>``).
 
     Why the candidate conditions: the cited
     fact alone does not tie two people. Two members of one team share the
@@ -260,7 +269,7 @@ def verify_merge_evidence(ledger: Ledger, keep: str, drop: str, evidence: str) -
     text = evidence.strip()
     rest = text[len(code) :].strip()
     if code == "H":
-        _verify_h(rest)
+        _verify_h(rest, not_before=_earlier_collected(ledger, keep, drop))
         return code
     # Imported here: giye.resolve.service imports this module's package.
     from giye.resolve.service import _State
@@ -337,10 +346,21 @@ def _h_cautions(ledger: Ledger, left: dict[str, str], right: dict[str, str]) -> 
 _OTHER_DATE = re.compile(r"\b\d{1,4}[./]\d{1,2}[./]\d{1,4}\b|\b\d{1,2}-\d{1,2}-\d{2,4}\b")
 
 
-def _verify_h(rest: str) -> None:
-    """H: real dates, none in the future, and a reason of at least ``_H_MIN_WORDS`` words."""
-    # The local calendar day, so a judgement dated today where the person sits is accepted.
-    today = datetime.now(timezone.utc).astimezone().date()
+# H names who judged: "by" and a name or a role ("by author", "by the editor").
+_H_DECIDER = re.compile(r"(?i)(?<![^\W\d_])by\s+(?:the\s+)?[^\W\d_][\w'’.-]*")
+
+
+def _verify_h(rest: str, *, not_before: str = "") -> None:
+    """H: real dates, none in the future, a decider, and a reason of at least ``_H_MIN_WORDS`` words.
+
+    Every date is compared with today's UTC date, the date ``decided_at``
+    stamps, so the two checks agree at a day boundary. ``not_before`` (an ISO
+    date, the earlier record's ``collected_at``) bounds the judgement from
+    below: a person cannot have judged two records before the first of them
+    was collected, so ``H … 1900-01-01`` is refused. The decider
+    (``by <name or role>``) is required so a later reader knows whom to ask.
+    """
+    today = datetime.now(timezone.utc).date()
     other = _OTHER_DATE.search(_ISO_DATE.sub(" ", rest))
     if other:
         raise GiyeError(f"merge refused: H date {other.group(0)!r} must be written YYYY-MM-DD")
@@ -354,6 +374,31 @@ def _verify_h(rest: str) -> None:
     words = _WORD.findall(_ISO_DATE.sub(" ", rest))
     if len(words) < _H_MIN_WORDS:
         raise GiyeError(f"merge refused: H needs a reason of at least {_H_MIN_WORDS} words; {_EVIDENCE_FORM}")
+    if not _H_DECIDER.search(rest):
+        raise GiyeError("merge refused: H needs who judged, written 'by <name or role>' (for example 'by author')")
+    if not_before:
+        judged = max(("-".join(parts) for parts in _ISO_DATE.findall(rest)), default="")
+        if judged and judged < not_before:
+            raise GiyeError(
+                f"merge refused: the H judgement ({judged}) is dated before the earlier record was collected "
+                f"({not_before})"
+            )
+
+
+def _earlier_collected(ledger: Ledger, keep: str, drop: str) -> str:
+    """The earlier ``collected_at`` date of the two records, or "" when neither has one.
+
+    Why the earlier and not the later: a re-collection can move a record's
+    ``collected_at`` forward, so only the earliest date is a bound that a
+    correct judgement can never fall before.
+    """
+    dates = []
+    for row in ledger.read("artists"):
+        if row.get("ledger_id") in (keep, drop) or (row.get("gy_id") and row.get("gy_id") in (keep, drop)):
+            matched = _ISO_DATE.match((row.get("collected_at") or "").strip())
+            if matched:
+                dates.append(matched.group(0))
+    return min(dates, default="")
 
 
 def _h_not_before(evidence: str, distinct: list[dict[str, str]]) -> None:
@@ -455,7 +500,7 @@ def _verify_e2(state, keep: str, drop: str, rest: str) -> str:
 
 
 def _verify_e3(state, keep: str, drop: str, rest: str) -> str:
-    from giye.resolve.evidence import YEAR_WINDOW, cv_lists_work, roster_works, title_in
+    from giye.resolve.evidence import YEAR_WINDOW, cv_lists_work, roster_works
 
     works = {lid: roster_works(state.rows_of.get(lid, []), state.generic) for lid in (keep, drop)}
     holding: set[str] = {
@@ -469,20 +514,28 @@ def _verify_e3(state, keep: str, drop: str, rest: str) -> str:
                 holding.add(title)
     if not holding:
         return "no work is credited on both rosters, or on one roster and the other's CV"
-    if any(title_in(title, rest) for title in sorted(holding)):
+    cited = {norm_title(title) for title in BRACKETED.findall(rest)}
+    if not cited:
+        return "E3 must name the shared work in brackets, for example 〈title〉"
+    # The bracketed title must be the shared work, compared whole after
+    # normalisation: a work mentioned somewhere in free text does not count.
+    if cited & holding:
         return ""
     return "the cited work is not the work the two records share"
 
 
 def _verify_e4(state, keep: str, drop: str, rest: str) -> str:
-    from giye.resolve.evidence import teams, title_in
+    from giye.resolve.evidence import teams
 
     shared = teams(state.rows_of.get(keep, []), prefix=state.team_prefix) & teams(
         state.rows_of.get(drop, []), prefix=state.team_prefix
     )
     if not shared:
         return "the two rosters credit no team in common"
-    if any(title_in(team, rest) for team in sorted(shared)):
+    cited = {norm_title(name) for name in BRACKETED.findall(rest)}
+    if not cited:
+        return "E4 must name the shared team in brackets, for example 〈team name〉"
+    if cited & shared:
         return ""
     return "the cited team is not the team both rosters credit"
 
