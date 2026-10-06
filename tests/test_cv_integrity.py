@@ -66,3 +66,36 @@ def test_every_cv_reader_refuses_an_edited_text(demo, tmp_path: Path) -> None:
         normalize_texts(config, [source])
     with pytest.raises(SnapshotIntegrityError, match=path.name):
         audit_texts(config, [source])
+
+
+def test_warc_export_carries_each_cv_page_and_its_text(demo, tmp_path: Path) -> None:
+    from warcio.archiveiterator import ArchiveIterator
+
+    from giye.export.warc import export_warc
+
+    exported = export_warc(demo, tmp_path / "snapshots.warc.gz")
+    responses: dict[str, bytes] = {}
+    conversions: dict[str, bytes] = {}
+    with exported.warc.open("rb") as handle:
+        for record in ArchiveIterator(handle):
+            target = record.rec_headers.get_header("WARC-Target-URI") or ""
+            if record.rec_type == "response":
+                responses[target] = record.content_stream().read()
+            elif record.rec_type == "conversion":
+                assert record.rec_headers.get_header("WARC-Refers-To")
+                conversions[target] = record.content_stream().read()
+    sources = _sources(demo)
+    assert sources
+    for source in sources:
+        target = source.get("fetch_url") or source["url"]
+        assert target in responses
+        text = resolve_stored(demo, source["snapshot_path"] + ".txt").read_text(encoding="utf-8")
+        assert conversions[target].decode("utf-8") == text
+
+
+def test_warc_export_refuses_an_edited_cv_text(demo, tmp_path: Path) -> None:
+    from giye.export.warc import export_warc
+
+    config, _source, path = _tampered(demo, tmp_path)
+    with pytest.raises(SnapshotIntegrityError, match=path.name):
+        export_warc(config, tmp_path / "out.warc.gz")

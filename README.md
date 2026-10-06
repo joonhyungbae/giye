@@ -81,7 +81,9 @@ giye export ro-crate --config examples/demo/giye.toml
 
 `giye export warc` writes the snapshot store as WARC 1.1. Each kept body is a response
 record with a reconstructed status line and `Content-Type`. Original response headers were
-not stored before manifest version 2; the file says so. `--wacz` also writes a WACZ package.
+not stored before manifest version 2; the file says so. Each kept CV is a response record
+(the page as fetched), a conversion record (the text the pipeline read, checked against
+`content_sha256` first) and a metadata record (its `cv_sources` row). `--wacz` also writes a WACZ package.
 `giye export ro-crate` writes RO-Crate 1.1 metadata for the run (software version, config
 hash, roster and CV inputs, snapshot files, and one action per stage with its rule ids).
 The root dataset has `name`, `description`, and `datePublished`. The software entity is

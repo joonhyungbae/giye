@@ -51,7 +51,7 @@ def test_demo_exports_warc_wacz_and_ro_crate(tmp_path: Path):
                 payload = json.loads(record.content_stream().read().decode("utf-8"))
                 metadata.append(payload)
                 assert payload["headers_note"] == HEADERS_NOT_KEPT
-                assert payload.get("url", "").startswith("https://example.org/")
+                assert payload.get("url", "").startswith(("https://example.org/", "https://cv.example.org/"))
                 assert record.rec_headers.get_header("WARC-Refers-To")
     assert responses
     assert len(metadata) == len(responses)
