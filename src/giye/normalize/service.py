@@ -129,13 +129,15 @@ def _sha256(path: Path) -> str:
 
 
 def _cv_texts(config: Config, sources: list[dict]) -> list[tuple[str, str]]:
-    """(text, url) of the latest snapshot of each active CV source.
+    """(text, url) of the latest snapshot of each active CV source, in source id order.
 
     The ledger stores the snapshot stem without ``.txt``; the extracted text
-    is that stem plus ``.txt``.
+    is that stem plus ``.txt``. Source id order: L1 takes the first CV that names
+    a base and B1/L1 cite the first matching CV, and that must not follow the
+    order of the cv_sources rows.
     """
     found: list[tuple[str, str]] = []
-    for source in sources:
+    for source in sorted(sources, key=lambda row: (row.get("source_id") or "", row.get("url") or "")):
         if source.get("active", "true") != "true" or not source.get("snapshot_path"):
             continue
         text = verified_cv_text(config, source, errors="replace")
@@ -386,7 +388,7 @@ def _derive_attributes(
                     min_rows=tags.medium_min_rows,
                 ).items()
             ):
-                put(ledger_id, "medium", tag, f"M1 ≥{tags.medium_min_rows} rows name it", "|".join(ids[:20]))
+                put(ledger_id, "medium", tag, f"M1 ≥{tags.medium_min_rows} rows name it", "|".join(sorted(ids)[:20]))
                 medium_values.append(tag)
         if ledger_id in published:
             value, evidence = record_depth(

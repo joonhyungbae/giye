@@ -16,7 +16,7 @@ from giye.ledger.schemas import (
     MEMBERSHIP_FIELDS,
     empty_row,
 )
-from giye.normalize.rules import lang_of, match_key, norm_text, year_flags
+from giye.normalize.rules import lang_of, match_key, norm_text, roster_source_urls, year_flags
 from giye.normalize.service import normalize
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -320,3 +320,73 @@ def test_p6_assigns_the_highest_level_and_names_the_evidence(tmp_path: Path) -> 
     assert "src-0" not in depth["p-cv"]["evidence"]
     report = (result.processed / "report.md").read_text(encoding="utf-8")
     assert "| 1 | 1 |" in report and "| 4 | 1 |" in report
+
+
+def test_p_rules_do_not_depend_on_row_order(tmp_path: Path) -> None:
+    """Reversed ledger rows give the same derived rows: first-wins choices use a sort key.
+
+    Ties: A1 cites the smallest activity id of the earliest year, L1 reads CVs in
+    source id order, M1 lists ids sorted, P4 tries editions in code order, and
+    the roster URL comes from the smallest frame code.
+    """
+    artists = [{"ledger_id": "p1", "name_en": "Haneul Kim"}]
+    activities = [
+        {
+            "activity_id": f"a{index}",
+            "ledger_id": "p1",
+            "title": f"video work {index} example residency",
+            "year": "2019",
+            "origin": "cv:s1",
+            "activity_type": "group_exhibition",
+            "publishable": "yes",
+        }
+        for index in range(4)
+    ]
+    sources = [
+        {"source_id": "s2", "ledger_id": "p1", "url": "https://example.org/cv/2", "active": "true", "snapshot_path": "data/raw/cv/two"},
+        {"source_id": "s1", "ledger_id": "p1", "url": "https://example.org/cv/1", "active": "true", "snapshot_path": "data/raw/cv/one"},
+    ]
+    membership = [
+        {"ledger_id": "p1", "frame_code": "EXAMPLE-RESIDENCY-2019"},
+        {"ledger_id": "p1", "frame_code": "EXAMPLE-ACADEMY-2019"},
+    ]
+    config_text = _config(tmp_path).read_text(encoding="utf-8").replace(
+        '[resolve.event_patterns]\n', '[resolve.event_patterns]\nEXAMPLE-ACADEMY = "example"\n'
+    )
+
+    def derived(order: int, name: str) -> tuple[list, list]:
+        base = tmp_path / name
+        cv = base / "data" / "raw" / "cv"
+        cv.mkdir(parents=True)
+        (cv / "one.txt").write_text("Based in Seoul.\n", encoding="utf-8")
+        (cv / "two.txt").write_text("Based in Busan.\n", encoding="utf-8")
+        _write_ledger(
+            base,
+            artists,
+            activities[::order],
+            cv_sources=sources[::order],
+            membership=membership[::order],
+        )
+        config = base / "giye.toml"
+        config.write_text(config_text.replace((tmp_path / "data").as_posix(), (base / "data").as_posix()), encoding="utf-8")
+        result = normalize(load(config))
+        attrs = sorted(tuple(row.items()) for row in read_csv(result.processed / "artist_attributes.csv"))
+        acts = sorted(tuple(row.items()) for row in read_csv(result.processed / "activities.csv"))
+        return attrs, acts
+
+    forward, backward = derived(1, "forward"), derived(-1, "backward")
+    assert forward == backward
+    attrs = [dict(row) for row in forward[0]]
+    assert _attr(attrs, "p1", "active_since")["evidence"] == "a0"
+    assert _attr(attrs, "p1", "country")["evidence_url"] == "https://example.org/cv/1"
+    assert {dict(row)["event_link"] for row in forward[1]} == {"EXAMPLE-ACADEMY-2019"}
+
+
+def test_roster_url_does_not_depend_on_membership_order() -> None:
+    """Of two memberships, the smaller frame code gives the person's roster URL."""
+    rows = [
+        {"ledger_id": "p1", "frame_code": "EXAMPLE-RESIDENCY-2019", "source_url": "https://example.org/residency"},
+        {"ledger_id": "p1", "frame_code": "EXAMPLE-ACADEMY-2019", "source_url": "https://example.org/academy"},
+    ]
+    for order in (rows, rows[::-1]):
+        assert roster_source_urls(order, [], lambda code: None) == {"p1": "https://example.org/academy"}

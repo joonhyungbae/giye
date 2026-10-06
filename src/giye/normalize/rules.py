@@ -139,6 +139,9 @@ def birth_year(texts: list[str]) -> int | None:
 def based_in(texts: list[str], gazetteer: Gazetteer) -> tuple[list[tuple[str, str]], str]:
     """L1 (P5): places a base phrase names, via the gazetteer. The first CV that has one wins.
 
+    The caller passes the CVs in source id order (``_cv_texts``), so "first" does
+    not depend on the order of the cv_sources rows.
+
     Returns ``([(country, Korean region)], phrase)``.
     """
     for text in texts:
@@ -156,7 +159,8 @@ def active_since(rows: list[dict], flags: dict[str, list[str]]) -> tuple[int, st
 
     Practice is an exhibition, screening, performance, festival, award, residency,
     or release. A row whose note says ``upcoming`` is skipped. Returns
-    ``(year, activity_id)``.
+    ``(year, activity_id)``. Among rows of that year the smallest activity id is
+    the evidence, so the ledger's row order does not choose it.
     """
     best: tuple[int, str] | None = None
     for row in rows:
@@ -167,7 +171,7 @@ def active_since(rows: list[dict], flags: dict[str, list[str]]) -> tuple[int, st
         if "upcoming" in (row.get("reviewer_note") or ""):
             continue
         year = int(row["year"])
-        if best is None or year < best[0]:
+        if best is None or (year, row["activity_id"]) < best:
             best = (year, row["activity_id"])
     return best
 
@@ -245,7 +249,9 @@ def event_links(
     """
     out: dict[str, str] = {}
     editions = []
-    for code in memberships:
+    # Sorted codes: when two editions of one year both match, the smaller code
+    # wins, whatever order the membership rows are in.
+    for code in sorted(set(memberships)):
         match = re.search(r"-(\d{4})$", code)
         pattern = event_pattern(code)
         if match and pattern:
@@ -484,10 +490,15 @@ def roster_source_urls(
     frames: list[dict],
     edition_of: Callable[[str], tuple[str, str | None] | None],
 ) -> dict[str, str]:
-    """First http(s) URL for a person: the membership row, else the frame page."""
+    """First http(s) URL for a person: the membership row, else the frame page.
+
+    Rows are read in (frame code, row URL) order, so of several memberships the
+    one with the smallest frame code gives the URL, whatever the ledger's row order.
+    """
     frame_url = {str(frame.get("code") or ""): frame.get("source_url") or "" for frame in frames if frame.get("code")}
     roster_url: dict[str, str] = {}
-    for row in public_membership:
+    ordered = sorted(public_membership, key=lambda row: (row.get("frame_code") or "", row.get("source_url") or ""))
+    for row in ordered:
         ledger_id = row.get("ledger_id") or ""
         edition = edition_of(row.get("frame_code") or "")
         for url in (row.get("source_url") or "", frame_url.get(edition[0], "") if edition else ""):
