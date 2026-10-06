@@ -162,18 +162,30 @@ class _HTMLText(HTMLParser):
             self.parts.append(data)
 
 
-def html_text(body: bytes | str) -> str:
-    """Visible text of an HTML CV, with a newline where a block tag was."""
-    raw = body.decode("utf-8", errors="replace") if isinstance(body, bytes) else body
+def html_text(body: bytes | str, content_type: str = "") -> str:
+    """Visible text of an HTML CV, with a newline where a block tag was.
+
+    Bytes are decoded by ``giye.collect.charset.decode_body`` (HTTP charset,
+    then ``<meta>``, then detection), the same rule as a roster page.
+    """
+    from giye.collect.charset import decode_body
+
+    raw = decode_body(body, content_type)
     parser = _HTMLText()
     parser.feed(raw)
     return "".join(parser.parts)
 
 
-def extract_text(body: bytes, ext: str) -> str:
-    """Text of a downloaded CV. ``ext`` is the file kind (``html``, ``pdf``, …)."""
+def extract_text(body: bytes, ext: str, content_type: str = "") -> str:
+    """Text of a downloaded CV. ``ext`` is the file kind (``html``, ``pdf``, …).
+
+    HTML and plain text are decoded like a roster page (``giye.collect.charset``);
+    ``content_type`` is the HTTP header when the caller has it.
+    """
+    from giye.collect.charset import decode_body
+
     if ext in ("html", "htm"):
-        return html_text(body)
+        return html_text(body, content_type)
     if ext == "pdf":
         return _pdf_text(body)
     if ext == "docx":
@@ -182,7 +194,7 @@ def extract_text(body: bytes, ext: str) -> str:
         # HWP 5 is an OLE document. It is not read here, so the body stays empty.
         return ""
     if ext in ("txt", "md", "csv"):
-        return body.decode("utf-8", errors="replace")
+        return decode_body(body, content_type)
     return ""
 
 

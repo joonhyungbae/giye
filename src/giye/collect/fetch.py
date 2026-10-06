@@ -57,6 +57,7 @@ from urllib.parse import unquote, urldefrag, urlencode, urlparse
 
 import requests
 
+from giye.collect.charset import decode_body
 from giye.collect.robots import (
     MAX_ROBOTS_BYTES,
     REDIRECT_STATUSES,
@@ -181,14 +182,13 @@ class Page:
 
     @property
     def text(self) -> str:
-        """Body decoded with the charset in ``Content-Type``, or UTF-8. Bad bytes are replaced."""
-        charset = "utf-8"
-        for part in self.content_type.split(";")[1:]:
-            key, _, value = part.strip().partition("=")
-            if key.lower() == "charset" and value:
-                charset = value.strip(" \"'")
-                break
-        return self.content.decode(charset, errors="replace")
+        """Body decoded by ``giye.collect.charset.decode_body``.
+
+        A byte-order mark, then the ``Content-Type`` charset, then ``<meta>``
+        charset, then detection (UTF-8, CP949). Korean legacy labels map to
+        CP949; an unknown label never raises. Bad bytes are replaced.
+        """
+        return decode_body(self.content, self.content_type)
 
 
 def encode_body(data: object) -> tuple[bytes, str]:
