@@ -662,6 +662,51 @@ def test_expand_teams_adds_members_once_and_does_not_merge_them(tmp_path: Path):
     assert len(ledger.read("activities")) == 3
 
 
+def test_t2_team_with_member_aliases_is_expanded_once(tmp_path: Path):
+    """T2: a group record whose aliases are two personal names gives each the team's credit."""
+    ledger = _ledger(tmp_path)
+    _seed(
+        ledger,
+        [_artist("LED-team", "GY-000001", "노을 스튜디오", aliases="김바다|Bada Kim|박서연|Noeul Studio")],
+        [_act("LED-team", "EXAMPLE-RESIDENCY", 2019, title="EXAMPLE-RESIDENCY")],
+        [_mem("LED-team", "EXAMPLE-RESIDENCY")],
+    )
+    created = expand_teams(ledger)
+    # 김바다 and Bada Kim share a name key: one member with both spellings.
+    assert len(created) == 2
+    people = {(row["name_ko"], row["name_en"]) for row in ledger.read("artists") if row["ledger_id"] in created}
+    assert people == {("김바다", "Bada Kim"), ("박서연", "")}
+    roles = {row["role"] for row in ledger.read("activities") if row["ledger_id"] in created}
+    assert roles == {"팀: 노을 스튜디오"}
+    membership = ledger.read("frame_membership")
+    assert {row["attach_rule"] for row in membership if row["ledger_id"] in created} == {"team:LED-team"}
+    # The team row stays (T1).
+    assert any(row["ledger_id"] == "LED-team" for row in ledger.read("artists"))
+    # A second run adds nothing.
+    counts = {name: len(ledger.read(name)) for name in ("artists", "activities", "frame_membership")}
+    assert expand_teams(ledger) == []
+    assert {name: len(ledger.read(name)) for name in counts} == counts
+
+
+def test_t2_person_with_spelling_aliases_is_not_a_team(tmp_path: Path):
+    """T2 never reads a person's other spellings as members."""
+    ledger = _ledger(tmp_path)
+    _seed(
+        ledger,
+        [
+            # A personal own name: never a T2 team, whatever its aliases.
+            _artist("LED-person", "GY-000001", "김하늘", "Haneul Kim", aliases="김 하늘|박서연"),
+            # A non-personal name whose aliases are spellings of one person: one member, not a team.
+            _artist("LED-handle", "GY-000002", "하늘빛", aliases="김하늘|김 하늘|Haneul Kim|Ha-neul Kim"),
+        ],
+        [_act("LED-person", "EXAMPLE-RESIDENCY", 2019), _act("LED-handle", "EXAMPLE-WORKSHOP", 2020)],
+        [_mem("LED-person", "EXAMPLE-RESIDENCY"), _mem("LED-handle", "EXAMPLE-WORKSHOP")],
+    )
+    assert expand_teams(ledger) == []
+    assert len(ledger.read("artists")) == 2
+    assert len(ledger.read("frame_membership")) == 2
+
+
 def test_group_credit_expands_and_a_split_person_does_not(tmp_path: Path):
     ledger = _ledger(tmp_path)
     _seed(

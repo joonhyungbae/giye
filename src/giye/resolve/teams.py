@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-"""Team rows and the team/person guard (rule T1).
+"""Team rows, the team/person guard (rule T1), and alias members (rule T2).
 
 T1. A row that looks like a team or collective is never merged with a person.
 ``team_like`` says why a row is a team (a ``members=`` or ``rep=`` note, two or
@@ -18,6 +18,10 @@ without one the default Korean–English module is used.
 A team line also names its members. Each member is on that roster edition in
 their own right. Expanding them adds those rows and does not merge anyone into
 the team. Re-running does not add the same member twice.
+
+T2. A group record that stores its members only as aliases (two or more
+distinct personal names, no ``members=`` list) names them too; see
+``alias_members``.
 """
 
 from __future__ import annotations
@@ -226,8 +230,18 @@ def group_members(entry: Mapping[str, object]) -> list[str]:
     return parts if len(parts) >= 2 else []
 
 
-def members_of(artist: Mapping[str, object], language: LanguageModule | None = None) -> list[dict[str, str]]:
-    """Members to give their own rows. A person who was already split out of a duo is not a team."""
+def members_of(
+    artist: Mapping[str, object],
+    language: LanguageModule | None = None,
+    *,
+    words: re.Pattern[str] | None = None,
+) -> list[dict[str, str]]:
+    """Members to give their own rows. A person who was already split out of a duo is not a team.
+
+    In order: the ``members=`` list, the parts of a ``; group;`` raw credit,
+    then the personal-name aliases of a group record (rule T2,
+    ``alias_members``). ``words`` is the field file's team-word pattern.
+    """
     found = team_members(artist)
     if found:
         return found
@@ -239,7 +253,75 @@ def members_of(artist: Mapping[str, object], language: LanguageModule | None = N
         if {artist.get("name_ko"), artist.get("name_en")} & set(names):
             return []
         return [{"name_ko": name, "name_en": ""} if _HANGUL.search(name) else {"name_ko": "", "name_en": name} for name in names]
-    return []
+    return alias_members(artist, language, words=words)
+
+
+def alias_members(
+    artist: Mapping[str, object],
+    language: LanguageModule | None = None,
+    *,
+    words: re.Pattern[str] | None = None,
+) -> list[dict[str, str]]:
+    """Members read from a group record's aliases (rule T2), or [] when the rule does not hold.
+
+    Author's credit rule (2026-10-06): participation as a team is decomposed
+    and returned to the individuals, so they share the credit. Collectors
+    often stored the members of a team only as its aliases, with no
+    ``members=`` list, so those people never received the team's credit.
+
+    The rule holds when all of these are true:
+
+    - the record is positively a group (``team_like``: a team word, a
+      ``members=``/``rep=`` note, or a non-personal name with personal-name
+      aliases);
+    - neither of its own names (``name_ko``, ``name_en``) is a personal name.
+      A person's record keeps other spellings of their own name as aliases,
+      and those are not members;
+    - its aliases hold two or more distinct personal names (the language
+      module's ``personal_name``), leaving out an alias equal to one of the
+      record's own names and an alias with a team word (another name of the
+      team, such as its English name). Aliases that share a name key (``name_keys``: 김하늘,
+      김 하늘 and Haneul Kim) are one person, written as one member with the
+      first Hangul and the first Latin spelling. One person is not a team.
+    """
+    if language is None:
+        from giye.normalize.language import default_language
+
+        language = default_language()
+    own = [str(artist.get(key) or "").strip() for key in ("name_ko", "name_en")]
+    if any(name and language.personal_name(name) for name in own):
+        return []
+    if not team_like(artist, words=words, language=language):  # type: ignore[arg-type]
+        return []
+    own_keys = {_name_key(name) for name in own} - {""}
+    pattern = words if words is not None else _default_team_words()
+    groups: list[tuple[set[str], list[str]]] = []
+    for alias in _split_pipe(str(artist.get("aliases") or "")):
+        alias = " ".join(alias.split())
+        # An alias with a team word is another name of the team (Noeul Studio), not a member.
+        if _name_key(alias) in own_keys or not language.personal_name(alias) or pattern.search(alias):
+            continue
+        keys = set(language.name_keys(alias)) | {_name_key(alias)}
+        hits = [group for group in groups if group[0] & keys]
+        if hits:
+            # Fold every group this alias touches into the first one.
+            first = hits[0]
+            for other in hits[1:]:
+                first[0].update(other[0])
+                first[1].extend(other[1])
+                groups.remove(other)
+            first[0].update(keys)
+            first[1].append(alias)
+        else:
+            groups.append((keys, [alias]))
+    if len(groups) < 2:
+        return []
+    found = []
+    for _, spellings in groups:
+        ko = next((name for name in spellings if _HANGUL.search(name)), "")
+        en = next((name for name in spellings if not _HANGUL.search(name)), "")
+        found.append({"name_ko": ko, "name_en": en})
+    return found
 
 
 def member_rows(
@@ -509,8 +591,9 @@ def expand_teams(ledger: Ledger, *, dry_run: bool = False, frames: Iterable[str]
     language = language_for(ledger.config)
     team_prefix = ledger.config.field_config.team_prefix or "팀:"
     id_prefix = ledger.config.id_prefix or "GY"
+    team_words = field.compiled_team_words()
     for artist in list(artists):
-        members = members_of(artist, language)
+        members = members_of(artist, language, words=team_words)
         if not members:
             continue
         team_lid = artist["ledger_id"]
