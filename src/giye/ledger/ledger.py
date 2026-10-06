@@ -321,7 +321,9 @@ class Ledger:
         The rule id is stored on the new membership (``attach_rule``). A row no
         rule attaches becomes a new person, ``attach_rule`` ``first``, and a
         same-name near-miss opens ``possible_same_person``. An exact
-        ``(name_ko, name_en)`` pair is not by itself a join.
+        ``(name_ko, name_en)`` pair is not by itself a join. A line never joins
+        a person an earlier line of the same call (one edition) was put on;
+        a same-name pair of lines is queued ``same edition``.
 
         A new person receives a new ``ledger_id`` and a new ``gy_id``. Membership
         is one row per person and frame. Each appearance becomes an activity
@@ -560,6 +562,8 @@ class _RosterState:
     field: Any
     # People this apply created. A collector's person note goes on them only.
     created: set[str] = dc_field(default_factory=set)
+    # People an earlier line of this edition was put on, in line order.
+    edition: list[str] = dc_field(default_factory=list)
 
 
 def _require_roster_frame(frame: str) -> None:
@@ -648,8 +652,16 @@ def _attach_one_roster_row(
     websites = _roster_websites(row)
     source_url = str(row.get("source_url") or "").strip()
     collected = str(row.get("collected_at") or "")[:10]
+    # Two lines of one edition are two people: a line never joins a person an
+    # earlier line of the same edition was put on. Why: two lines on one
+    # roster page are the strongest evidence of two people the data hold, and
+    # a shared name (or a shared romanisation) made the second line an alias
+    # of the first. Identical lines stay separate records and are queued
+    # (``same edition``). A collector identity key (A5) still reads every row.
+    taken = set(state.edition)
+    pool = state.artists if identity or not taken else [a for a in state.artists if a["ledger_id"] not in taken]
     decision = attach_row(
-        artists=state.artists,
+        artists=pool,
         families_by_lid=state.families,
         links=state.links,
         frame_code=frame,
@@ -663,6 +675,8 @@ def _attach_one_roster_row(
         team_lid=str(row.get("team_lid") or ""),
         note=str(row.get("reviewer_note") or ""),
     )
+    if not decision.ledger_id and pool is not state.artists:
+        decision = _same_edition_miss(decision, raw_ko, raw_en, aliases, state)
     stored_ko, stored_en = _stored_name(raw_ko, raw_en)
     attached = bool(decision.ledger_id and decision.ledger_id in state.by_id)
     before: dict[str, str] = {}
@@ -679,6 +693,7 @@ def _attach_one_roster_row(
     if attached and artist != before:
         artist["updated_at"] = state.stamp
     lid = artist["ledger_id"]
+    state.edition.append(lid)
     state.families.setdefault(lid, set()).add(frame_family(frame, state.field))
     added_link = False
     for url in websites:
@@ -688,6 +703,30 @@ def _attach_one_roster_row(
         ledger, frame, lid, raw_ko, raw_en, stored_ko, decision, attached, state
     )
     return lid, rule, added_link, added_review
+
+
+def _same_edition_miss(decision: Any, raw_ko: str, raw_en: str, aliases: str, state: _RosterState) -> Any:
+    """Add the earlier lines of this edition that share a name key to the decision's near-misses.
+
+    The miss reason becomes ``same edition`` when only those lines matched.
+    """
+    from dataclasses import replace
+
+    from giye.resolve.attach import name_keys
+
+    wanted = name_keys(raw_ko, raw_en, aliases)
+    same = [
+        lid
+        for lid in dict.fromkeys(state.edition)
+        if lid in state.by_id
+        and wanted
+        & name_keys(state.by_id[lid].get("name_ko") or "", state.by_id[lid].get("name_en") or "", state.by_id[lid].get("aliases") or "")
+    ]
+    if not same:
+        return decision
+    ambiguous = tuple(dict.fromkeys([*decision.ambiguous, *same]))
+    miss = decision.miss if decision.ambiguous else "same edition"
+    return replace(decision, ambiguous=ambiguous, miss=miss)
 
 
 def _fill_attached_artist(
@@ -917,9 +956,10 @@ def _upsert_frame_activities(
     every non-empty value; only its empty columns are filled (``_enrich``).
     An unmatched row is appended. No row is removed.
 
-    Because a match may be any earlier row, a person who appears twice in one
-    edition with the same credit ends up with one row, not a second row under
-    the next counter id.
+    Because a match may be any earlier row, a person whose appearance is
+    collected again with the same credit keeps one row, not a second row under
+    the next counter id. (Two lines of one edition are two people, so they
+    never share a person here; see ``_attach_one_roster_row``.)
     """
     counters: dict[str, dict[str, int]] = {}
     index: dict[tuple[str, str], list[dict[str, str]]] = {}

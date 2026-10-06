@@ -213,3 +213,38 @@ def test_a6_does_not_join_two_different_hangul_names_with_one_english_name(tmp_p
     )
     assert len(ledger.read("artists")) == 2
     assert _rules(ledger) == ["first", "first"]
+
+
+# --- Two lines of one edition are two people ---------------------------------
+
+
+def test_two_identical_lines_of_one_edition_stay_two_records_and_are_queued(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    roster = [_row("김지우", "Jiwoo Kim"), _row("김지우", "Jiwoo Kim")]
+    ledger.apply_roster("NORTH-2019", roster, task="collect")
+    assert len(ledger.read("artists")) == 2
+    assert _rules(ledger) == ["first", "first"]
+    [item] = ledger.read("review_queue")
+    assert item["detail"].endswith("(same edition)")
+    # A re-run puts each line back on its own record and queues nothing new.
+    ledger.apply_roster("NORTH-2019", roster, task="collect")
+    assert len(ledger.read("artists")) == 2
+    assert len(ledger.read("frame_membership")) == 2
+    assert len(ledger.read("review_queue")) == 1
+
+
+def test_a_second_line_of_one_edition_is_not_swallowed_as_an_alias(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    ledger.apply_roster("NORTH-2019", [_row("", "Jonas Berg"), _row("", "Jonas  Berg")], task="collect")
+    artists = ledger.read("artists")
+    assert len(artists) == 2
+    assert len(ledger.read("frame_membership")) == 2
+
+
+def test_a_later_edition_still_joins_by_a1(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    roster = [_row("김지우", "Jiwoo Kim"), _row("박서연", "Seoyeon Park")]
+    ledger.apply_roster("NORTH-2019", roster, task="collect")
+    ledger.apply_roster("NORTH-2021", roster, task="collect")
+    assert len(ledger.read("artists")) == 2
+    assert _rules(ledger) == ["first", "first", "A1", "A1"]

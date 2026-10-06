@@ -48,6 +48,10 @@ A6. The same own website is owned by exactly one existing row.
     two different people. A group spelling (``Lumen Lab`` / ``루멘 랩``)
     still joins on the link.
 
+Two lines of one roster edition are two people: the ledger does not offer a
+line the person an earlier line of the same edition was put on
+(``giye.ledger.ledger``), and queues a same-name pair ``same edition``.
+
 The roster row's printed name is never dropped: the ledger keeps a spelling
 the person does not already carry as an alias (``giye.ledger.ledger``).
 """

@@ -485,7 +485,7 @@ def test_merge_collapses_two_registrations_of_one_cv(tmp_path: Path):
     assert saved["activities"][0]["source_id"] == "CV-snap"
 
 
-def test_identical_appearances_in_one_edition_collapse_into_one_row(tmp_path: Path):
+def test_identical_lines_in_one_edition_are_two_records_and_stable(tmp_path: Path):
     ledger = _ledger(tmp_path)
     rows = [
         {
@@ -505,14 +505,17 @@ def test_identical_appearances_in_one_edition_collapse_into_one_row(tmp_path: Pa
     ]
     ledger.apply_roster("EXAMPLE-RESIDENCY", rows, task="collect")
     activities = ledger.read("activities")
-    # Same person, same edition, same credit: one fact, one row.
-    assert len(activities) == 1
-    assert {row["gy_id"] for row in ledger.read("artists")} == {"GY-000001"}
+    # Two lines of one edition are two records (docs/RULES.md, attachment),
+    # each with its own appearance row, and the pair is queued.
+    assert len(activities) == 2
+    assert {row["gy_id"] for row in ledger.read("artists")} == {"GY-000001", "GY-000002"}
+    assert [item["detail"].endswith("(same edition)") for item in ledger.read("review_queue")] == [True]
     first_ids = [row["activity_id"] for row in activities]
     ledger.apply_roster("EXAMPLE-RESIDENCY", rows, task="collect")
     assert [row["activity_id"] for row in ledger.read("activities")] == first_ids
-    assert len(ledger.read("artists")) == 1
-    assert len(ledger.read("frame_membership")) == 1
+    assert len(ledger.read("review_queue")) == 1
+    assert len(ledger.read("artists")) == 2
+    assert len(ledger.read("frame_membership")) == 2
 
 
 def test_demo_collectors_fill_the_ledger_and_keep_ids(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -726,11 +729,11 @@ def test_second_appearance_merges_into_the_existing_row_by_title(tmp_path: Path)
                     year="2019", activity_type="residency", source_url="https://example.org/old",
                     collected_at="2026-09-01", origin=code)
     ledger.write("activities", [old], task="test")
-    twice = [
-        _roster_row(role="artist", activity={"title": "Night Garden"}),
-        _roster_row(role="team lead", activity={"title": "Night  Garden"}),
-    ]
-    ledger.apply_roster(code, twice, task="collect")
+    # Two later collections of the same edition (one line each): a line of one
+    # edition is never joined to another line of that edition, so the two
+    # appearances are applied as two re-collections.
+    ledger.apply_roster(code, [_roster_row(role="artist", activity={"title": "Night Garden"})], task="collect")
+    ledger.apply_roster(code, [_roster_row(role="team lead", activity={"title": "Night  Garden"})], task="collect")
     acts = ledger.read("activities")
     assert [row["activity_id"] for row in acts] == ["old-1"]
     assert acts[0]["role"] == "artist" and acts[0]["collected_at"] == "2026-09-01"
