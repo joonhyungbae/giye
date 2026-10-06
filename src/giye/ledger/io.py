@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import Any, TextIO
 
 _LOCKS: dict[str, TextIO] = {}
+# Open descriptor of each locked ledger directory (the lock itself), held until exit.
+_DIRECTORY_LOCKS: dict[str, int] = {}
 _TASK_SAFE = re.compile(r"[^A-Za-z0-9._-]+")
 # A run is one process. Key: (backup directory, file stem, task). Value: the copy
 # taken before that file's first write for that task in this run.
@@ -39,8 +41,9 @@ def hold_ledger_lock(ledger_dir: Path) -> None:
     Taken on the first read or write and held until this process exits, so a
     run's reads and its later writes see no interleaved writer. Blocks while
     another process holds the lock, and prints who holds it. A second call for
-    the same directory in this process does nothing. The file holds
-    ``pid <n>`` while the lock is held and is empty after the process exits.
+    the same directory in this process does nothing. The lock is on the
+    directory itself; the file ``.ledger.lock`` holds ``pid <n>`` while the
+    lock is held and is empty after the process exits.
     """
     key = str(ledger_dir.resolve())
     if key in _LOCKS:
@@ -52,15 +55,20 @@ def hold_ledger_lock(ledger_dir: Path) -> None:
     import time
 
     ledger_dir.mkdir(parents=True, exist_ok=True)
+    # The lock is taken on the directory, not on .ledger.lock. Why: restoring the data tree
+    # (a git checkout) replaces the lock file with a new one, and a lock on the old file then
+    # no longer excludes a process that opens the new one; two writers ran at once that way
+    # on 2026-10-06. The directory keeps its inode. The file only says who holds the lock.
+    directory = os.open(ledger_dir, os.O_RDONLY)
     handle = open(ledger_dir / ".ledger.lock", "a+", encoding="utf-8")  # noqa: SIM115 — held until exit
     try:
-        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(directory, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         handle.seek(0)
         holder = handle.read().strip() or "another process"
         print(f"[ledger] waiting for lock held by {holder}", file=sys.stderr, flush=True)
         start = time.monotonic()
-        fcntl.flock(handle, fcntl.LOCK_EX)
+        fcntl.flock(directory, fcntl.LOCK_EX)
         waited = time.monotonic() - start
         print(f"[ledger] lock acquired after {waited:.0f}s", file=sys.stderr, flush=True)
     handle.seek(0)
@@ -70,6 +78,7 @@ def hold_ledger_lock(ledger_dir: Path) -> None:
     handle.write(f"pid {os.getpid()}")
     handle.flush()
     _LOCKS[key] = handle
+    _DIRECTORY_LOCKS[key] = directory
 
     def _release(held: TextIO = handle, name: str = key) -> None:
         _LOCKS.pop(name, None)
@@ -83,6 +92,9 @@ def hold_ledger_lock(ledger_dir: Path) -> None:
         except (OSError, ValueError):
             pass
         held.close()
+        locked = _DIRECTORY_LOCKS.pop(name, None)
+        if locked is not None:
+            os.close(locked)
 
     atexit.register(_release)
 

@@ -866,3 +866,33 @@ def test_lock_file_holds_only_the_pid_and_is_empty_after_exit(tmp_path: Path):
     )
     assert done.stdout.startswith("pid ") and "secret" not in done.stdout
     assert (tmp_path / ".ledger.lock").read_text(encoding="utf-8") == ""
+
+
+
+def test_lock_holds_when_the_lock_file_is_replaced(tmp_path: Path):
+    """A restore of the data tree from git replaces .ledger.lock with a new file (a new inode).
+
+    2026-10-06: a run held the lock on the old file, a restore wrote a new one, and a second
+    run locked the new file, so two writers ran at once and one overwrote the other's merge
+    (an activity was left on a merged-away record). The lock must still exclude the second run.
+    """
+    import subprocess
+    import sys
+
+    take = (
+        "import sys, time; from pathlib import Path; from giye.ledger.io import hold_ledger_lock; "
+        "hold_ledger_lock(Path(sys.argv[1])); print('held', flush=True); time.sleep(float(sys.argv[2]))"
+    )
+    holder = subprocess.Popen([sys.executable, "-c", take, str(tmp_path), "30"], stdout=subprocess.PIPE, text=True)
+    try:
+        assert holder.stdout.readline().strip() == "held"
+        lock = tmp_path / ".ledger.lock"
+        lock.unlink()  # what a checkout does: unlink the file, then write a new one
+        lock.write_text("", encoding="utf-8")
+        with pytest.raises(subprocess.TimeoutExpired):
+            subprocess.run(
+                [sys.executable, "-c", take, str(tmp_path), "0"], capture_output=True, text=True, timeout=5, check=False
+            )
+    finally:
+        holder.kill()
+        holder.wait()
