@@ -136,9 +136,19 @@ def load_cv_activities(ledger: Ledger, config: Config) -> dict[str, list[dict]]:
     if config.cv_dir is None:
         return found
     for person in read_html_cvs(config.cv_dir):
-        lid = _match(artists, person)
-        if lid and lid not in found:
-            found[lid] = list(person.get("activities") or [])
+        hits = _matches(artists, person)
+        if len(hits) == 1:
+            if hits[0] not in found:
+                found[hits[0]] = list(person.get("activities") or [])
+            continue
+        # A CV the names bind to no record, or to several, is not used. Said
+        # aloud, because a skipped CV also skips the E2 merges it would give.
+        name = " / ".join(part for part in (person.get("name_ko"), person.get("name_en")) if part) or "(no name)"
+        where = Path(str(person.get("path") or "")).name or "cv_dir"
+        if hits:
+            print(f"NOTICE: CV {where} ({name}) matches {len(hits)} records ({', '.join(hits)}) by name; not used")
+        else:
+            print(f"NOTICE: CV {where} ({name}) matches no record by name; not used")
     return found
 
 
@@ -171,12 +181,16 @@ def fold_merged_cvs(ledger: Ledger) -> None:
     apply_extractions(ledger)
 
 
-def _match(artists: list[dict], person: dict) -> str | None:
-    """The one ledger id whose Korean and English names both match. Shared or missing names match nobody."""
+def _matches(artists: list[dict], person: dict) -> list[str]:
+    """Every ledger id whose given names match the CV's (``name_ko`` and ``name_en`` when present).
+
+    The caller uses the CV only when exactly one record matches; shared or
+    missing names match nobody.
+    """
     ko = (person.get("name_ko") or "").strip()
     en = (person.get("name_en") or "").strip()
     if not ko and not en:
-        return None
+        return []
     hits = []
     for artist in artists:
         if ko and (artist.get("name_ko") or "") != ko:
@@ -184,6 +198,4 @@ def _match(artists: list[dict], person: dict) -> str | None:
         if en and (artist.get("name_en") or "") != en:
             continue
         hits.append(artist["ledger_id"])
-    if len(hits) == 1:
-        return hits[0]
-    return None
+    return hits

@@ -995,3 +995,25 @@ def test_e3_cv_side_matches_whole_words_not_substrings():
     assert cv_lists_work([{"title": "바다전", "year": 2020}], {("바다", 2020)})
     # Spacing inside a title is not stable, so a key without spaces still meets a spaced title.
     assert cv_lists_work([{"title": "푸른 신호 전시", "year": 2020}], {("푸른신호", 2020)})
+
+
+def test_html_cv_shared_by_two_records_is_reported_not_silently_skipped(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    cvs = tmp_path / "cvs"
+    cvs.mkdir()
+    (cvs / "doyun.html").write_text(
+        '<article data-name-en="Doyun Lee"><ul><li data-year="2019">Example Residency</li></ul></article>',
+        encoding="utf-8",
+    )
+    ledger = _ledger(tmp_path, cv_dir=cvs)
+    _seed(
+        ledger,
+        [_artist("LED-a", "GY-000001", "이도윤", "Doyun Lee"), _artist("LED-b", "GY-000002", "Doyun Lee", "Doyun Lee")],
+        [_act("LED-a", "EXAMPLE-RESIDENCY", 2019), _act("LED-b", "EXAMPLE-WORKSHOP", 2021)],
+        [_mem("LED-a", "EXAMPLE-RESIDENCY"), _mem("LED-b", "EXAMPLE-WORKSHOP")],
+    )
+    from giye.resolve.cv import load_cv_activities
+
+    found = load_cv_activities(ledger, ledger.config)
+    assert found == {}
+    out = capsys.readouterr().out
+    assert "doyun.html" in out and "2 records" in out
