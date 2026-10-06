@@ -98,6 +98,8 @@ def _serve(args: argparse.Namespace) -> int:
     # only has to stay alive until Ctrl-C, then shut that loop down.
     server = serve_sheet(args.sheet, args.port)
     host, port = server.server_address[:2]
+    if isinstance(host, bytes):
+        host = host.decode()
     print(f"giye audit serve {args.sheet} on http://{host}:{port}/", flush=True)
     try:
         while True:

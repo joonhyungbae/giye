@@ -42,8 +42,8 @@ def _resolve(args: argparse.Namespace) -> int:
         print(f"same person: {item.evidence} → keep {item.kept}, merge {item.dropped}")
     for left, right in result.blocked_team:
         print(f"same_name_blocked_team {left} {right}")
-    for item in result.queued:
-        print(f"review: {item['detail']} ledger={item['ledger_id']}")
+    for queued in result.queued:
+        print(f"review: {queued['detail']} ledger={queued['ledger_id']}")
     print(
         f"merged={len(result.merges)} queued={len(result.queued)} "
         f"blocked_team={len(result.blocked_team)} expanded={len(result.expanded)} "

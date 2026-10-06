@@ -7,7 +7,7 @@ python -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-Check the public package with `pytest -q && ruff check src tests tools`. The site is checked with `cd web && bunx tsc --noEmit -p . && bun run build`.
+Check the public package with `pytest -q && ruff check src tests tools`. CI runs these on Python 3.10–3.13 (Ubuntu) and on 3.10 and 3.13 (macOS), and reports `mypy --ignore-missing-imports src/giye` without failing the build. Windows is not supported (the ledger lock uses `fcntl`). The site is checked with `cd web && bunx tsc --noEmit -p . && bun run build`.
 
 Follow `AGENTS.md`: English in code and docs, ledger changes only through scripts, and no person-level data in the public tree. When a specification leaves a design decision open, stop and ask the author.
 

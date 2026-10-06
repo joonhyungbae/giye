@@ -13,13 +13,15 @@ It was built for Korean media art. The reference deployment is **[giye.org](http
 
 ## Install
 
-Python 3.10 or newer.
+Python 3.10 to 3.13 on Linux or macOS; CI tests Python 3.10–3.13 on Ubuntu and 3.10 and 3.13 on macOS.
+Windows is not supported: the ledger lock uses `fcntl`, so every ledger operation, including
+`giye demo`, fails there (WSL is untested). The package is not on PyPI; install it from a clone.
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"
 pytest
-ruff check src tests
+ruff check src tests tools
 ```
 
 The optional `llm` extra is the Anthropic client. A local OpenAI-compatible server uses `requests`, which is already installed. The demo does not need either.
