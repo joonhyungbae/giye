@@ -150,6 +150,11 @@
       }
     }
     const work = realNow() - t0;
+    // main-thread ms of the WebGL flushes and their coverage passes in this frame (glRenderer.ts)
+    const glMs = window.__glFlushMs;
+    const passes = window.__glPasses;
+    window.__glFlushMs = undefined;
+    window.__glPasses = undefined;
     if (drewMain && window.__firstDrawV < 0) {
       window.__firstDrawV = cfg.det ? V : realT;
       // det: stop on the first drawn frame; the harness schedules every hold from here
@@ -161,6 +166,8 @@
         dt: lastReal < 0 ? 0 : realT - lastReal,
         work,
         total: callTotal,
+        glMs,
+        passes,
         calls: cfg.count ? calls : undefined,
         phase: window.__phase,
       });

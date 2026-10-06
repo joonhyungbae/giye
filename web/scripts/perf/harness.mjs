@@ -16,6 +16,7 @@
           [--renderer 2d|gl] [--output .output] [--site ../data/site] [--port 4710]
    --count wraps the 2D API and the WebGL draw calls (adds overhead: use a separate run without
            it for timings).
+   --gpu   runs Chrome on the machine's GPU (Canvas 2D on Ganesh, WebGL on the GPU; see GPU_FLAGS).
    --ganesh runs Canvas 2D on Skia's GPU backend over SwiftShader (closer to Chrome on Windows).
    --until T stops the timeline T ms after the first frame (a quick partial run).
    --renderer opens the page with ?renderer=2d or ?renderer=gl (glRenderer.ts); the renderer the
@@ -41,7 +42,13 @@ const PORT = Number(opt("--port", "4710"));
 const CDP_PORT = PORT + 1;
 const DET = flag("--det");
 const COUNT = flag("--count");
+/* --gpu: Chrome on this machine's GPU through ANGLE over the native GL driver (EGL): Canvas 2D on
+   Skia's GPU backend (Ganesh) and WebGL on the GPU, as in a desktop browser. ANGLE over Vulkan is
+   not used: headless Chrome then composites in software and keeps Canvas 2D on the CPU raster
+   (checked in chrome://gpu and by pixels: identical to --disable-gpu). The WebGL renderer string
+   is printed at the start of a run. */
 const GPU = flag("--gpu");
+const GPU_FLAGS = ["--enable-gpu", "--use-gl=angle", "--use-angle=gl-egl", "--ignore-gpu-blocklist"];
 const PROFILE = flag("--profile");
 const RENDERER = opt("--renderer", "");
 /* --ganesh: no GPU here, but Canvas 2D can still run on Skia's GPU backend (Ganesh) over ANGLE's
@@ -111,7 +118,7 @@ const chromeArgs = [
   "--disable-background-timer-throttling",
   "--disable-renderer-backgrounding",
   "--disable-backgrounding-occluded-windows",
-  ...(GPU ? [] : GANESH ? GANESH_FLAGS : ["--disable-gpu"]),
+  ...(GPU ? GPU_FLAGS : GANESH ? GANESH_FLAGS : ["--disable-gpu"]),
   // WebGL on the software rasterizer (SwiftShader) when there is no GPU
   "--enable-unsafe-swiftshader",
   "about:blank",
@@ -123,6 +130,7 @@ const cleanup = () => {
 };
 process.on("exit", cleanup);
 process.on("SIGINT", () => process.exit(130));
+process.on("SIGTERM", () => process.exit(143));
 
 async function getJson(url, tries = 100) {
   for (let i = 0; i < tries; i++) {
@@ -182,6 +190,11 @@ async function main() {
     ws.addEventListener("error", j);
   });
   const cdp = new CDP(ws);
+  // the page's warnings and errors (e.g. the WebGL fallback notice) go to stderr
+  cdp.handlers.push((m) => {
+    if (m.method === "Runtime.consoleAPICalled" && (m.params.type === "warning" || m.params.type === "error"))
+      console.error(`page ${m.params.type}: ${m.params.args.map((a) => a.value ?? a.description).join(" ")}`);
+  });
   await cdp.send("Page.enable");
   await cdp.send("Runtime.enable");
   await cdp.send("Network.enable");
@@ -210,6 +223,10 @@ async function main() {
   console.error(`warm-up navigation ${Date.now() - t0w} ms`);
 
   const cfg = { det: DET, count: COUNT };
+  const glInfo = await cdp.eval(`(() => { const g = document.createElement('canvas').getContext('webgl2');
+    if (!g) return 'no webgl2'; const e = g.getExtension('WEBGL_debug_renderer_info');
+    return e ? g.getParameter(e.UNMASKED_RENDERER_WEBGL) : g.getParameter(g.RENDERER); })()`);
+  console.error(`WebGL renderer: ${glInfo}`);
   await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
     source: `window.__perfCfg=${JSON.stringify(cfg)};\n${readFileSync(join(here, "instrument.js"), "utf8")}`,
   });
@@ -293,9 +310,11 @@ async function main() {
     console.log("profile self time (ms):");
     for (const [k, v] of [...self].sort((a, b) => b[1] - a[1]).slice(0, 25)) console.log(`  ${v.toFixed(0).padStart(7)}  ${k}`);
   }
+  const rendererEnd = await cdp.eval("window.__homeRenderer || 'unknown'");
+  if (rendererEnd !== renderer) console.error(`renderer at the end: ${rendererEnd}`);
   const frames = await cdp.eval("window.__frames");
   const longTasks = await cdp.eval("window.__longTasks");
-  writeFileSync(join(OUT, "frames.json"), JSON.stringify({ loadMs, firstV, renderer, frames, longTasks }));
+  writeFileSync(join(OUT, "frames.json"), JSON.stringify({ loadMs, firstV, renderer, glInfo, frames, longTasks }));
   summarise(frames, longTasks, firstV, loadMs, renderer);
 }
 
