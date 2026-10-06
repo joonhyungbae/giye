@@ -32,26 +32,30 @@ tag = '대전'
 needle = '인천'
 tag = '경기'
 
+# Medium guess from the ledger's field and category text. Latin words match as whole
+# words (\b): before 2026-10-06 they were substrings, so 'ar' tagged every "art" XR,
+# 'ai' tagged "Data" generative and 'motion' tagged "Motion Capture" video. Korean
+# stems stay prefixes (인터랙 for 인터랙티브), because Korean adds endings to a stem.
 [[tags.medium_guess]]
-pattern = '영상|video|film|motion'
+pattern = '영상|\b(?:video|film|motion graphic)s?\b'
 tag = '영상'
 [[tags.medium_guess]]
-pattern = '사운드|sound|music|audio'
+pattern = '사운드|\b(?:sound|music|audio)\b'
 tag = '사운드'
 [[tags.medium_guess]]
-pattern = '인터랙|interactive'
+pattern = '인터랙|\binteractive\b'
 tag = '인터랙티브'
 [[tags.medium_guess]]
-pattern = '생성|generative|ai|연산'
+pattern = '생성|연산|\b(?:generative|ai)\b'
 tag = '생성·연산'
 [[tags.medium_guess]]
-pattern = '네트워크|network|web3'
+pattern = '네트워크|\b(?:network|web3)\b'
 tag = '네트워크'
 [[tags.medium_guess]]
-pattern = '피지컬|arduino|sensor|physical'
+pattern = '피지컬|\b(?:arduino|sensors?|physical)\b'
 tag = '피지컬 컴퓨팅'
 [[tags.medium_guess]]
-pattern = 'xr|vr|ar|metaverse'
+pattern = '\b(?:xr|vr|ar|metaverse)\b'
 tag = 'XR'
 
 # M1. A tag when at least medium_min_rows public rows name it. A screening row

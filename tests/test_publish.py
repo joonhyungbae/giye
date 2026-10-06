@@ -170,6 +170,16 @@ def test_region_and_medium_keep_the_production_lists():
     assert parse_year("") is None
 
 
+def test_medium_guess_matches_whole_words_only():
+    # Substrings used to tag every "art" XR, "Data" generative and "Motion Capture" video.
+    assert guess_medium("Visual art, Multidisciplinary Arts", "예술") == []
+    assert guess_medium("Data Science, Motion Capture", "예술, 기술") == []
+    assert guess_medium("Artistic Research, Digital Humanities", "") == []
+    assert guess_medium("Development, VR/AR/XR", "") == ["XR"]
+    assert guess_medium("AI, Motion graphics", "") == ["영상", "생성·연산"]
+    assert guess_medium("인터랙티브 설치", "") == ["인터랙티브"]
+
+
 def test_edition_alias_is_declared_in_the_field():
     from giye.field import EditionAlias, Field, load_field, shipped_field_path
 
