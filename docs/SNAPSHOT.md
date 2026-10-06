@@ -1,8 +1,9 @@
 # Site snapshot
 
 `giye publish` writes `<data>/site/*.json` from the ledger and from `<data>/processed`
-when that directory exists. The shapes match `scripts/build_site_dataset.py` in the
-production archive. The web front-end reads these files and needs no database.
+when that directory exists. The shapes are those the reference archive's former private
+builder (`scripts/build_site_dataset.py`) wrote; the site is now rebuilt by the package
+stages only (docs/DEPLOY.md). The web front-end reads these files and needs no database.
 
 `citations.json` is not one of those production files. The live site builds the same
 APA, Chicago, and BibTeX sentences in the browser (`CiteDialog`). They are stored
@@ -183,9 +184,9 @@ script does the same so the front-end always has the files.
 
 ## Not in this snapshot
 
-- `rim_order.json` (home-page entry-generation order in `build_rim_order.py`:
-  five-year bins from the earliest roster year). It is input to the web
-  visualisation and is left with that front-end.
+- `rim_order.json` (home-page entry-generation order: five-year bins from the
+  earliest roster year). `giye publish` does not write it; `giye explore` writes it
+  into the same directory (docs/EXPLORE.md), and the site rebuild runs both.
 - The embedding flight file. `build_site_dataset.py` calls it at the end; stage 6 is not ported, so publish does not.
 
 ## Static pages
