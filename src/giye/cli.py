@@ -134,7 +134,9 @@ def _extract(args: argparse.Namespace) -> int:
             f"activities_added={applied.added} repointed={applied.repointed} "
             f"superseded_files={applied.superseded_files} "
             f"self_reported_superseded={applied.superseded_rows} "
-            f"cross_language_folded={len(applied.folds)}"
+            f"cross_language_folded={len(applied.folds)} "
+            f"self_report_corrected={applied.corrected} "
+            f"self_report_unmatched={len(applied.corrections_unmatched)}"
         )
         if config.extract_grounding:
             ground = applied.grounding

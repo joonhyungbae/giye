@@ -36,6 +36,9 @@
   CV it cites gets ``ungrounded=<year|venue|year+venue>`` in its note and
   ``publishable=no``. It stays in the ledger and does not hide a self-reported
   row. Roster rows are not checked.
+- Rule C1 (``giye.extract.corrections``): the subject's own corrections of CV
+  rows, kept in ``work/activity_corrections.csv``, are applied after every
+  file, so the fold after a merge does not bring the corrected value back.
 - Activity ids come from ``giye.ledger`` (uuid5 of the ledger id, source,
   title, year, type, and venue). Applying the same reading again rewrites
   those ids; that rewrite is not a new activity.
@@ -49,6 +52,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+from giye.extract import corrections as person_corrections
 from giye.extract.crosslang import RULE as CROSS_LANGUAGE_RULE
 from giye.extract.crosslang import Fold, clear_marks, fold_cross_language
 from giye.extract.grounding import CvText, GroundingStats, failures, mark
@@ -100,6 +104,8 @@ class ApplyStats:
     id_changes: int = 0
     folds: list[Fold] = field(default_factory=list)
     grounding: GroundingStats = field(default_factory=GroundingStats)
+    corrected: int = 0
+    corrections_unmatched: list[person_corrections.Correction] = field(default_factory=list)
 
 
 def self_reported(row: dict[str, str]) -> bool:
@@ -181,6 +187,14 @@ def apply_extractions(ledger: Ledger, *, today: date | None = None) -> ApplyStat
         activities = added
         stats.duplicates += dup
         stats.superseded_rows += superseded
+
+    # C1 after every file, and also on the rows of a file skipped as stale: the
+    # rows were written from the extraction, so a correction recorded later must
+    # reach them now, not after the next extraction. Before X2, so the fold
+    # compares the corrected rows.
+    stats.corrected, stats.corrections_unmatched = person_corrections.apply(
+        activities, person_corrections.load(config.work), today=today
+    )
 
     seen: set[str] = set()
     duplicate_ids = 0
