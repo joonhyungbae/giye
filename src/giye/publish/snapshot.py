@@ -49,6 +49,7 @@ import yaml
 from giye.collect.frames import FrameRegistry, declared_sizes_by_edition, load_frames, validate_transcribed_membership
 from giye.config import Config, ConfigError
 from giye.extract.apply import PRIVATE_TITLE
+from giye.extract.grounding import NOTE_KEY as GROUNDING_KEY
 from giye.field import Field, edition_alias
 from giye.ledger.ids import activity_id_for, activity_id_key, gy_number, mint_id
 from giye.ledger.ledger import Ledger
@@ -70,6 +71,8 @@ ALLOWED_TYPES = {
 }
 # CV sections listed apart from practice. Scholarship and service stay unpublished.
 BACKGROUND_SECTIONS = ["education", "employment", "teaching", "press"]
+# Note keys that keep a background row off the site (see _background).
+_BACKGROUND_OFF = re.compile(rf"(?:^|;)\s*(?:{GROUNDING_KEY}|suppressed)=")
 # The only preprocessing flag a reader is shown. The row stays; the year is in doubt.
 SHOWN_FLAGS = {"year_from_title"}
 
@@ -826,6 +829,12 @@ def _background(rows: list[dict], ledger_to_gy: dict[str, str], year_now: int) -
         match = re.search(r"cv_section=(\w+)", row.get("reviewer_note") or "")
         origin = row.get("origin") or ""
         if not gy or not match or match.group(1) not in BACKGROUND_SECTIONS or not origin.startswith("cv:"):
+            continue
+        # Apply sets publishable=no on every background row as a section
+        # marker, so publishable cannot carry these two decisions here: a row
+        # that failed grounding (ungrounded=…) or that a curator took off the
+        # site (suppressed=<reason>, e.g. on a correction request) stays off.
+        if _BACKGROUND_OFF.search(row.get("reviewer_note") or ""):
             continue
         title = (row.get("title") or "").strip()
         year = parse_year(row.get("year"))

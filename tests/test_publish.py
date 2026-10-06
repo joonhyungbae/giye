@@ -607,3 +607,43 @@ def test_team_records_are_published_as_collective(tmp_path: Path):
     site = _publish(tmp_path, artists, [], membership)
     kinds = {row["name_ko"]: row["type"] for row in site["artists.json"]}
     assert kinds == {"노을 스튜디오": "collective", "김하늘": "individual"}
+
+
+def test_background_drops_ungrounded_and_suppressed_lines(tmp_path: Path):
+    """A background row's ``publishable`` is a section marker, so grounding and
+    a curator use note keys: ``ungrounded=`` and ``suppressed=`` keep it off."""
+    from giye.extract.grounding import GroundingStats, mark
+
+    artists = [_artist("LED-haneul", "김하늘", gy_id="GY-000001")]
+    membership = [
+        empty_row(
+            MEMBERSHIP_FIELDS,
+            ledger_id="LED-haneul",
+            frame_code="EXAMPLE-RESIDENCY",
+            source_url="https://example.org/residency/alumni",
+            collected_at="2026-01-15",
+        )
+    ]
+
+    def edu(activity_id: str, title: str, note: str = "cv_section=education") -> dict:
+        return _activity(
+            "LED-haneul",
+            activity_id=activity_id,
+            title=title,
+            year="2014",
+            publishable="no",
+            origin="cv:CV-DEMO",
+            source_url="https://cv.example.org/haneul",
+            reviewer_note=note,
+        )
+
+    ungrounded = edu("act-invented", "예시 대학원 석사")
+    mark(ungrounded, ["venue"], GroundingStats())
+    activities = [
+        _activity("LED-haneul", activity_id="act-roster"),
+        edu("act-edu", "서울예시대학교 미술학 학사"),
+        ungrounded,
+        edu("act-corrected", "예시 아카데미 수료", "cv_section=education; suppressed=correction request 2026-01-20"),
+    ]
+    site = _publish(tmp_path, artists, activities, membership)
+    assert [row["title"] for row in site["background.json"]] == ["서울예시대학교 미술학 학사"]

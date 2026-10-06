@@ -45,8 +45,13 @@ then title.
 `background.json` lists CV lines whose note contains `cv_section=` of education,
 employment, teaching, or press. Scholarship and service are not listed. A title that
 matches the scholarship / peer-review pattern is dropped even if the section is one of
-those four. A future year marked `upcoming` is dropped. Korean and English repeats of
-the same line collapse.
+those four. A future year marked `upcoming` is dropped. A row whose note holds
+`ungrounded=` (it failed grounding, docs/RULES.md) or `suppressed=<reason>` (a curator took
+it off, for example on a correction request) is dropped: `publishable` is `no` on every
+background row as a section marker, so it cannot carry those decisions. Lines of one person,
+section and year whose titles are identical after lower-casing and removing punctuation and
+spaces collapse to the first. A Korean line and its English translation are different titles
+and are both listed.
 
 ## Files
 
