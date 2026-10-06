@@ -13,7 +13,7 @@ It was built for Korean media art. The reference deployment is **[giye.org](http
 
 ## Install
 
-Python 3.10 to 3.13 on Linux or macOS; CI tests Python 3.10–3.13 on Ubuntu and 3.10 and 3.13 on macOS.
+Python 3.10 to 3.13 on Linux; CI tests Python 3.10–3.13 on Ubuntu. macOS is not tested, and Windows is not supported.
 Windows is not supported: the ledger lock uses `fcntl`, so every ledger operation, including
 `giye demo`, fails there (WSL is untested). The package is not on PyPI; install it from a clone.
 

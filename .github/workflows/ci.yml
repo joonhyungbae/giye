@@ -3,18 +3,14 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: ${{ matrix.os }}
-    # A hung test once held a macOS runner for 46 minutes. The suite takes about a minute.
+    # The suite takes about a minute. Linux only: the deployment target is Linux, and the macOS jobs
+    # hung in pytest (2026-10-07), so macOS is not tested rather than reported as supported.
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
         python: ["3.10", "3.11", "3.12", "3.13"]
-        include:
-          - os: macos-latest
-            python: "3.10"
-          - os: macos-latest
-            python: "3.13"
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6

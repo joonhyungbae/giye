@@ -12,12 +12,11 @@ license-files = ["LICENSE"]
 authors = [{ name = "Joonhyung Bae" }]
 requires-python = ">=3.10"
 keywords = ["archive", "provenance", "census", "person register", "record linkage", "media art", "web archiving"]
-# Linux and macOS are tested in CI. Windows is not supported: the ledger lock uses fcntl.
+# Linux is tested in CI. macOS is not tested; Windows is not supported (the ledger lock uses fcntl).
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Science/Research",
   "Operating System :: POSIX :: Linux",
-  "Operating System :: MacOS",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.10",
