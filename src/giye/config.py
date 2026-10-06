@@ -236,6 +236,9 @@ class Config:
     dataset_title: str = ""
     # The citation dialog writes this author string.
     citation_author: str = "기예 Giye"
+    # What citation_author names: "Organization" (an archive or team, the
+    # default) or "Person". The RO-Crate export types its author entity by it.
+    citation_author_type: str = "Organization"
     # Maintenance schedule written to coverage.json, label → what runs. Empty
     # means no cadence is published: the package itself schedules nothing.
     cadence: dict[str, str] = field(default_factory=dict)
@@ -452,6 +455,7 @@ def load(path: str | Path) -> Config:
         dataset_version=_plain(publish.get("dataset_version", "0.2"), "0.2", "[publish] dataset_version"),
         dataset_title=_plain(publish.get("dataset_title", ""), "", "[publish] dataset_title"),
         citation_author=_plain(publish.get("citation_author", "기예 Giye"), "기예 Giye", "[publish] citation_author"),
+        citation_author_type=_citation_author_type(publish.get("citation_author_type", "Organization")),
         cadence=_cadence(publish.get("cadence")),
         keep_backups_days=_keep_backups_days(ledger.get("keep_backups_days")),
         extra={k: v for k, v in raw.items() if k not in KNOWN_TABLES},
@@ -520,6 +524,12 @@ def _venue_name_rules(value: object) -> str:
     if not isinstance(value, str):
         raise TypeError("[normalize] venue_name_rules must be a string or a list of strings")
     return value
+
+
+def _citation_author_type(value: object) -> str:
+    if value not in ("Organization", "Person"):
+        raise ValueError('[publish] citation_author_type must be "Organization" or "Person"')
+    return str(value)
 
 
 def _tls_fallback(collect: dict) -> bool:

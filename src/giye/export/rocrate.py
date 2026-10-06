@@ -30,8 +30,11 @@ and captures of private CV and personal-page URLs are not listed. The root
 description says which rule applied and what was left out.
 ``include_hidden`` (``--include-hidden``) includes hidden people and says so.
 
-The root's ``author`` and ``publisher`` are one ``Organization``: the archive
-named by ``[publish] citation_author``, identified by ``site_url`` when set.
+The root's ``author`` is the contextual entity named by ``[publish]
+citation_author``, typed by ``[publish] citation_author_type``
+(``Organization``, the default, or ``Person``). The ``publisher`` is always an
+``Organization``: the same entity when the author is one, otherwise the archive
+(``[archive] name``). The organisation is identified by ``site_url`` when set.
 Every ``File`` carries an ``encodingFormat`` (a media type from its suffix,
 ``application/octet-stream`` when the suffix is unknown). Why: the RO-Crate
 validator's RECOMMENDED level asks for these, and they are already in the
@@ -370,14 +373,21 @@ def _assemble_graph(
         "wasGeneratedBy": [{"@id": action["@id"]} for action in actions],
     }
     site = (config.site_url or "").rstrip("/")
+    person_author = getattr(config, "citation_author_type", "Organization") == "Person"
     archive = {
         "@id": site or "#archive",
         "@type": "Organization",
-        "name": config.citation_author or config.name,
+        "name": config.name if person_author else (config.citation_author or config.name),
     }
     if site:
         archive["url"] = site
-    root["author"] = {"@id": archive["@id"]}
+    agents = [archive]
+    if person_author:
+        author = {"@id": "#author", "@type": "Person", "name": config.citation_author or config.name}
+        agents.insert(0, author)
+        root["author"] = {"@id": author["@id"]}
+    else:
+        root["author"] = {"@id": archive["@id"]}
     root["publisher"] = {"@id": archive["@id"]}
     if data_licence:
         ref, entity = _licence_ref(data_licence)
@@ -407,7 +417,7 @@ def _assemble_graph(
         "conformsTo": {"@id": "https://w3id.org/ro/crate/1.1"},
         "about": {"@id": "./"},
     }
-    return [descriptor, root, archive, software, *licence_entities, *work_entities, *files, *actions]
+    return [descriptor, root, *agents, software, *licence_entities, *work_entities, *files, *actions]
 
 
 def _inputs(config: Config, privacy: Privacy | None = None) -> tuple[list[dict], list[Path]]:

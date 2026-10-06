@@ -92,6 +92,8 @@ def test_demo_exports_warc_wacz_and_ro_crate(tmp_path: Path):
     assert graph["https://example.org"]["name"] == "Example Archive"
     file_entities = [entity for entity in crate["@graph"] if entity.get("@type") == "File"]
     assert file_entities and all(entity.get("encodingFormat") for entity in file_entities)
+    # The no-data-licence statement is a contextual entity of the graph, not a dangling id.
+    assert graph["#no-data-licence"]["@type"] == "CreativeWork"
     _assert_ids_inside_crate(meta_path.parent, crate)
     _assert_rocrate_11(meta_path)
     config_entity = next(entity for entity in crate["@graph"] if entity.get("name") == "giye.toml")
@@ -138,6 +140,21 @@ def test_demo_exports_warc_wacz_and_ro_crate(tmp_path: Path):
     assert NO_DATA_LICENCE_REASON not in licensed_graph["./"]["description"]
     _assert_ids_inside_crate(licensed_meta.parent, licensed_crate)
     _assert_rocrate_11(licensed_meta)
+
+
+def test_ro_crate_types_a_person_author_and_keeps_an_organization_publisher(tmp_path: Path):
+    result = run_demo(DEMO, tmp_path / "out", now=CLOCK)
+    config = replace(
+        load(DEMO), data=result.output.resolve(), citation_author="Mara Quill", citation_author_type="Person"
+    )
+    meta_path = export_ro_crate(config, tmp_path / "crate", config_path=DEMO)
+    crate = json.loads(meta_path.read_text(encoding="utf-8"))
+    graph = {entity["@id"]: entity for entity in crate["@graph"]}
+    root = graph["./"]
+    assert graph[root["author"]["@id"]] == {"@id": "#author", "@type": "Person", "name": "Mara Quill"}
+    publisher = graph[root["publisher"]["@id"]]
+    assert publisher["@type"] == "Organization"
+    assert publisher["name"] == config.name
 
 
 def test_demo_summary_does_not_depend_on_the_system_date(tmp_path: Path, monkeypatch):
