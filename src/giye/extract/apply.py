@@ -38,7 +38,7 @@
   CV it cites gets ``ungrounded=<year|venue|year+venue>`` in its note and
   ``publishable=no``. It stays in the ledger and does not hide a self-reported
   row. Roster rows are not checked.
-- Rule C1 (``giye.extract.corrections``): the subject's own corrections of CV
+- Rule S1 (``giye.extract.corrections``): the subject's own corrections of CV
   rows, kept in ``work/activity_corrections.csv``, are applied after every
   file, so the fold after a merge does not bring the corrected value back.
 - Activity ids come from ``giye.ledger`` (uuid5 of the ledger id, source,
@@ -192,7 +192,7 @@ def apply_extractions(ledger: Ledger, *, today: date | None = None) -> ApplyStat
         stats.duplicates += dup
         stats.superseded_rows += superseded
 
-    # C1 after every file, and also on the rows of a file skipped as stale: the
+    # S1 after every file, and also on the rows of a file skipped as stale: the
     # rows were written from the extraction, so a correction recorded later must
     # reach them now, not after the next extraction. Before X2, so the fold
     # compares the corrected rows.

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-"""Rule C1: the subject's own correction of a CV row survives every re-apply and the fold after a merge.
+"""Rule S1: the subject's own correction of a CV row survives every re-apply and the fold after a merge.
 
 People and URLs are fictitious.
 """

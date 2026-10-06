@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-"""The subject's own corrections of CV-derived activities (rule C1).
+"""The subject's own corrections of CV-derived activities (rule S1).
 
 A CV row is rewritten from its cached extraction on every apply, including the
 fold after a merge, so an edit to the ledger row alone does not last. A person
