@@ -412,7 +412,9 @@ def _audit_sample_lines(
     """Section 1. A fixed seed so the same rows are the sample every run."""
     by_id = {entity["venue_id"]: entity for entity in entity_by_root.values()}
     rng = random.Random(20260925)
-    sample = rng.sample(parsed, min(60, len(parsed)))
+    # Sampled from rows sorted by activity id, so the ledger's row order does not pick the sample.
+    by_activity = sorted(parsed, key=lambda row: row.activity_id)
+    sample = rng.sample(by_activity, min(60, len(by_activity)))
     lines = [
         "# Place and institution entity-resolution audit sample",
         "",

@@ -367,6 +367,24 @@ def test_institutions_do_not_depend_on_row_order() -> None:
     assert annotations["2"]["venue_id"] != annotations["3"]["venue_id"]
 
 
+def test_written_venue_files_do_not_depend_on_row_order(tmp_path: Path) -> None:
+    """venues.csv and venue_audit.md, including the audit's random sample, survive a shuffle."""
+    lang = KoreanEnglish.load()
+    rows = _load()
+
+    def written(order: list[dict], name: str) -> tuple[str, str]:
+        out = tmp_path / name
+        out.mkdir()
+        build(order, out, lang=lang)
+        return (out / "venues.csv").read_text(encoding="utf-8"), (out / "venue_audit.md").read_text(encoding="utf-8")
+
+    expected = written(rows, "base")
+    for seed in range(5):
+        shuffled = list(rows)
+        random.Random(seed).shuffle(shuffled)
+        assert written(shuffled, f"seed{seed}") == expected, seed
+
+
 def test_geonames_admin_and_neighbourhood_resolve_as_places(tmp_path: Path) -> None:
     """cities15000 drops admin divisions and neighbourhoods. A country extract puts them back.
 
