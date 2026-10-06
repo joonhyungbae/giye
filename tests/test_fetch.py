@@ -582,3 +582,17 @@ def test_post_redirect_303_continues_as_get():
     assert page.text == "<p>done</p>" and page.method == "POST"
     sent = [(call["url"], call.get("method", "GET")) for call in session.calls if "robots" not in call["url"]]
     assert sent == [("https://example.org/form", "POST"), ("https://example.org/result", "GET")]
+
+
+def test_terms_block_covers_current_domains_and_short_links():
+    # threads.com is the current Threads domain; the short hosts belong to the same platforms.
+    for url in (
+        "https://www.threads.com/@anna",
+        "https://instagr.am/p/abc",
+        "https://fb.me/anna",
+        "https://fb.com/anna",
+        "https://fb.watch/abc",
+        "https://t.co/abc",
+        "https://lnkd.in/abc",
+    ):
+        assert is_social(url), url

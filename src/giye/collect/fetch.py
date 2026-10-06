@@ -91,7 +91,17 @@ SOCIAL_HOSTS = (
     "x.com",
     "twitter.com",
     "threads.net",
+    "threads.com",
     "tiktok.com",
+    # Short-link and alternate hosts of the same platforms. A redirect from
+    # them would be refused at the next hop, but the first request would
+    # already reach the platform's own host.
+    "instagr.am",
+    "fb.com",
+    "fb.me",
+    "fb.watch",
+    "t.co",
+    "lnkd.in",
 )
 
 # Same verdict string the evidence status uses. It is not a robots.txt verdict.
