@@ -95,7 +95,7 @@ CV extraction. `giye.extract.service` reads these keys. `giye extract` can overr
 | `api_key_env` | string, no whitespace | `"GIYE_LLM_API_KEY"` | no | Name of an environment variable, not the secret. When that variable is set, `openai_compatible` sends it as a Bearer token. A local server does not need one. The Anthropic path uses `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, not this name. | `"GIYE_LLM_API_KEY"` |
 | `cache` | path | `<data>/work/cv_cache` when unset | no | `giye.extract.service` | `"cache"` |
 | `allow_team` | boolean | `false` | no | `giye.extract.registry`. A team row (rule T1) is skipped unless this is true. | `false` |
-| `grounding` | boolean | `false` | no | `giye.extract.apply`, `giye.extract.grounding`. When true, a CV row whose year or non-empty venue does not occur in its CV text is marked `ungrounded` and `publishable=no` (docs/RULES.md, Extraction). | `true` |
+| `grounding` | boolean | `true` | no | `giye.extract.apply`, `giye.extract.grounding`. When true, a CV row whose year, or the institution part of whose non-empty venue, does not occur in its CV text is marked `ungrounded` and `publishable=no` (docs/RULES.md, Extraction, rule G-V). | `false` |
 
 ### `[[extract.sources]]`
 

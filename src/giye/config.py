@@ -204,7 +204,8 @@ class Config:
     extract_cache: Path | None = None
     extract_allow_team: bool = False
     # Grounding check on CV rows (giye.extract.grounding); see docs/RULES.md.
-    extract_grounding: bool = False
+    # On by default since the venue test reads the institution part (2026-10-06).
+    extract_grounding: bool = True
     extract_sources: tuple[ExtractSource, ...] = ()
     # Public origin of the published site. Citations use ``<site_url>/artist/<id>``
     # and ``<site_url>/data``. Empty until the file sets it. Publish refuses to run

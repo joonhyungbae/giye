@@ -40,6 +40,8 @@ collector_modules = [
 [extract]
 model = "claude-code/claude-opus-5.5 (agent, reference)"
 chunk_chars = 0
+# Hide a CV row whose year or venue is not in its CV text (docs/RULES.md, Grounding).
+grounding = true
 cache = "../data/work/cv_cache"
 
 [normalize]

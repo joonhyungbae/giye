@@ -31,7 +31,7 @@
   copy not in the archive's first language gets ``publishable=no`` and
   ``superseded_by=<kept id>; rule=X2``. Marks are cleared at the start of each
   apply and recomputed, and every fold is listed in ``work/cv_folds.csv``.
-- Grounding (``giye.extract.grounding``, when ``[extract] grounding`` is on):
+- Grounding (``giye.extract.grounding``, ``[extract] grounding``, on by default):
   a CV row whose year, or non-empty venue, does not occur in the text of the
   CV it cites gets ``ungrounded=<year|venue|year+venue>`` in its note and
   ``publishable=no``. It stays in the ledger and does not hide a self-reported
@@ -417,6 +417,8 @@ class _CvTexts:
 
     def __init__(self, config) -> None:
         self._config = config
+        # The configured language module reads venue parts (V3 gazetteer, V9 glossary).
+        self._lang = language_for(config)
         self._cache: dict[str, CvText | None] = {}
 
     def get(self, source: dict[str, str]) -> CvText | None:
@@ -426,7 +428,7 @@ class _CvTexts:
             stored = source.get("snapshot_path") or ""
             path = resolve_stored(self._config, stored + ".txt") if stored else None
             self._cache[source_id] = (
-                CvText.of(path.read_text(encoding="utf-8")) if path is not None and path.is_file() else None
+                CvText.of(path.read_text(encoding="utf-8"), self._lang) if path is not None and path.is_file() else None
             )
         return self._cache[source_id]
 

@@ -1345,8 +1345,8 @@ def _grounding_ledger(tmp_path: Path, *, grounding: bool) -> Ledger:
     """One person, one CV text on disk, and an extraction file that cites it. Fictitious data."""
     (tmp_path / "empty").mkdir(exist_ok=True)
     config = _config(tmp_path, site=tmp_path / "empty", cache=tmp_path / "cache", sources="")
-    if grounding:
-        config.write_text(config.read_text(encoding="utf-8").replace("temperature = 0\n", "temperature = 0\ngrounding = true\n"), encoding="utf-8")
+    if not grounding:
+        config.write_text(config.read_text(encoding="utf-8").replace("temperature = 0\n", "temperature = 0\ngrounding = false\n"), encoding="utf-8")
     ledger = _ledger(tmp_path, config, [_person("LED-owner", "김하늘")])
     stored = "data/raw/cv/LED-owner/CV-KO/20260115-aaaa"
     text_path = tmp_path / f"{stored}.txt"
@@ -1434,7 +1434,7 @@ def test_grounding_hides_a_row_whose_year_or_venue_is_not_in_the_cv(tmp_path: Pa
     assert (stats.grounding.year, stats.grounding.venue, stats.grounding.both, stats.grounding.unchecked) == (1, 1, 0, 0)
 
 
-def test_grounding_is_off_unless_configured(tmp_path: Path):
+def test_grounding_can_be_turned_off(tmp_path: Path):
     ledger = _grounding_ledger(tmp_path, grounding=False)
     stats = apply_extractions(ledger, today=TODAY)
     assert all(row["publishable"] == "yes" for row in ledger.read("activities"))
@@ -1449,3 +1449,26 @@ def test_grounding_text_rules():
     assert failures({"year": "2019", "venue": "Example Art Space, Seoul"}, text) == []
     assert failures({"year": "2020", "venue": ""}, text) == ["year"]
     assert failures({"year": "2018", "venue": "Example Museum"}, text) == ["year", "venue"]
+
+
+def test_grounding_venue_reads_the_institution_part():
+    from giye.extract.grounding import CvText, failures
+    from giye.normalize.language import default_language
+
+    lang = default_language()
+    text = CvText.of(
+        "2019 Example Art Space (Seoul, Korea)\n2020 Busan\n2021 예시 미디어 공간 개인전\n2022 서울시립미술관 단체전\n",
+        lang,
+    )
+    # Parts reordered or joined, a city the text does not write, spaces dropped.
+    assert failures({"year": "2019", "venue": "Example Art Space, Seoul, Korea"}, text) == []
+    assert failures({"year": "2019", "venue": "Example Art Space, Daegu"}, text) == []
+    assert failures({"year": "2021", "venue": "예시미디어공간, 서울"}, text) == []
+    # A venue that is only places is checked on its first part.
+    assert failures({"year": "2020", "venue": "Busan, Korea"}, text) == []
+    assert failures({"year": "2020", "venue": "Daegu, Korea"}, text) == ["venue"]
+    # The institution itself must occur.
+    assert failures({"year": "2019", "venue": "Example Grand Hall, Seoul"}, text) == ["venue"]
+    # Cross-script: the V9 reading of a Hangul run in the text.
+    assert failures({"year": "2022", "venue": "Seoul Museum of Art, Seoul"}, text) == []
+    assert failures({"year": "2022", "venue": "Busan Museum of Art"}, text) == ["venue"]
