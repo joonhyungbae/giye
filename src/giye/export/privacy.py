@@ -26,19 +26,30 @@ The rules (one data rule for both exports):
   ``giye publish`` builds pages from). A CV URL without its text is still
   listed in the RO-Crate unless its owner is hidden.
 - **Personal pages.** A kept capture of a hidden person's own link
-  (``links.csv``) is left out. Roster pages stay: they are a programme's
-  public pages, the evidence for everyone on them.
+  (``links.csv``) is left out.
+- **Shared pages.** A capture of any other page (a programme's roster page)
+  that writes a hidden person's name is kept by default, unredacted: it is the
+  evidence for everyone else on it, and a redacted capture would no longer
+  match its SHA-256. The export counts these pages and its metadata says they
+  are kept. ``leave_out_shared_pages`` (``--leave-out-shared-pages``) leaves
+  them out as well, and the metadata says so. A name is found in the decoded
+  page text (charset as the collector reads it, HTML entities resolved, NFC);
+  a name split by markup or shown only in an image is not found.
 
-``include_hidden`` (``--include-hidden``) turns the first and last rule off and
+``include_hidden`` (``--include-hidden``) turns the hidden-people rules off and
 the export's metadata says so. CVs of people who are not published stay out
-either way.
+either way. Why the wording and the flag (final software review, MINOR-4): the
+metadata said "the files that name them" are left out, but shared roster pages
+that list a hidden person were kept, so the sentence was not true.
 """
 
 from __future__ import annotations
 
 import csv
+import html
 import io
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -51,8 +62,16 @@ _TEXT_SUFFIXES = {".csv", ".json", ".jsonl", ".md", ".html", ".htm", ".txt", ".t
 _MIN_NAME = 2
 
 EXCLUDED_NOTE = (
-    "People hidden by request are left out: their ledger rows, the files that name them, "
-    "and captures of their own pages. CVs are included only for published people."
+    "People hidden by request are left out: their ledger rows, other text files of the data "
+    "directory that name them, their CVs and captures of their own pages. Shared roster pages "
+    "that also list them are kept unredacted, because they are the evidence for everyone else on "
+    "them and a redacted capture would no longer match its hash (--leave-out-shared-pages leaves "
+    "them out). CVs are included only for published people."
+)
+EXCLUDED_SHARED_NOTE = (
+    "People hidden by request are left out: their ledger rows, other text files of the data "
+    "directory that name them, their CVs, captures of their own pages, and captures of shared "
+    "pages that name them (--leave-out-shared-pages). CVs are included only for published people."
 )
 INCLUDED_NOTE = (
     "This export includes people hidden by request (--include-hidden). It holds personal data that "
@@ -66,6 +85,7 @@ class Privacy:
     """The tokens and URLs an export leaves out, and what it left out."""
 
     include_hidden: bool = False
+    leave_out_shared_pages: bool = False
     hidden_ids: set[str] = field(default_factory=set)
     hidden_gy: set[str] = field(default_factory=set)
     hidden_names: set[str] = field(default_factory=set)
@@ -78,11 +98,33 @@ class Privacy:
     left_out_files: list[str] = field(default_factory=list)
     left_out_rows: int = 0
     left_out_captures: int = 0
+    # Captures of shared pages that write a hidden person's name (kept, or left
+    # out with ``leave_out_shared_pages``).
+    shared_pages_naming_hidden: int = 0
 
     @property
     def note(self) -> str:
         """The sentence the export's metadata carries."""
-        return INCLUDED_NOTE if self.include_hidden else EXCLUDED_NOTE
+        if self.include_hidden:
+            return INCLUDED_NOTE
+        return EXCLUDED_SHARED_NOTE if self.leave_out_shared_pages else EXCLUDED_NOTE
+
+    def names_hidden(self, body: bytes, content_type: str = "") -> bool:
+        """True when a capture's decoded text writes a hidden person's name or ledger id."""
+        tokens = self.tokens
+        if not tokens or not body:
+            return False
+        from giye.collect.charset import decode_body
+
+        text = unicodedata.normalize("NFC", html.unescape(decode_body(body, content_type)))
+        return any(token in text for token in tokens)
+
+    def shared_capture_left_out(self, row: dict, body: bytes) -> bool:
+        """Count a shared capture that names a hidden person; True when the flag leaves it out."""
+        if not self.names_hidden(body, str(row.get("content_type") or "")):
+            return False
+        self.shared_pages_naming_hidden += 1
+        return self.leave_out_shared_pages
 
     @property
     def tokens(self) -> set[str]:
@@ -140,19 +182,19 @@ class Privacy:
         return out.getvalue().encode("utf-8")
 
 
-def privacy_for(config: Config, *, include_hidden: bool = False) -> Privacy:
+def privacy_for(config: Config, *, include_hidden: bool = False, leave_out_shared_pages: bool = False) -> Privacy:
     """Read the ledger and the frames file and build the export's ``Privacy``."""
     ledger = config.ledger
     artists = _rows(ledger / "artists.csv")
     hidden_rows = [row for row in artists if row.get("status") == HIDDEN]
-    privacy = Privacy(include_hidden=include_hidden)
+    privacy = Privacy(include_hidden=include_hidden, leave_out_shared_pages=leave_out_shared_pages)
     privacy.hidden_ids = {row["ledger_id"] for row in hidden_rows if row.get("ledger_id")}
     for row in hidden_rows:
         privacy.hidden_ids.update(_MERGED.findall(row.get("reviewer_note") or ""))
         if row.get("gy_id"):
             privacy.hidden_gy.add(row["gy_id"])
         for name in (row.get("name_ko"), row.get("name_en"), *re.split(r"[|;]", row.get("aliases") or "")):
-            name = (name or "").strip()
+            name = unicodedata.normalize("NFC", name or "").strip()
             if len(name) >= _MIN_NAME:
                 privacy.hidden_names.add(name)
     for row in _rows(ledger / "gy_retired.csv"):

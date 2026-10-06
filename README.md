@@ -85,6 +85,9 @@ not stored before manifest version 2; the file says so. Each kept CV is a respon
 (the page as fetched), a conversion record (the text the pipeline read, checked against
 `content_sha256` first) and a metadata record (its `cv_sources` row). `--wacz` also writes a WACZ package. Both exports leave out people hidden by request and CVs of people who are not
 published, and say so in their metadata; `--include-hidden` includes hidden people.
+Shared roster pages that also list a hidden person are kept unredacted by default, because
+they are the evidence for everyone else on them and a redacted capture would no longer match
+its hash; the metadata says so and counts them, and `--leave-out-shared-pages` leaves them out.
 `giye export ro-crate` writes RO-Crate 1.1 metadata for the run (software version, config
 hash, roster and CV inputs, snapshot files, and one action per stage with its rule ids).
 The root dataset has `name`, `description`, and `datePublished`. The software entity is

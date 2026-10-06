@@ -97,6 +97,9 @@ class WarcExport:
     missing: tuple[str, ...] = ()
     # Captures of private URLs left out (``giye.export.privacy``).
     left_out: int = 0
+    # Captures of shared pages (rosters) that name a hidden person: kept by
+    # default, left out with ``leave_out_shared_pages`` (``giye.export.privacy``).
+    shared_pages_naming_hidden: int = 0
 
 
 def export_warc(
@@ -106,6 +109,7 @@ def export_warc(
     wacz: bool = False,
     allow_missing: bool = False,
     include_hidden: bool = False,
+    leave_out_shared_pages: bool = False,
 ) -> WarcExport:
     """Write ``<data>/work/export/snapshots.warc.gz``, and a ``.wacz`` when asked.
 
@@ -115,10 +119,12 @@ def export_warc(
 
     Kept CVs (``cv_sources``) and captures of a CV URL of a person who is not published, and of a hidden
     person's own links, are left out (``giye.export.privacy``) unless
-    ``include_hidden``, which keeps the hidden person's links. The warcinfo
-    record and the WACZ data package state which rule applied.
+    ``include_hidden``, which keeps the hidden person's links. Captures of
+    shared pages that name a hidden person are kept and counted, or left out
+    with ``leave_out_shared_pages``. The warcinfo record and the WACZ data
+    package state which rule applied.
     """
-    privacy = privacy_for(config, include_hidden=include_hidden)
+    privacy = privacy_for(config, include_hidden=include_hidden, leave_out_shared_pages=leave_out_shared_pages)
     out = Path(dest) if dest is not None else config.work / "export" / "snapshots.warc.gz"
     if out.suffix == ".gz" or out.name.endswith(".warc"):
         warc_path = out
@@ -130,7 +136,11 @@ def export_warc(
     if missing and not allow_missing:
         raise SnapshotMissingError(missing_message(missing))
     cv = [item for item in _cv_entries(config) if (item.row.get("ledger_id") or "") in privacy.published]
-    kept = [entry for entry in entries if not _private(entry[0], privacy)]
+    kept = [
+        entry
+        for entry in entries
+        if not _private(entry[0], privacy) and not privacy.shared_capture_left_out(entry[0], entry[2])
+    ]
     left_out = len(entries) - len(kept)
     created = _newest_date(kept, cv)
     index = _write_warc(warc_path, kept, name=config.name, created=created, cv=cv, note=privacy.note)
@@ -138,7 +148,13 @@ def export_warc(
     if wacz:
         wacz_path = _wacz_path(warc_path)
         _write_wacz(wacz_path, warc_path, index, title=config.name, created=created, note=privacy.note)
-    return WarcExport(warc=warc_path, wacz=wacz_path, missing=tuple(missing), left_out=left_out)
+    return WarcExport(
+        warc=warc_path,
+        wacz=wacz_path,
+        missing=tuple(missing),
+        left_out=left_out,
+        shared_pages_naming_hidden=privacy.shared_pages_naming_hidden,
+    )
 
 
 def _private(row: dict, privacy: Privacy) -> bool:

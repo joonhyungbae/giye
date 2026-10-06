@@ -14,6 +14,10 @@ from giye import __version__
 from giye.config import GiyeError
 
 STAGES = ["collect", "extract", "ledger", "resolve", "normalize", "explore", "publish"]
+SHARED_PAGES_HELP = (
+    "also leave out captures of shared pages (roster pages) that name a hidden person "
+    "(default: kept as evidence for everyone else on them; the export says which)"
+)
 CONFIG_HELP = "the archive config (default: giye.toml in the current directory)"
 
 
@@ -228,6 +232,7 @@ def _export(args: argparse.Namespace) -> int:
     output = Path(args.output) if args.output else None
     allow_missing = getattr(args, "allow_missing", False)
     include_hidden = getattr(args, "include_hidden", False)
+    leave_out_shared = getattr(args, "leave_out_shared_pages", False)
     if include_hidden:
         print(
             "giye export: --include-hidden: this export holds people hidden by request; "
@@ -236,10 +241,21 @@ def _export(args: argparse.Namespace) -> int:
         )
     if args.export_cmd == "warc":
         result = export_warc(
-            config, output, wacz=args.wacz, allow_missing=allow_missing, include_hidden=include_hidden
+            config,
+            output,
+            wacz=args.wacz,
+            allow_missing=allow_missing,
+            include_hidden=include_hidden,
+            leave_out_shared_pages=leave_out_shared,
         )
         for item in result.missing:
             print(f"giye export: kept body missing from disk, left out: {item}", file=sys.stderr)
+        if result.shared_pages_naming_hidden and not include_hidden:
+            verb = "left out" if leave_out_shared else "kept (--leave-out-shared-pages leaves them out)"
+            print(
+                f"giye export: {result.shared_pages_naming_hidden} captures of shared pages name a hidden person: {verb}",
+                file=sys.stderr,
+            )
         print(result.warc)
         if result.wacz is not None:
             print(result.wacz)
@@ -252,6 +268,7 @@ def _export(args: argparse.Namespace) -> int:
                 config_path=Path(args.config),
                 allow_missing=allow_missing,
                 include_hidden=include_hidden,
+                leave_out_shared_pages=leave_out_shared,
             )
         )
         return 0
@@ -618,6 +635,7 @@ def _add_tool_parsers(sub: argparse._SubParsersAction) -> None:
         action="store_true",
         help="keep captures of hidden people's own pages (default: left out; the file says which)",
     )
+    warc.add_argument("--leave-out-shared-pages", action="store_true", help=SHARED_PAGES_HELP)
     crate = export_sub.add_parser("ro-crate", help="RO-Crate 1.1 metadata for this run")
     crate.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
     crate.add_argument(
@@ -633,6 +651,7 @@ def _add_tool_parsers(sub: argparse._SubParsersAction) -> None:
         action="store_true",
         help="include people hidden by request (default: left out; the crate says which)",
     )
+    crate.add_argument("--leave-out-shared-pages", action="store_true", help=SHARED_PAGES_HELP)
     queue = sub.add_parser("queue", help="list or close a review-queue item")
     queue_sub = queue.add_subparsers(dest="queue_cmd", required=True)
     queue_list = queue_sub.add_parser("list", help="list review items")

@@ -119,6 +119,7 @@ def export_ro_crate(
     config_path: Path | None = None,
     allow_missing: bool = False,
     include_hidden: bool = False,
+    leave_out_shared_pages: bool = False,
 ) -> Path:
     """Write ``<data>/work/export/ro-crate/ro-crate-metadata.json`` and return that path.
 
@@ -137,7 +138,7 @@ def export_ro_crate(
         meta_path = crate / "ro-crate-metadata.json"
     crate.mkdir(parents=True, exist_ok=True)
     toml = _config_file(config, config_path)
-    privacy = privacy_for(config, include_hidden=include_hidden)
+    privacy = privacy_for(config, include_hidden=include_hidden, leave_out_shared_pages=leave_out_shared_pages)
     graph = _graph(config, crate, toml, privacy)
     document = {
         "@context": [
@@ -355,6 +356,11 @@ def _assemble_graph(
                 f" Left out: {privacy.left_out_rows} CSV rows, {len(privacy.left_out_files)} files"
                 f" and {privacy.left_out_captures} kept captures."
             )
+            if privacy.shared_pages_naming_hidden and not privacy.leave_out_shared_pages:
+                description += (
+                    f" Kept: {privacy.shared_pages_naming_hidden} captures of shared pages"
+                    " that name a hidden person."
+                )
     licence_entities: list[dict] = [
         {
             "@id": SOFTWARE_LICENCE,
@@ -436,8 +442,11 @@ def _inputs(config: Config, privacy: Privacy | None = None) -> tuple[list[dict],
             continue
         if path not in seen_paths:
             # A body that no longer has its manifest hash is not the capture; refuse it.
-            verified_bytes(path, row.get("sha256"))
+            body = verified_bytes(path, row.get("sha256"))
             seen_paths.add(path)
+            if privacy.shared_capture_left_out(row, body):
+                privacy.left_out_captures += 1
+                continue
             snapshots.append(path)
 
     roster_urls: dict[str, str] = {}
