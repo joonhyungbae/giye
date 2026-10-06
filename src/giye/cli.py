@@ -60,7 +60,11 @@ def _collect(args: argparse.Namespace) -> int:
     refusals: list = []
     failures: list = []
     results = run_configured(
-        config, from_snapshots=getattr(args, "from_snapshots", False), refusals=refusals, failures=failures
+        config,
+        from_snapshots=getattr(args, "from_snapshots", False),
+        refusals=refusals,
+        failures=failures,
+        allow_missing=getattr(args, "allow_missing", False),
     )
     if not results:
         print(
@@ -199,14 +203,17 @@ def _export(args: argparse.Namespace) -> int:
 
     config = _open_config(args.config)
     output = Path(args.output) if args.output else None
+    allow_missing = getattr(args, "allow_missing", False)
     if args.export_cmd == "warc":
-        result = export_warc(config, output, wacz=args.wacz)
+        result = export_warc(config, output, wacz=args.wacz, allow_missing=allow_missing)
+        for item in result.missing:
+            print(f"giye export: kept body missing from disk, left out: {item}", file=sys.stderr)
         print(result.warc)
         if result.wacz is not None:
             print(result.wacz)
         return 0
     if args.export_cmd == "ro-crate":
-        print(export_ro_crate(config, output, config_path=Path(args.config)))
+        print(export_ro_crate(config, output, config_path=Path(args.config), allow_missing=allow_missing))
         return 0
     print("giye export: expected 'warc' or 'ro-crate'", file=sys.stderr)
     return 2
@@ -424,6 +431,11 @@ def _add_stage_parsers(sub: argparse._SubParsersAction) -> None:
                     "collected_at is the kept page's fetch date"
                 ),
             )
+            sp.add_argument(
+                "--allow-missing",
+                action="store_true",
+                help="with --from-snapshots: go on when a kept body listed in the manifest is gone from disk",
+            )
         if stage == "resolve":
             sp.add_argument("--dry-run", action="store_true", help="decide without writing the ledger")
         if stage == "normalize":
@@ -509,12 +521,18 @@ def _add_tool_parsers(sub: argparse._SubParsersAction) -> None:
     warc.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
     warc.add_argument("--output", default=None, help="WARC path; default is <data>/work/export/snapshots.warc.gz")
     warc.add_argument("--wacz", action="store_true", help="also write a WACZ 1.1.1 package next to the WARC")
+    warc.add_argument(
+        "--allow-missing", action="store_true", help="leave out kept bodies gone from disk instead of failing"
+    )
     crate = export_sub.add_parser("ro-crate", help="RO-Crate 1.1 metadata for this run")
     crate.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
     crate.add_argument(
         "--output",
         default=None,
         help="directory or ro-crate-metadata.json path; default is <data>/work/export/ro-crate/",
+    )
+    crate.add_argument(
+        "--allow-missing", action="store_true", help="leave out kept bodies gone from disk instead of failing"
     )
     queue = sub.add_parser("queue", help="list or close a review-queue item")
     queue_sub = queue.add_subparsers(dest="queue_cmd", required=True)

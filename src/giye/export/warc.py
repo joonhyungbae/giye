@@ -12,6 +12,13 @@ Each manifest line with a readable body becomes two records:
 The manifest line still carries the URL that was asked for. A refused fetch
 has no body and is not in the file.
 
+Each ``cv_sources`` row with a kept CV adds a ``response`` record for the
+page as fetched (the original file next to the text; the text itself when no
+other file was kept), a ``conversion`` record holding the extracted text the
+pipeline read, and a ``metadata`` record with the ``cv_sources`` row. The text
+is checked against ``content_sha256`` first (``verified_cv_text``), so an
+edited CV text stops the export as an edited roster body does.
+
 WACZ (``--wacz``) is a zip of that WARC, ``pages/pages.jsonl``, a CDXJ index of
 the response records, and ``datapackage.json`` (WACZ 1.1.1). Every resource in
 the data package carries its ``hash`` (``sha256:``) and ``bytes``, and every
@@ -34,6 +41,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import mimetypes
 import re
 import uuid
 import zipfile
@@ -49,11 +57,15 @@ from giye import __version__
 from giye.collect.snapshot import (
     HEADERS_NOT_KEPT,
     MANIFEST_VERSION,
+    SnapshotMissingError,
     _stored_status,
+    missing_message,
     servable_rows,
     verified_bytes,
 )
 from giye.config import Config
+from giye.extract.paths import cv_text_path, verified_cv_text
+from giye.ledger.io import read_csv
 
 _REASONS = {
     200: "OK",
@@ -80,28 +92,41 @@ class WarcExport:
 
     warc: Path
     wacz: Path | None = None
+    # Kept bodies missing from disk that ``allow_missing`` skipped.
+    missing: tuple[str, ...] = ()
 
 
-def export_warc(config: Config, dest: Path | None = None, *, wacz: bool = False) -> WarcExport:
-    """Write ``<data>/work/export/snapshots.warc.gz``, and a ``.wacz`` when asked."""
+def export_warc(
+    config: Config, dest: Path | None = None, *, wacz: bool = False, allow_missing: bool = False
+) -> WarcExport:
+    """Write ``<data>/work/export/snapshots.warc.gz``, and a ``.wacz`` when asked.
+
+    A servable manifest line whose body is gone from disk raises
+    ``SnapshotMissingError`` before anything is written, unless
+    ``allow_missing``; then the line is left out and listed in ``missing``.
+    """
     out = Path(dest) if dest is not None else config.work / "export" / "snapshots.warc.gz"
     if out.suffix == ".gz" or out.name.endswith(".warc"):
         warc_path = out
     else:
         warc_path = out / "snapshots.warc.gz"
     warc_path.parent.mkdir(parents=True, exist_ok=True)
-    entries = list(_entries(config.raw))
-    created = _newest_date(entries)
-    index = _write_warc(warc_path, entries, name=config.name, created=created)
+    missing: list[str] = []
+    entries = list(_entries(config.raw, missing))
+    if missing and not allow_missing:
+        raise SnapshotMissingError(missing_message(missing))
+    cv = _cv_entries(config)
+    created = _newest_date(entries, cv)
+    index = _write_warc(warc_path, entries, name=config.name, created=created, cv=cv)
     wacz_path = None
     if wacz:
         wacz_path = _wacz_path(warc_path)
         _write_wacz(wacz_path, warc_path, index, title=config.name, created=created)
-    return WarcExport(warc=warc_path, wacz=wacz_path)
+    return WarcExport(warc=warc_path, wacz=wacz_path, missing=tuple(missing))
 
 
-def _entries(root: Path) -> list[tuple[dict, Path, bytes]]:
-    """Servable snapshot rows with their bytes, in manifest order."""
+def _entries(root: Path, missing: list[str] | None = None) -> list[tuple[dict, Path, bytes]]:
+    """Servable snapshot rows with their bytes, in manifest order. Gone files go to ``missing``."""
     found: list[tuple[dict, Path, bytes]] = []
     if not root.is_dir():
         return found
@@ -128,6 +153,8 @@ def _entries(root: Path) -> list[tuple[dict, Path, bytes]]:
             except ValueError:
                 continue
             if not path.is_file():
+                if missing is not None:
+                    missing.append(path.relative_to(base).as_posix())
                 continue
             found.append((row, path, verified_bytes(path, row.get("sha256"))))
     return found
@@ -139,9 +166,49 @@ def _wacz_path(warc_path: Path) -> Path:
     return warc_path.with_suffix(".wacz")
 
 
-def _newest_date(entries: list[tuple[dict, Path, bytes]]) -> str:
-    """Newest WARC date among the lines, or the Unix epoch for an empty or undated store."""
+@dataclass(frozen=True)
+class CvEntry:
+    """One kept CV: the ``cv_sources`` row, the page bytes and type, and the verified text."""
+
+    row: dict
+    body: bytes
+    content_type: str
+    text: str
+
+
+def _cv_entries(config: Config) -> list[CvEntry]:
+    """Kept CVs in ``cv_sources`` order. A row whose text is not on disk is skipped."""
+    path = config.ledger / "cv_sources.csv"
+    if not path.is_file():
+        return []
+    found: list[CvEntry] = []
+    for row in read_csv(path):
+        text = verified_cv_text(config, row)
+        text_path = cv_text_path(config, row)
+        if text is None or text_path is None:
+            continue
+        stem = text_path.with_suffix("")
+        originals = sorted(
+            item for item in stem.parent.glob(stem.name + ".*") if item.is_file() and item.suffix.lower() != ".txt"
+        )
+        if originals:
+            body = originals[0].read_bytes()
+            ctype = mimetypes.guess_type(originals[0].name)[0] or "application/octet-stream"
+        else:
+            body = text.encode("utf-8")
+            ctype = "text/plain; charset=utf-8"
+        found.append(CvEntry(row=dict(row), body=body, content_type=ctype, text=text))
+    return found
+
+
+def _cv_date(item: CvEntry) -> str:
+    return _line_date(item.row.get("last_changed_at") or item.row.get("last_pulled_at"))
+
+
+def _newest_date(entries: list[tuple[dict, Path, bytes]], cv: list[CvEntry] | None = None) -> str:
+    """Newest WARC date among the lines and CVs, or the Unix epoch for an empty or undated store."""
     dates = [_line_date(row.get("fetched_at")) for row, _path, _body in entries]
+    dates += [_cv_date(item) for item in cv or []]
     dates = [item for item in dates if item]
     return max(dates) if dates else "1970-01-01T00:00:00Z"
 
@@ -152,7 +219,14 @@ def _record_id(*parts: object) -> str:
     return f"<urn:uuid:{uuid.uuid5(uuid.NAMESPACE_URL, key)}>"
 
 
-def _write_warc(path: Path, entries: list[tuple[dict, Path, bytes]], *, name: str, created: str) -> list[dict]:
+def _write_warc(
+    path: Path,
+    entries: list[tuple[dict, Path, bytes]],
+    *,
+    name: str,
+    created: str,
+    cv: list[CvEntry] | None = None,
+) -> list[dict]:
     """Write the WARC. Return one index row per response record, with gzip-member offsets."""
     index: list[dict] = []
     with path.open("wb") as handle:
@@ -229,7 +303,80 @@ def _write_warc(path: Path, entries: list[tuple[dict, Path, bytes]], *, name: st
                     },
                 )
             )
+        for position, item in enumerate(cv or []):
+            _write_cv(writer, handle, path.name, item, index, created=created, position=position)
     return index
+
+
+def _write_cv(
+    writer: WARCWriter, handle, filename: str, item: CvEntry, index: list[dict], *, created: str, position: int
+) -> None:
+    """A kept CV: the page as a response, its text as a conversion, and its ``cv_sources`` row as metadata."""
+    target = item.row.get("fetch_url") or item.row.get("url") or ""
+    when = _cv_date(item) or created
+    sha = hashlib.sha256(item.body).hexdigest()
+    http_headers = StatusAndHeaders(
+        "200 OK",
+        [("Content-Type", item.content_type), ("Content-Length", str(len(item.body)))],
+        protocol="HTTP/1.1",
+    )
+    response = writer.create_warc_record(
+        target,
+        "response",
+        payload=io.BytesIO(item.body),
+        length=len(item.body),
+        warc_headers_dict={"WARC-Date": when, "WARC-Record-ID": _record_id("cv-response", sha, target, when, position)},
+        http_headers=http_headers,
+    )
+    offset = handle.tell()
+    writer.write_record(response)
+    record_id = response.rec_headers.get_header("WARC-Record-ID")
+    index.append(
+        {
+            "url": target,
+            "ts": when,
+            "mime": item.content_type.split(";", 1)[0].strip(),
+            "status": "200",
+            "digest": response.rec_headers.get_header("WARC-Payload-Digest") or "",
+            "length": str(handle.tell() - offset),
+            "offset": str(offset),
+            "filename": filename,
+        }
+    )
+    text = item.text.encode("utf-8")
+    writer.write_record(
+        writer.create_warc_record(
+            target,
+            "conversion",
+            payload=io.BytesIO(text),
+            length=len(text),
+            warc_content_type="text/plain; charset=utf-8",
+            warc_headers_dict={
+                "WARC-Date": when,
+                "WARC-Record-ID": _record_id("cv-conversion", sha, target, when, position),
+                "WARC-Refers-To": record_id,
+            },
+        )
+    )
+    meta = dict(item.row)
+    meta["headers_note"] = HEADERS_NOT_KEPT
+    meta["role"] = "cv"
+    blob = json.dumps(meta, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    writer.write_record(
+        writer.create_warc_record(
+            target,
+            "metadata",
+            payload=io.BytesIO(blob),
+            length=len(blob),
+            warc_content_type="application/json",
+            warc_headers_dict={
+                "WARC-Date": when,
+                "WARC-Record-ID": _record_id("cv-metadata", sha, target, when, position),
+                "WARC-Refers-To": record_id,
+                "WARC-Concurrent-To": record_id,
+            },
+        )
+    )
 
 
 def _write_wacz(dest: Path, warc_path: Path, index: list[dict], *, title: str, created: str) -> None:

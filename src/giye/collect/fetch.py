@@ -346,6 +346,7 @@ class Fetcher:
         from_snapshots: bool = False,
         snapshot_root: Path | None = None,
         prefer_frame: str = "",
+        allow_missing: bool = False,
     ) -> None:
         self.user_agent = require_contact(user_agent)
         self.min_delay_s = float(min_delay_s)
@@ -354,6 +355,8 @@ class Fetcher:
         self.from_snapshots = bool(from_snapshots)
         self.snapshot_root = None if snapshot_root is None else Path(snapshot_root)
         self.prefer_frame = prefer_frame or ""
+        # Replay: a kept body missing from disk raises unless this is set.
+        self.allow_missing = bool(allow_missing)
         self._reads: SnapshotStore | None = None
         # Replay must not be able to fall through into a live session.
         if self.from_snapshots:
@@ -494,7 +497,7 @@ class Fetcher:
         if self.snapshot_root is None:
             return None
         if self._reads is None:
-            self._reads = SnapshotStore(self.snapshot_root)
+            self._reads = SnapshotStore(self.snapshot_root, missing_ok=self.allow_missing)
         return self._reads
 
     def _robots_get(self, url: str, timeout: float):
@@ -711,10 +714,11 @@ def _content_type(path: Path) -> str:
     return "application/octet-stream"
 
 
-def fetcher_from_config(config: object, *, from_snapshots: bool = False) -> Fetcher:
+def fetcher_from_config(config: object, *, from_snapshots: bool = False, allow_missing: bool = False) -> Fetcher:
     """Build a ``Fetcher`` from a ``giye.config.Config``.
 
     ``from_snapshots`` reads ``config.raw`` and does not use the network.
+    ``allow_missing`` lets replay go on past a kept body missing from disk.
     """
     raw = getattr(config, "raw", None)
     return Fetcher(
@@ -725,4 +729,5 @@ def fetcher_from_config(config: object, *, from_snapshots: bool = False) -> Fetc
         offline_roots=config.offline_roots,  # type: ignore[attr-defined]
         from_snapshots=from_snapshots,
         snapshot_root=Path(raw) if from_snapshots and raw is not None else None,
+        allow_missing=allow_missing,
     )

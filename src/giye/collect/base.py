@@ -581,6 +581,7 @@ def run_configured(
     from_snapshots: bool = False,
     refusals: list[Refusal] | None = None,
     failures: list[Refusal] | None = None,
+    allow_missing: bool = False,
 ) -> list[tuple[str, list[dict[str, str]], Path]]:
     """Run every configured collector. One fetcher and one snapshot store are shared.
 
@@ -611,7 +612,7 @@ def run_configured(
         )
     if not classes:
         return []
-    fetcher = fetcher_from_config(config, from_snapshots=from_snapshots)
+    fetcher = fetcher_from_config(config, from_snapshots=from_snapshots, allow_missing=allow_missing)
     store = SnapshotStore(Path(config.raw))  # type: ignore[attr-defined]
     stamp = run_id or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     results = []

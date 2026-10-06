@@ -32,6 +32,12 @@ and without a hash file name cannot be checked and is read as before. The
 check is self-consistency: a body rewritten together with its manifest line
 and its file name is not detected here (see :func:`verified_bytes`).
 
+A servable line whose file is gone from disk raises :class:`SnapshotMissingError`
+(a ``SnapshotIntegrityError``) in ``recall`` and in both exports: the manifest
+says the body was kept, so "not kept" would be false and losing original
+evidence is what the store exists to catch. ``missing_ok`` (``--allow-missing``
+on the command line) skips such a line instead, and the caller reports it.
+
 ``recall`` reads the lines back for ``giye collect --from-snapshots``. It scans
 ``<root>/*/snapshots/manifest.jsonl``. A line matches when its ``url`` or
 ``final_url`` equals the requested URL and its request method and body hash
@@ -118,6 +124,20 @@ class SnapshotIntegrityError(GiyeError):
     """A kept body whose SHA-256 is not the one its manifest line records."""
 
 
+class SnapshotMissingError(SnapshotIntegrityError):
+    """A servable manifest line whose body file is no longer on disk."""
+
+
+def missing_message(paths: list[str]) -> str:
+    """One line naming the missing bodies (the first five) and how to go on without them."""
+    shown = ", ".join(paths[:5]) + (f" and {len(paths) - 5} more" if len(paths) > 5 else "")
+    return (
+        f"{len(paths)} kept snapshot bod{'y is' if len(paths) == 1 else 'ies are'} missing from disk "
+        f"although the manifest lists them: {shown}. Restore them from a backup, or pass --allow-missing "
+        "to go on without them"
+    )
+
+
 def _digest(value: object) -> str:
     """``value`` lower-cased when it is a 64-character hex SHA-256, else empty."""
     text = value.lower() if isinstance(value, str) else ""
@@ -171,8 +191,12 @@ class KeptBody:
 class SnapshotStore:
     """Keep response bodies under ``root`` (the archive's ``data/raw`` directory)."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, missing_ok: bool = False) -> None:
         self.root = Path(root)
+        # True skips a servable line whose file is gone; False raises SnapshotMissingError.
+        self.missing_ok = bool(missing_ok)
+        # Missing files met while ``missing_ok`` is set, for the caller to report.
+        self.missing: list[str] = []
         # snapshots directory → full sha256 → path as stored on the manifest line.
         self._sha_index: dict[Path, dict[str, str]] = {}
         # Servable lines for ``recall``. Cleared when ``keep`` appends a line.
@@ -304,12 +328,22 @@ class SnapshotStore:
         return lines
 
     def _body_of(self, frame: str, row: dict) -> bytes | None:
-        """Bytes for one manifest line, or ``None`` when the file is not in this frame."""
+        """Bytes for one manifest line, or ``None`` when the line names no usable path.
+
+        A safe path whose file exists nowhere raises ``SnapshotMissingError``
+        unless ``missing_ok`` is set (then the path is noted in ``missing``).
+        """
         rel = row.get("path")
         if not isinstance(rel, str) or not rel:
             return None
         path = self._resolve_stored(self.root / frame / "snapshots", frame, rel)
         if path is None:
+            if _safe_rel(rel) and not any(
+                candidate.exists() for candidate in (self.root / rel, self.root / frame / rel)
+            ):
+                if not self.missing_ok:
+                    raise SnapshotMissingError(missing_message([f"{frame}: {rel}"]))
+                self.missing.append(f"{frame}: {rel}")
             return None
         return verified_bytes(path, row.get("sha256"))
 
@@ -370,12 +404,17 @@ class SnapshotStore:
         New lines store a path relative to the archive root (``<frame>/snapshots/...``).
         Older lines store one relative to the frame directory (``snapshots/...``).
         """
-        if not rel or rel.startswith(("/", "\\")) or ".." in Path(rel).parts:
+        if not _safe_rel(rel):
             return None
         for candidate in (self.root / rel, self.root / frame_dir / rel):
             if candidate.is_file() and _inside(snapshots, candidate):
                 return candidate
         return None
+
+
+def _safe_rel(rel: str) -> bool:
+    """A manifest path that stays under the store: relative, without ``..``."""
+    return bool(rel) and not rel.startswith(("/", "\\")) and ".." not in Path(rel).parts
 
 
 def _read_manifest(path: Path) -> list[dict]:

@@ -44,7 +44,7 @@ from pathlib import Path
 import yaml
 
 from giye import __version__
-from giye.collect.snapshot import servable_rows, verified_bytes
+from giye.collect.snapshot import SnapshotMissingError, missing_message, servable_rows, verified_bytes
 from giye.config import Config
 from giye.extract.paths import resolve_stored
 
@@ -101,8 +101,18 @@ _STAGE_NOTE = {
 }
 
 
-def export_ro_crate(config: Config, dest: Path | None = None, *, config_path: Path | None = None) -> Path:
-    """Write ``<data>/work/export/ro-crate/ro-crate-metadata.json`` and return that path."""
+def export_ro_crate(
+    config: Config, dest: Path | None = None, *, config_path: Path | None = None, allow_missing: bool = False
+) -> Path:
+    """Write ``<data>/work/export/ro-crate/ro-crate-metadata.json`` and return that path.
+
+    A kept snapshot body missing from disk raises ``SnapshotMissingError``
+    unless ``allow_missing``.
+    """
+    missing = [path for _row, path in _manifest_lines(config) if not path.is_file()]
+    if missing and not allow_missing:
+        base = config.raw.resolve()
+        raise SnapshotMissingError(missing_message([path.relative_to(base).as_posix() for path in missing]))
     crate = Path(dest) if dest is not None else config.work / "export" / "ro-crate"
     if crate.suffix == ".json":
         meta_path = crate
@@ -442,6 +452,12 @@ def _roster_urls(config: Config) -> list[str]:
 
 
 def _manifest_files(config: Config) -> list[tuple[dict, Path]]:
+    """Servable manifest lines whose body file is on disk."""
+    return [(row, path) for row, path in _manifest_lines(config) if path.is_file()]
+
+
+def _manifest_lines(config: Config) -> list[tuple[dict, Path]]:
+    """Servable manifest lines with a safe path, and that path (which may be gone)."""
     rows: list[tuple[dict, Path]] = []
     raw = config.raw
     if not raw.is_dir():
@@ -467,8 +483,7 @@ def _manifest_files(config: Config) -> list[tuple[dict, Path]]:
                 path.relative_to(base)
             except ValueError:
                 continue
-            if path.is_file():
-                rows.append((row, path))
+            rows.append((row, path))
     return rows
 
 
