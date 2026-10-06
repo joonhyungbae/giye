@@ -1,6 +1,6 @@
 # Evaluation
 
-Accuracy of three automatic steps, checked by one coder on a random sample.
+Accuracy of the automatic steps, checked by one coder on a random sample.
 The numbers in a paper that cites Giye come from this protocol. The commands
 below run on any ledger (`giye.toml`); they do not read a private data
 directory by path.
@@ -12,12 +12,16 @@ directory by path.
 | `cv` | A publishable activity the extractor wrote (`origin` `cv:<source_id>`) | One row per such activity. Roster rows and `publishable=no` rows are not in the frame. |
 | `people` | A same-person merge | One row per merge marker: `merged <ledger id>`, then `merge_evidence=…` and `rule=…`, as `Ledger.merge` appends them to the survivor's note. |
 | `venues` | An institution name-rule merge | One row per V7e, V8, or V9 line in section 7 of `data/processed/venue_audit.md`. V5 and the V7a–d spelling rewrites are not in this frame. |
+| `attach` | A roster row an attachment rule joined to an existing person | One row per membership whose `attach_rule` is the rule given by `--rule` (default `A2`). The record's other memberships, with their rules, are shown beside it. |
+| `splink` | A pair a probabilistic linker matches and the evidence rules did not merge | One row per pair at or above the threshold (see "Comparison with a probabilistic linker"). Not sampled: the command writes every pair. |
 
 A case is a success when the coder's label is `correct`:
 
 - `cv` — the title, year, venue, and activity type are what that CV line says, and the row is a practice record the extractor was supposed to keep.
 - `people` — the two records are the same person.
 - `venues` — the two spellings are the same institution.
+- `attach` — the roster row is the person the record already describes.
+- `splink` — the two records are the same person.
 
 `incorrect` is a failure. `cannot tell` means the sheet does not show enough to decide. A blank `label` is not judged yet.
 
@@ -28,8 +32,12 @@ A case is a success when the coder's label is `correct`:
 | `cv` | `activity_type`. A blank type is `other`. |
 | `people` | The stored rule when it is `E1`, `E2`, `E3`, `E4`, `X1+E1`, `X1+E2`, `X1+E3`, or `X1+E4`. Every other rule, including a missing one, is `uncoded`. |
 | `venues` | `V7e`, `V8`, or `V9`. |
+| `attach` | The attachment rule (one stratum). |
+| `splink` | `name_only` when the pair shares no edition and no website, otherwise `shared`. |
 
 `--n` is the size of the whole sheet, not a quota per stratum. Seats are Hamilton's method on integers: each stratum starts with `n * size // population`, and leftover seats go to the largest remainder (`n * size % population`), then the larger stratum, then the stratum name. A small stratum can receive no row. When `--n` is at least the population, the sheet is a census and the generator is not read.
+
+`people` also has a census-plus-sample design, `--design census-coded`: every merge in a coded stratum is on the sheet, and `--n` rows are drawn from `uncoded` alone. The census strata carry no sampling error; the drawn rows stand for the whole `uncoded` stratum, so a pooled precision should be weighted by stratum size (see the results below).
 
 Inside a stratum, rows are ordered by `item_id`. The draw is a partial Fisher–Yates on `random.Random(seed)` (`randrange` only). Taking every row of a stratum, or none, does not advance the generator. The same seed and the same ledger rewrite the same sheet. The seed is stored on every row.
 
@@ -61,6 +69,14 @@ Draw a sheet. `label` and `note` are empty. Sampling reads the ledger CSVs in pl
 python -m giye.audit sample cv --config giye.toml --n 200 --seed 20261005 --out cv.csv
 python -m giye.audit sample people --config giye.toml --n 200 --seed 20261005 --out people.csv
 python -m giye.audit sample venues --config giye.toml --n 200 --seed 20261005 --out venues.csv
+python -m giye.audit sample people --config giye.toml --design census-coded --n 40 --seed S --out people.csv
+python -m giye.audit sample attach --config giye.toml --rule A2 --n 40 --seed 20261006 --out a2.csv
+```
+
+The linker comparison needs the optional extra (`pip install -e ".[splink]"`):
+
+```
+python -m giye.audit splink --config giye.toml --threshold 0.9 --out splink.csv
 ```
 
 Score it. `--json` prints the same figures as one object (`overall` and `strata`).
@@ -123,9 +139,8 @@ of 37 decided, 90.6%; 117 of the 159 merges), the lower bound is 93.1%: this is
 the figure the manuscript gives beside the unweighted 95.2%. Counting the five
 undecided rows as errors gives 93.2% weighted (lower bound 84.1%). Both
 figures were judged from names, rosters and stored evidence, so neither tests
-homonymy. The package's `sample` command draws only the
-proportional design; this sheet was put together from a census of the coded
-strata and a seeded draw from `uncoded`.
+homonymy. This is the `--design census-coded` sheet with `--n 40`; see
+"Regenerating each figure" for what the command can and cannot reproduce.
 
 A2 name attachments: a seeded random draw (seed 20261006) of 40 of the 270
 memberships attached by A2. The author judged each attached roster row against
@@ -137,6 +152,23 @@ before the restriction of 2026-10-05 (no join on the name alone). The author
 judged all 21; each was the same person.
 
 ## Comparison with a probabilistic linker (Splink)
+
+`python -m giye.audit splink` (module `giye.audit.linker`) fixes the model so
+the comparison can be rebuilt from any ledger. One record per person carries
+the Korean and Latin names, the programme editions (memberships and the
+origin of every roster activity) and the personal websites (host and path).
+The comparisons are: name (exact Korean name, exact Latin name, then
+Jaro–Winkler at 0.9 on either, else); programme editions (at least one in
+common); websites (at least one in common). The prior is estimated from the
+exact-name rule at an assumed recall of 0.7, `u` from a seeded random sample
+of pairs, and `m` by expectation–maximisation in two sessions (blocked on an
+exact name, then on the first website). There is no term-frequency
+adjustment. Prediction blocks on an exact Korean name, an exact Latin name,
+or the same first website, and keeps pairs with a match probability of 0.9
+or more. Records the rules already merged are one record, so every pair on
+the sheet is one the rules did not merge. A ledger with no same-name or
+same-website pairs cannot train the model, and the command stops with an
+error.
 
 The evidence rules were compared with Splink 5.0.0 on the reference archive.
 The Splink model compared name similarity, agreement on a programme edition,
@@ -157,6 +189,32 @@ precision. The 13 pairs measure disagreement between Splink at 0.9 and this
 coder, not composite people against ground truth. The 96 merges recorded from
 the 110 pairs (rule H) rest on the author's recorded judgement, not on a
 document, and are not marked for review.
+
+## Regenerating each figure
+
+Every command reads the ledger named by the config; none reads a private
+path. Run them against the ledger as it stood when the figure was measured
+(a pipeline rerun under the rule changes below gives different populations).
+
+| Figure | Command | Then |
+|---|---|---|
+| CV extraction, 150 rows | `python -m giye.audit sample cv --config giye.toml --n 150 --seed S --out cv.csv` | `score cv.csv --kind cv` |
+| Person merges, 42 + 40 rows | `python -m giye.audit sample people --config giye.toml --design census-coded --n 40 --seed S --out people.csv` | `score people.csv --kind people`; weight by stratum size as described above |
+| A2 attachments, 40 of 270 | `python -m giye.audit sample attach --config giye.toml --rule A2 --n 40 --seed 20261006 --out a2.csv` | `score a2.csv --kind attach` |
+| Institution merges | `python -m giye.audit sample venues --config giye.toml --n 85 --seed S --out venues.csv` (70 for the refined rules) | `score venues.csv --kind venues` |
+| Splink pairs on the name alone (131) | `python -m giye.audit splink --config giye.toml --out splink.csv` | the `name_only` stratum; `score splink.csv --kind splink` gives the coder's same-person share |
+| Latin-only joins (21) | no command | a census of joins made before 2026-10-05; the current A2 no longer makes them |
+
+`S` is the seed recorded on each sheet's `seed` column. The sheets behind
+the reported person-merge, A2 and Splink figures were drawn by scripts
+outside the package before these commands existed. The commands implement
+the design described on this page, so on the same ledger they rebuild the
+same population, but a rerun is not guaranteed to pick the same rows. The Splink figures
+were produced with Splink 5.0.0; the model in `giye.audit.linker` states
+the settings the comparison reports (name, edition and website agreement,
+EM, no term-frequency adjustment, threshold 0.9), and its prior and name
+levels are this module's choices. The coder's labels are not part of the
+package, so precision is regenerated by judging the sheet again.
 
 ## Rules changed after these audits
 
