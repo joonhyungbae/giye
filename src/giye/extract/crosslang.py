@@ -26,8 +26,9 @@ The rule is conservative. Two publishable ``cv:`` rows of one person fold when
 - the match is one to one: in that (person, year, type) neither row matches
   any other row on the other side, from any document. Two shows at one museum
   in one year stay separate,
-- when the two titles are in the same script (both Latin, or both Hangul),
-  their word bags overlap: Jaccard at least ``TITLE_JACCARD`` over tokens of
+- when the two titles are in the same script, their word bags overlap (the
+  Latin row has no Hangul by definition, so in practice this is a Korean
+  row that carries a Latin title): Jaccard at least ``TITLE_JACCARD`` over tokens of
   two or more characters, numbers removed (:func:`titles_agree`). A Korean CV
   may write an English title, so a "Korean" row can carry a Latin title, and
   then the two titles can be compared; two unrelated Latin titles at one museum
