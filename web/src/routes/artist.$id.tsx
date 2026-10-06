@@ -143,7 +143,17 @@ function usedSources(indexes: number[]): number[] {
   return [...new Set(indexes)];
 }
 
-/** One year of activities: one line per record (title — venue · type · role [n]). */
+/**
+ * A record title as shown. Titles may themselves contain " — " or 〈…〉, and some end in a dash
+ * where the source ran title and venue together, so the page never joins title and venue with a
+ * dash (it would double); it uses " · ". Trailing dashes and spaces are dropped here at render
+ * time only; the data keep the title as collected.
+ */
+function displayTitle(title: string): string {
+  return title.replace(/[\s–—-]+$/u, "");
+}
+
+/** One year of activities: one line per record (title · venue · type · role [n]). */
 function ActivityYear({ year, sources }: { year: PageYear; sources: PageSource[] }) {
   const { lang, t } = useLang();
   return (
@@ -155,8 +165,8 @@ function ActivityYear({ year, sources }: { year: PageYear; sources: PageSource[]
       <ul className="space-y-1.5">
         {year.rows.map(([title, venue, type, role, roleEn, src, uncertain], i) => (
           <li key={i} data-record className="max-w-3xl text-sm leading-6">
-            <span className="font-medium">{title}</span>
-            {venue && <span className="text-muted-foreground"> — {venue}</span>}
+            <span className="font-medium">{displayTitle(title)}</span>
+            {venue && <span className="text-muted-foreground"> · {venue}</span>}
             <span className="text-muted-foreground">
               {" · "}
               {t(ACTIVITY_TYPE_LABEL[type]?.[0] ?? type, ACTIVITY_TYPE_LABEL[type]?.[1] ?? type)}
@@ -205,8 +215,8 @@ function BackgroundList({ rows, sources }: { rows: PageBackground[]; sources: Pa
         <li key={i} data-record className="grid max-w-3xl grid-cols-[3.5rem_minmax(0,1fr)] gap-3 text-sm">
           <span className="font-mono text-xs leading-5 text-primary">{year}</span>
           <span>
-            {title}
-            {venue && <span className="text-muted-foreground"> — {venue}</span>}
+            {displayTitle(title)}
+            {venue && <span className="text-muted-foreground"> · {venue}</span>}
             {role && <span className="text-muted-foreground"> · {role}</span>}
             <SourceRef index={src} url={sources[src].url} />
           </span>
