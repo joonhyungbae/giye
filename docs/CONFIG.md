@@ -88,7 +88,7 @@ CV extraction. `giye.extract.service` reads these keys. `giye extract` can overr
 |---|---|---|---|---|---|
 | `provider` | string | `"anthropic"` | no | `giye.extract.service`, `giye.extract.provider`. `anthropic` or `openai_compatible`. | `"openai_compatible"` |
 | `base_url` | string | `"http://localhost:11434/v1"` | no | `openai_compatible` posts to `<base_url>/chat/completions`. A trailing slash is stripped. Unused by the Anthropic provider. | `"http://localhost:11434/v1"` |
-| `model` | string | `"claude-opus-5"` | no | Sent as the model id and stored on the cache record. | `"claude-opus-5"` |
+| `model` | string | `"claude-opus-5-5"` | no | Sent as the model id and stored on the cache record (part of the replay cache key). The demo sets `"claude-opus-5"` because its synthetic cache files carry that id. | `"claude-opus-5-5"` |
 | `temperature` | number | omit | no | Sent only when the key is present. Absent means the request has no temperature parameter. | `0` |
 | `reasoning_effort` | string | omit | no | Sent to an OpenAI-compatible server only when set. One of `none`, `low`, `medium`, `high`. | `"none"` |
 | `chunk_chars` | integer ≥ 0 | `0` for `anthropic`; `8000` for `openai_compatible` when the key is absent | no | `giye.extract.chunk`. `0` sends the CV whole. An explicit value wins over the provider default, including `0` on a local provider. | `8000` |

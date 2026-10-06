@@ -51,7 +51,7 @@ Example (see examples/demo/giye.toml)::
 
     # CV extraction. provider defaults to anthropic, so a file that omits it
     # keeps the hosted call. openai_compatible posts to base_url (Ollama's
-    # OpenAI endpoint unless set otherwise). model defaults to claude-opus-5.
+    # OpenAI endpoint unless set otherwise). model defaults to claude-opus-5-5.
     # temperature is omitted unless set. cache defaults to <data>/work/cv_cache.
     # api_key_env names the variable whose value is sent as a Bearer token
     # when it is set. A local server does not need one. The default name is
@@ -64,7 +64,7 @@ Example (see examples/demo/giye.toml)::
     # api_key_env = "GIYE_LLM_API_KEY"
     # chunk_chars = 8000
     # reasoning_effort = "none"
-    model = "claude-opus-5"
+    model = "claude-opus-5-5"
 
     # Optional. Ledger backups older than this many days are pruned (the newest
     # backup of each file is always kept). Unset keeps every backup.
@@ -185,11 +185,11 @@ class Config:
     # the demo keep the hosted call. openai_compatible calls a local server
     # without a key unless the named environment variable is set, in which
     # case that value is sent as a Bearer token. The model id defaults to
-    # claude-opus-5. Temperature is sent only when the file sets it, so an
+    # claude-opus-5-5. Temperature is sent only when the file sets it, so an
     # omitted key does not invent a sampling temperature.
     extract_provider: str = "anthropic"
     extract_base_url: str = "http://localhost:11434/v1"
-    extract_model: str = "claude-opus-5"
+    extract_model: str = "claude-opus-5-5"
     extract_temperature: float | None = None
     # Sent as reasoning_effort to an OpenAI-compatible server when set. "none"
     # turns off thinking on models that reason by default (qwen3.5, gemma4).
@@ -359,7 +359,7 @@ def load(path: str | Path) -> Config:
         venue_name_rules=_venue_name_rules(normalize.get("venue_name_rules", "")),
         extract_provider=extract_provider,
         extract_base_url=_extract_base_url(extract.get("base_url", "http://localhost:11434/v1")),
-        extract_model=_extract_model(extract.get("model", "claude-opus-5")),
+        extract_model=_extract_model(extract.get("model", "claude-opus-5-5")),
         extract_temperature=_extract_temperature(extract),
         extract_reasoning_effort=_extract_reasoning_effort(extract),
         extract_chunk_chars=_extract_chunk_chars(extract, extract_provider),
@@ -472,7 +472,7 @@ def _extract_base_url(value: object) -> str:
 
 def _extract_model(value: object) -> str:
     if value is None or value == "":
-        return "claude-opus-5"
+        return "claude-opus-5-5"
     if not isinstance(value, str):
         raise TypeError("[extract] model must be a string")
     return value

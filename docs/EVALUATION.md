@@ -100,6 +100,16 @@ counts them as failures where stated.
 | Institution merges, refined rules (`venues`) | 70 | 70 | 64 | 91.4% (82.5–96.0%) |
 | Same, against the rule's own definition of a part | 70 | 70 | 67 | 95.7% (88.1–98.5%) |
 
+The CV-extraction row measures the reference extraction, not `giye extract`.
+The reference register's CVs were read by Claude Opus 5.5 running in Claude
+Code from a written prompt, outside the package, and the readings were
+imported into the replay cache (model string `claude-code/claude-opus-5.5
+(agent, reference)` in `deploy/giye.production.toml`). The package's own
+extractor sends `src/giye/extract/prompts/cv_extract_v1.txt` to the
+configured model (default `claude-opus-5-5`); the 97.3% figure does not
+validate that path. The `cv` frame and the scoring below apply unchanged to
+rows `giye extract` writes.
+
 The person-merge sheet was not drawn with the `--n` allocation described
 under Strata (Hamilton seats in proportion to stratum size). It is a census
 plus a sample: all 42 merges whose stored rule names an evidence rule
