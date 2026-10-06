@@ -39,7 +39,8 @@ def hold_ledger_lock(ledger_dir: Path) -> None:
     Taken on the first read or write and held until this process exits, so a
     run's reads and its later writes see no interleaved writer. Blocks while
     another process holds the lock, and prints who holds it. A second call for
-    the same directory in this process does nothing.
+    the same directory in this process does nothing. The file holds
+    ``pid <n>`` while the lock is held and is empty after the process exits.
     """
     key = str(ledger_dir.resolve())
     if key in _LOCKS:
@@ -64,12 +65,24 @@ def hold_ledger_lock(ledger_dir: Path) -> None:
         print(f"[ledger] lock acquired after {waited:.0f}s", file=sys.stderr, flush=True)
     handle.seek(0)
     handle.truncate()
-    handle.write(f"pid {os.getpid()}: {' '.join(sys.argv)[:200]}")
+    # Only the pid: the full command line could carry paths or arguments the
+    # data directory should not keep, and it outlived the run (software
+    # review, round 6).
+    handle.write(f"pid {os.getpid()}")
     handle.flush()
     _LOCKS[key] = handle
 
     def _release(held: TextIO = handle, name: str = key) -> None:
         _LOCKS.pop(name, None)
+        # The file stays (unlinking a lock file another process may have open
+        # lets two processes lock different files); it is emptied, so a
+        # finished run leaves no holder behind.
+        try:
+            held.seek(0)
+            held.truncate()
+            held.flush()
+        except (OSError, ValueError):
+            pass
         held.close()
 
     atexit.register(_release)

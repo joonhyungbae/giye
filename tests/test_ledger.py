@@ -847,3 +847,19 @@ def test_write_csv_is_atomic_and_keeps_the_old_file_on_failure(tmp_path: Path):
     write_csv(path=path, fields=["a", "b"], rows=[{"a": "5", "b": "6"}])
     assert read_csv(path) == [{"a": "5", "b": "6"}]
     assert path.stat().st_mode & 0o777 == 0o640
+
+
+def test_lock_file_holds_only_the_pid_and_is_empty_after_exit(tmp_path: Path):
+    """Software review round 6, minor 11: every data directory kept the full command line."""
+    import subprocess
+    import sys
+
+    code = (
+        "import sys; from pathlib import Path; from giye.ledger.io import hold_ledger_lock; "
+        "hold_ledger_lock(Path(sys.argv[1])); print(open(Path(sys.argv[1]) / '.ledger.lock').read())"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", code, str(tmp_path), "--secret-argument"], capture_output=True, text=True, check=True
+    )
+    assert done.stdout.startswith("pid ") and "secret" not in done.stdout
+    assert (tmp_path / ".ledger.lock").read_text(encoding="utf-8") == ""
