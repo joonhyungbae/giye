@@ -1,30 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { createFileRoute, Link, notFound, redirect } from "@tanstack/react-router";
-import { getArtistRecord, getArtistRedirect } from "@/lib/giye.functions";
-import {
-  ACTIVITY_TYPE_LABEL,
-  LINK_TYPE_LABEL,
-  SOURCE_TYPE_LABEL,
-  useLang,
-  VERIFICATION_LABEL,
-} from "@/lib/i18n";
+import { getArtistPage, getArtistRedirect } from "@/lib/giye.functions";
+import { ACTIVITY_TYPE_LABEL, LINK_TYPE_LABEL, useLang, VERIFICATION_LABEL } from "@/lib/i18n";
 import { CiteDialog } from "@/components/CiteDialog";
 import { absoluteUrl, pageTitle, site } from "@/config/site";
 import { Button } from "@/components/ui/button";
-import type { Activity, BackgroundEntry } from "@/lib/giye.types";
-
-/** Country name in the reader's language from an ISO 3166 code (the browser's own list). */
-function countryName(cc: string, lang: string): string {
-  try {
-    return new Intl.DisplayNames([lang === "en" ? "en" : "ko"], { type: "region" }).of(cc) ?? cc;
-  } catch {
-    return cc;
-  }
-}
+import type { Bi, PageBackground, PageSource } from "@/lib/artist-page";
 
 export const Route = createFileRoute("/artist/$id")({
   loader: async ({ params }) => {
-    const record = await getArtistRecord({ data: { id: params.id } });
+    const record = await getArtistPage({ data: { id: params.id } });
     if (!record) {
       const into = await getArtistRedirect({ data: { id: params.id } });
       if (into) throw redirect({ to: "/artist/$id", params: { id: into }, statusCode: 301 });
@@ -76,9 +61,7 @@ export const Route = createFileRoute("/artist/$id")({
                 identifier: a.id,
                 description: a.bio_short ?? undefined,
                 url,
-                sameAs: a.external_ids?.wikidata
-                  ? [`https://www.wikidata.org/wiki/${a.external_ids.wikidata}`]
-                  : undefined,
+                sameAs: a.wikidata ? [`https://www.wikidata.org/wiki/${a.wikidata}`] : undefined,
               }),
             },
           ],
@@ -87,15 +70,7 @@ export const Route = createFileRoute("/artist/$id")({
   component: ArtistPage,
 });
 
-function SourceDisclosure({
-  url,
-  type,
-  collected,
-}: {
-  url: string;
-  type: string;
-  collected: string;
-}) {
+function SourceDisclosure({ source }: { source: PageSource }) {
   const { t } = useLang();
   return (
     <details className="mt-2 text-xs text-muted-foreground">
@@ -104,37 +79,36 @@ function SourceDisclosure({
       </summary>
       <div className="mt-2 space-y-1 border-l border-primary pl-3">
         <p>
-          <a href={url} className="break-all text-accent" target="_blank" rel="noreferrer">
-            {url}
+          <a href={source.url} className="break-all text-accent" target="_blank" rel="noreferrer">
+            {source.url}
           </a>
         </p>
         <p>
-          {t(SOURCE_TYPE_LABEL[type]?.[0] ?? type, SOURCE_TYPE_LABEL[type]?.[1] ?? type)} ·{" "}
-          {t("수집일", "Collected")} {collected}
+          {t("수집일", "Collected")} {source.collected.join(", ")}
         </p>
       </div>
     </details>
   );
 }
 
-const BACKGROUND_SECTIONS: [BackgroundEntry["section"], string, string][] = [
-  ["education", "학력", "Education"],
-  ["employment", "경력", "Employment"],
-  ["teaching", "강의·교육", "Teaching"],
-  ["press", "언론", "Press"],
-];
+const BACKGROUND_SECTION_LABEL: Record<string, [string, string]> = {
+  education: ["학력", "Education"],
+  employment: ["경력", "Employment"],
+  teaching: ["강의·교육", "Teaching"],
+  press: ["언론", "Press"],
+};
 const BACKGROUND_PREVIEW = 8;
 
-function BackgroundList({ rows }: { rows: BackgroundEntry[] }) {
+function BackgroundList({ rows }: { rows: PageBackground[] }) {
   return (
     <ul className="mt-3 space-y-2">
-      {rows.map((b) => (
-        <li key={b.id} className="grid max-w-3xl grid-cols-[3.5rem_minmax(0,1fr)] gap-3 text-sm">
-          <span className="font-mono text-xs text-primary">{b.year}</span>
+      {rows.map(([title, venue, year, role], i) => (
+        <li key={i} className="grid max-w-3xl grid-cols-[3.5rem_minmax(0,1fr)] gap-3 text-sm">
+          <span className="font-mono text-xs text-primary">{year}</span>
           <span>
-            {b.title}
-            {b.venue && <span className="text-muted-foreground"> — {b.venue}</span>}
-            {b.role && <span className="text-muted-foreground"> · {b.role}</span>}
+            {title}
+            {venue && <span className="text-muted-foreground"> — {venue}</span>}
+            {role && <span className="text-muted-foreground"> · {role}</span>}
           </span>
         </li>
       ))}
@@ -143,31 +117,20 @@ function BackgroundList({ rows }: { rows: BackgroundEntry[] }) {
 }
 
 /** Background lines come from the artist's CV pages; list each distinct page once. */
-function BackgroundSources({ rows }: { rows: BackgroundEntry[] }) {
+function BackgroundSources({ sources }: { sources: PageSource[] }) {
   const { t } = useLang();
-  const sources = [...new Map(rows.map((b) => [b.source_url, b])).values()];
   return (
     <details className="text-xs text-muted-foreground">
       <summary className="cursor-pointer font-mono text-[10px] transition-colors hover:text-primary">
         {t("출처 보기", "View source")}
       </summary>
       <div className="mt-2 space-y-1 border-l border-primary pl-3">
-        {sources.map((b) => (
-          <p key={b.source_url}>
-            <a
-              href={b.source_url}
-              className="break-all text-accent"
-              target="_blank"
-              rel="noreferrer"
-            >
-              {b.source_url}
+        {sources.map((s) => (
+          <p key={s.url}>
+            <a href={s.url} className="break-all text-accent" target="_blank" rel="noreferrer">
+              {s.url}
             </a>{" "}
-            ·{" "}
-            {t(
-              SOURCE_TYPE_LABEL[b.source_type]?.[0] ?? b.source_type,
-              SOURCE_TYPE_LABEL[b.source_type]?.[1] ?? b.source_type,
-            )}{" "}
-            · {t("수집일", "Collected")} {b.collected_at}
+            · {t("수집일", "Collected")} {s.collected.join(", ")}
           </p>
         ))}
       </div>
@@ -175,30 +138,12 @@ function BackgroundSources({ rows }: { rows: BackgroundEntry[] }) {
   );
 }
 
-/**
- * L2. On the English page an edition subtitle shows only its Latin-script part: the segments between
- * ":" and parentheses that contain Latin letters and no Hangul ("Blue Signal: 기술이 …" →
- * "Blue Signal"). A subtitle with no such part is left out. The Korean page shows it whole.
- */
-// The "(예정)" marker on a role is added by scripts/apply_cv_extractions.py for a CV entry
-// still labelled upcoming in the current year; the English page shows it as "(upcoming)".
-
-function latinPart(label: string): string | null {
-  if (!/[\uac00-\ud7a3]/.test(label)) return label;
-  const parts = label
-    .split(/[:()（）]/)
-    .map((p) => p.trim())
-    .filter((p) => p && /[A-Za-z]/.test(p) && !/[\uac00-\ud7a3]/.test(p));
-  return parts.length ? parts.join(": ") : null;
-}
-
 function ArtistPage() {
-  const { artist, citation, terms_en, activities, links, collaborations, background, frames, sameName } =
+  const { artist, citation, sources, years, collaborations, links, background, sameName } =
     Route.useLoaderData();
   const { lang, t } = useLang();
-  // English page: tags read through vocabularies.json (L1); a tag with no English term stays as written.
-  const tag = (v: string) => (lang === "en" ? (terms_en[v] ?? v) : v);
-  const tags = (vs: string[]) => vs.map(tag).join(", ");
+  const bi = (v: Bi) => (lang === "en" ? v.en : v.ko);
+  const tags = (vs: Bi[]) => vs.map(bi).join(", ");
   // English page leads with the romanised name when the record has one; Korean stays beside it.
   const primaryName = lang === "en" && artist.name_en ? artist.name_en : artist.name_ko;
   const secondaryName = primaryName === artist.name_ko ? artist.name_en : artist.name_ko;
@@ -236,12 +181,6 @@ function ArtistPage() {
     );
   }
 
-  const byYear = new Map<number, Activity[]>();
-  for (const act of activities) {
-    byYear.set(act.year, [...(byYear.get(act.year) ?? []), act]);
-  }
-  const years = [...byYear.keys()].sort((a, b) => b - a);
-
   // Optional sections are numbered in page order after 01 profile and 02 activities.
   let sectionNo = 2;
   const nextNo = () => String(++sectionNo).padStart(2, "0");
@@ -250,6 +189,9 @@ function ArtistPage() {
   const linksNo = links.length > 0 ? nextNo() : "";
   const cvFound = artist.cv_status === "found";
   const askNo = !cvFound || sameName.length > 0 ? nextNo() : "";
+  const backgroundSources = [
+    ...new Set(background.flatMap((s) => s.rows.map((r) => r[4]))),
+  ].map((i) => sources[i]);
 
   return (
     <div className="wrap py-12 pb-32 lg:py-20">
@@ -295,7 +237,7 @@ function ArtistPage() {
                 )}
               </span>
               <span className="font-mono text-[10px] text-muted-foreground">
-                {t("최종 수정", "Last updated")} {artist.updated_at.slice(0, 10)}
+                {t("최종 수정", "Last updated")} {artist.updated}
               </span>
               <CiteDialog
                 title={artist.name_ko}
@@ -307,11 +249,7 @@ function ArtistPage() {
                 year={citation.year}
               />
             </p>
-            <SourceDisclosure
-              url={artist.source_url}
-              type={artist.source_type}
-              collected={artist.collected_at}
-            />
+            {artist.source >= 0 && <SourceDisclosure source={sources[artist.source]} />}
           </div>
         </div>
       </header>
@@ -329,12 +267,8 @@ function ArtistPage() {
                 <dt className="label-caps">{t("출생", "Born")}</dt>
                 <dd>
                   {artist.birth_year}
-                  {artist.birth_year_source_url && (
-                    <SourceDisclosure
-                      url={artist.birth_year_source_url}
-                      type={artist.source_type}
-                      collected={artist.collected_at}
-                    />
+                  {artist.birth_source != null && (
+                    <SourceDisclosure source={sources[artist.birth_source]} />
                   )}
                 </dd>
               </div>
@@ -344,7 +278,7 @@ function ArtistPage() {
                 <dt className="label-caps">{t("활동 시작", "Active since")}</dt>
                 <dd>
                   {artist.active_since}
-                  {artist.derived?.active_since && (
+                  {artist.active_since_derived && (
                     <span className="ml-2 text-xs text-muted-foreground">
                       {t("아래 기록 중 가장 이른 공개 활동", "earliest public record below")}
                     </span>
@@ -352,14 +286,14 @@ function ArtistPage() {
                 </dd>
               </div>
             )}
-            {(artist.countries ?? []).length > 0 && (
+            {artist.countries.length > 0 && (
               <div>
                 <dt className="label-caps">{t("활동 기반", "Based in")}</dt>
                 <dd>
-                  {(artist.countries ?? []).map((cc) => countryName(cc, lang)).join(", ")}
-                  {artist.derived?.country?.url && (
+                  {tags(artist.countries)}
+                  {artist.country_url && (
                     <a
-                      href={artist.derived.country.url}
+                      href={artist.country_url}
                       target="_blank"
                       rel="noreferrer"
                       className="ml-2 text-xs text-muted-foreground"
@@ -382,12 +316,12 @@ function ArtistPage() {
                 <dd>{tags(artist.regions)}</dd>
               </div>
             )}
-            {artist.medium_tags.length > 0 && (
+            {artist.medium.length > 0 && (
               <div>
                 <dt className="label-caps">{t("매체", "Medium")}</dt>
                 <dd>
-                  {tags(artist.medium_tags)}
-                  {artist.derived?.medium && (
+                  {tags(artist.medium)}
+                  {artist.medium_derived && (
                     <span className="ml-2 text-xs text-muted-foreground">
                       {t(
                         "아래 기록 두 건 이상이 이 매체를 말함",
@@ -398,59 +332,44 @@ function ArtistPage() {
                 </dd>
               </div>
             )}
-            {artist.technique_tags.length > 0 && (
+            {artist.technique.length > 0 && (
               <div>
                 <dt className="label-caps">{t("기법", "Technique")}</dt>
-                <dd>{tags(artist.technique_tags)}</dd>
+                <dd>{tags(artist.technique)}</dd>
               </div>
             )}
-            {artist.theme_tags.length > 0 && (
+            {artist.theme.length > 0 && (
               <div>
                 <dt className="label-caps">{t("주제", "Theme")}</dt>
-                <dd>{tags(artist.theme_tags)}</dd>
+                <dd>{tags(artist.theme)}</dd>
               </div>
             )}
             <div>
               <dt className="label-caps">{t("표집틀", "Sampling frame")}</dt>
               <dd>
-                {(artist.frame_editions ?? []).length === 0 ? (
+                {artist.editions.length === 0 ? (
                   t("표집틀 외", "Out of frame")
                 ) : (
-                  // One line per event edition: an artist can sit in several frames
-                  // Two editions of different programmes; each links to that event's shelf.
+                  // One line per event edition: an artist can sit in several frames.
+                  // Each links to that event's shelf.
                   <ul className="space-y-1">
-                    {[...(artist.frame_editions ?? [])]
-                      .sort((x, y) => {
-                        const ox = frames.find((f) => f.code === x.frame)?.order ?? 999;
-                        const oy = frames.find((f) => f.code === y.frame)?.order ?? 999;
-                        return ox - oy || (y.edition ?? "").localeCompare(x.edition ?? "");
-                      })
-                      .map((fe) => {
-                        const f = frames.find((x) => x.code === fe.frame);
-                        const name = f
-                          ? lang === "ko"
-                            ? f.name_ko
-                            : (f.name_en ?? f.name_ko)
-                          : fe.frame;
-                        const raw = fe.edition ? f?.labels[fe.edition] : null;
-                        const label = raw ? (lang === "en" ? latinPart(raw) : raw) : null;
-                        return (
-                          <li key={`${fe.frame}-${fe.edition ?? ""}`}>
-                            <Link
-                              to="/artists"
-                              search={{ group: "frame", fr: fe.frame }}
-                              className="underline-offset-4 hover:text-primary hover:underline"
-                            >
-                              {fe.edition && !name.includes(fe.edition)
-                                ? `${name} ${fe.edition}`
-                                : name}
-                            </Link>
-                            {label ? (
-                              <span className="ml-2 text-xs text-muted-foreground">{label}</span>
-                            ) : null}
-                          </li>
-                        );
-                      })}
+                    {artist.editions.map((fe, i) => {
+                      const label = lang === "en" ? fe.label.en : fe.label.ko;
+                      return (
+                        <li key={`${fe.frame}-${i}`}>
+                          <Link
+                            to="/artists"
+                            search={{ group: "frame", fr: fe.frame }}
+                            className="underline-offset-4 hover:text-primary hover:underline"
+                          >
+                            {bi(fe.name)}
+                          </Link>
+                          {label ? (
+                            <span className="ml-2 text-xs text-muted-foreground">{label}</span>
+                          ) : null}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </dd>
@@ -469,19 +388,19 @@ function ArtistPage() {
               {t("기록된 활동이 없습니다.", "No activities recorded.")}
             </p>
           )}
-          {years.map((y) => (
+          {years.map(({ year, rows }) => (
             <div
-              key={y}
+              key={year}
               className="grid gap-3 border-t border-border py-7 first:border-t-0 first:pt-0 sm:grid-cols-[5rem_1fr]"
             >
-              <h3 className="font-mono text-xs text-primary">{y}</h3>
+              <h3 className="font-mono text-xs text-primary">{year}</h3>
               <ul className="space-y-7">
-                {(byYear.get(y) ?? []).map((act) => (
-                  <li key={act.id} className="max-w-3xl">
+                {rows.map(([title, venue, type, role, roleEn, src, uncertain], i) => (
+                  <li key={i} className="max-w-3xl">
                     <p className="font-medium">
-                      {act.title}
-                      {act.venue && <span className="text-muted-foreground"> — {act.venue}</span>}
-                      {act.flags?.includes("year_from_title") && (
+                      {title}
+                      {venue && <span className="text-muted-foreground"> — {venue}</span>}
+                      {uncertain === 1 && (
                         <span
                           className="ml-2 text-xs text-muted-foreground"
                           title={t(
@@ -495,18 +414,12 @@ function ArtistPage() {
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {t(
-                        ACTIVITY_TYPE_LABEL[act.activity_type]?.[0] ?? act.activity_type,
-                        ACTIVITY_TYPE_LABEL[act.activity_type]?.[1] ?? act.activity_type,
+                        ACTIVITY_TYPE_LABEL[type]?.[0] ?? type,
+                        ACTIVITY_TYPE_LABEL[type]?.[1] ?? type,
                       )}
-                      {act.role
-                        ? ` · ${lang === "en" ? act.role.replace("(예정)", "(upcoming)") : act.role}`
-                        : ""}
+                      {role ? ` · ${lang === "en" ? (roleEn ?? role) : role}` : ""}
                     </p>
-                    <SourceDisclosure
-                      url={act.source_url}
-                      type={act.source_type}
-                      collected={act.collected_at}
-                    />
+                    <SourceDisclosure source={sources[src]} />
                   </li>
                 ))}
               </ul>
@@ -521,11 +434,10 @@ function ArtistPage() {
             {backgroundNo} / {t("학력·경력", "Background")}
           </h2>
           <div className="space-y-10">
-            {BACKGROUND_SECTIONS.map(([key, ko, en]) => {
-              const rows = background.filter((b) => b.section === key);
-              if (rows.length === 0) return null;
+            {background.map(({ section, rows }) => {
+              const [ko, en] = BACKGROUND_SECTION_LABEL[section] ?? [section, section];
               return (
-                <div key={key}>
+                <div key={section}>
                   <h3 className="label-caps">{t(ko, en)}</h3>
                   <BackgroundList rows={rows.slice(0, BACKGROUND_PREVIEW)} />
                   {rows.length > BACKGROUND_PREVIEW && (
@@ -542,7 +454,7 @@ function ArtistPage() {
                 </div>
               );
             })}
-            <BackgroundSources rows={background} />
+            <BackgroundSources sources={backgroundSources} />
           </div>
         </section>
       )}
@@ -553,25 +465,16 @@ function ArtistPage() {
             {collaborationsNo} / {t("협업 과학자·공학자", "Science & engineering collaborators")}
           </h2>
           <ul className="space-y-5">
-            {collaborations.map((c) => (
-              <li key={c.id} className="max-w-3xl">
+            {collaborations.map((c, i) => (
+              <li key={i} className="max-w-3xl">
                 <p className="font-medium">
-                  {lang === "en" ? c.name_en || c.name_ko : c.name_ko || c.name_en}
-                  {(c.affiliation || c.lab) && (
-                    <span className="text-muted-foreground">
-                      {" "}
-                      — {[c.affiliation, c.lab].filter(Boolean).join(" · ")}
-                    </span>
-                  )}
+                  {bi(c.name)}
+                  {c.where && <span className="text-muted-foreground"> — {c.where}</span>}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {[c.year, c.topic].filter(Boolean).join(" · ")}
                 </p>
-                <SourceDisclosure
-                  url={c.source_url}
-                  type="PUBLIC_RECORD"
-                  collected={c.collected_at}
-                />
+                <SourceDisclosure source={sources[c.source]} />
               </li>
             ))}
           </ul>
@@ -584,22 +487,23 @@ function ArtistPage() {
             {linksNo} / {t("링크", "Links")}
           </h2>
           <ul className="space-y-3">
-            {links.map((l) => {
-              const deadNote = !l.is_dead
-                ? ""
-                : l.http_status === "404" || l.http_status === "410"
+            {links.map((l, i) => {
+              const deadNote =
+                l.dead === "dead"
                   ? t(" · 연결 끊김", " · dead link")
-                  : t(" · 연결 확인 필요", " · link needs check");
+                  : l.dead === "check"
+                    ? t(" · 연결 확인 필요", " · link needs check")
+                    : "";
               return (
-                <li key={l.id} className="text-sm">
+                <li key={i} className="text-sm">
                   <a href={l.url} className="text-accent" target="_blank" rel="noreferrer">
                     {l.label}
                   </a>{" "}
                   <span className="text-muted-foreground">
                     (
                     {t(
-                      LINK_TYPE_LABEL[l.link_type]?.[0] ?? l.link_type,
-                      LINK_TYPE_LABEL[l.link_type]?.[1] ?? l.link_type,
+                      LINK_TYPE_LABEL[l.type]?.[0] ?? l.type,
+                      LINK_TYPE_LABEL[l.type]?.[1] ?? l.type,
                     )}
                     {deadNote})
                   </span>
@@ -662,7 +566,7 @@ function ArtistPage() {
                       {o.editions.length > 0 && (
                         <span className="text-muted-foreground">
                           {" "}
-                          — {o.editions.map((e) => (lang === "en" ? e.en : e.ko)).join(", ")}
+                          — {o.editions.map(bi).join(", ")}
                         </span>
                       )}
                       <Link

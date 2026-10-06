@@ -35,6 +35,7 @@ import { loadRimOrder } from "./giye.rim";
 import { domainOf, fold, foldVenue } from "./record-text";
 import { packRecords } from "./study-pack";
 import { countFrameDecisions } from "./frame-population";
+import { shapeArtistPage, type ArtistPageData } from "./artist-page";
 
 /**
  * W1. A response that covers many people carries only coded structure: ids, years, type codes, and
@@ -213,7 +214,51 @@ export const getArtistRecord = createServerFn({ method: "GET" })
     };
   });
 
-export const getHomeStats = createServerFn({ method: "GET" }).handler(async () => {
+/**
+ * The person page (/artist/$id): only the fields it draws, with each distinct source URL once
+ * (see lib/artist-page.ts). The home's record sheet keeps `getArtistRecord`, which carries the
+ * row ids and study-order positions the sheet matches on.
+ */
+export const getArtistPage = createServerFn({ method: "GET" })
+  .inputValidator((d: unknown) => z.object({ id: z.string() }).parse(d))
+  .handler(async ({ data }): Promise<ArtistPageData | null> => {
+    const all = loadAllArtists();
+    let artist = all.find((a) => a.id === data.id) ?? null;
+    const stub = loadArtistStubs()[data.id];
+    if (!artist && stub) artist = stubArtist(data.id, stub);
+    if (!artist) return null;
+    const published = artist.status === "PUBLISHED";
+    const tagged = new Set([
+      ...artist.regions,
+      ...artist.medium_tags,
+      ...artist.technique_tags,
+      ...artist.theme_tags,
+    ]);
+    const termsEn: Record<string, string> = Object.fromEntries(
+      (loadVocabularies() as Vocabulary[])
+        .filter((v) => tagged.has(v.term_ko) && v.term_en)
+        .map((v) => [v.term_ko, v.term_en as string]),
+    );
+    const id = artist.id;
+    const linked = new Set([
+      ...(artist.members ?? []),
+      ...(artist.member_of ?? []),
+      ...(artist.same_name ?? []),
+    ]);
+    return shapeArtistPage({
+      citation: loadCitationMeta(),
+      artist,
+      termsEn,
+      frames: loadFrames(),
+      activities: published ? loadActivities().filter((a) => a.artist_id === id) : [],
+      background: published ? loadBackground().filter((b) => b.artist_id === id) : [],
+      collaborations: published ? loadCollaborations().filter((c) => c.artist_id === id) : [],
+      links: published ? loadLinks().filter((l) => l.artist_id === id) : [],
+      people: new Map(all.filter((a) => linked.has(a.id)).map((a) => [a.id, a])),
+    });
+  });
+
+export const getHomeStats =createServerFn({ method: "GET" }).handler(async () => {
   const artists = loadArtists();
   const versions = loadDatasetVersions().sort((a, b) => b.released_at.localeCompare(a.released_at));
   const coverage = loadCoverage();

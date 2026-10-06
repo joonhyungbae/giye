@@ -26,6 +26,10 @@ export type Artist = {
   cv_status?: "found" | "pending" | "none";
   /** Other records with the same name that no evidence has joined or told apart yet. */
   same_name?: string[];
+  /** On a team: published ids of its members (snapshot, from the ledger's team-expansion markers). */
+  members?: string[];
+  /** On a member: published ids of the teams that credit them. */
+  member_of?: string[];
   /** WITHDRAWN: an issued id whose record is no longer published (e.g. no longer on any roster). */
   status: "PUBLISHED" | "HIDDEN_BY_REQUEST" | "STAGED" | "WITHDRAWN";
   source_url: string;
