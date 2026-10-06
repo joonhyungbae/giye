@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { contactHref, site } from "@/config/site";
+import { absoluteUrl, contactHref, pageTitle, site } from "@/config/site";
 import { useLang } from "@/lib/i18n";
 
 export const Route = createFileRoute("/privacy")({
   head: () => ({
     meta: [
-      { title: "GIYE" },
+      { title: pageTitle("개인정보 처리방침 Privacy") },
       {
         name: "description",
         content:
@@ -14,9 +14,9 @@ export const Route = createFileRoute("/privacy")({
       },
       { property: "og:title", content: "개인정보 처리방침 Privacy — 기예 Giye" },
       { property: "og:description", content: "Privacy policy of the Giye archive." },
-      { property: "og:url", content: "/privacy" },
+      { property: "og:url", content: absoluteUrl("/privacy") },
     ],
-    links: [{ rel: "canonical", href: "/privacy" }],
+    links: [{ rel: "canonical", href: absoluteUrl("/privacy") }],
   }),
   component: PrivacyPage,
 });

@@ -6,12 +6,13 @@ import {
   ContentPageView,
   type ContentPageData,
 } from "@/components/ContentPage";
+import { absoluteUrl, pageTitle } from "@/config/site";
 
 export const Route = createFileRoute("/about/governance")({
   loader: () => getContentPage({ data: { slug: "governance" } }),
   head: () => ({
     meta: [
-      { title: "GIYE" },
+      { title: pageTitle("운영 원칙 Governance") },
       {
         name: "description",
         content:
@@ -22,9 +23,9 @@ export const Route = createFileRoute("/about/governance")({
         property: "og:description",
         content: "Independence and request-handling policy.",
       },
-      { property: "og:url", content: "/about/governance" },
+      { property: "og:url", content: absoluteUrl("/about/governance") },
     ],
-    links: [{ rel: "canonical", href: "/about/governance" }],
+    links: [{ rel: "canonical", href: absoluteUrl("/about/governance") }],
   }),
   component: () => (
     <>

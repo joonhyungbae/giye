@@ -6,12 +6,13 @@ import {
   ContentPageView,
   type ContentPageData,
 } from "@/components/ContentPage";
+import { absoluteUrl, pageTitle } from "@/config/site";
 
 export const Route = createFileRoute("/about/criteria")({
   loader: () => getContentPage({ data: { slug: "criteria" } }),
   head: () => ({
     meta: [
-      { title: "GIYE" },
+      { title: pageTitle("등재 기준 Inclusion criteria") },
       {
         name: "description",
         content:
@@ -25,9 +26,9 @@ export const Route = createFileRoute("/about/criteria")({
         property: "og:description",
         content: "How records enter the Giye index.",
       },
-      { property: "og:url", content: "/about/criteria" },
+      { property: "og:url", content: absoluteUrl("/about/criteria") },
     ],
-    links: [{ rel: "canonical", href: "/about/criteria" }],
+    links: [{ rel: "canonical", href: absoluteUrl("/about/criteria") }],
   }),
   component: () => (
     <>

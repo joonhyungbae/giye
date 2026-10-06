@@ -5,6 +5,7 @@ import { getStudyData } from "@/lib/giye.functions";
 import type { StudyData } from "@/components/study/model";
 import { unpackRecords, type Packed } from "@/lib/study-pack";
 import { useLang } from "@/lib/i18n";
+import { absoluteUrl, pageTitle } from "@/config/site";
 
 // The loader starts these imports early. It may not share module-level variables with this
 // file: the router splits the loader into its own chunk, where they would be undefined. The
@@ -41,16 +42,16 @@ export const Route = createFileRoute("/")({
   },
   head: () => ({
     meta: [
-      { title: "GIYE" },
+      { title: pageTitle() },
       {
         name: "description",
         content:
           "기예의 기록을 연도의 고리 위에, 처음 명단에 오른 세대별로 그린 생성 시각화. The archive drawn as rings of years, arranged by the generation in which each person first appeared on a roster.",
       },
       { property: "og:title", content: "Giye — Media Art Archive" },
-      { property: "og:url", content: "/" },
+      { property: "og:url", content: absoluteUrl("/") },
     ],
-    links: [{ rel: "canonical", href: "/" }],
+    links: [{ rel: "canonical", href: absoluteUrl("/") }],
   }),
   pendingComponent: () => <Shell />,
   component: Home,

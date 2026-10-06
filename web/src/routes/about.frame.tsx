@@ -9,6 +9,7 @@ import {
 } from "@/lib/frame-population";
 import { useLang } from "@/lib/i18n";
 import { AboutNav } from "@/components/SiteChrome";
+import { absoluteUrl, pageTitle } from "@/config/site";
 
 /**
  * C1. A programme is running when its declared years are open-ended ("2015-"): it may still
@@ -26,7 +27,7 @@ export const Route = createFileRoute("/about/frame")({
   }),
   head: () => ({
     meta: [
-      { title: "GIYE" },
+      { title: pageTitle("표집틀 Sampling frame") },
       {
         name: "description",
         content:
@@ -37,9 +38,9 @@ export const Route = createFileRoute("/about/frame")({
         property: "og:description",
         content: "기예의 표집틀 · The sampling frame behind the Giye archive.",
       },
-      { property: "og:url", content: "/about/frame" },
+      { property: "og:url", content: absoluteUrl("/about/frame") },
     ],
-    links: [{ rel: "canonical", href: "/about/frame" }],
+    links: [{ rel: "canonical", href: absoluteUrl("/about/frame") }],
   }),
   component: FramePage,
 });

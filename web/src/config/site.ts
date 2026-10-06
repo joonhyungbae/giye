@@ -59,6 +59,19 @@ export function fieldPeopleEn(plural: boolean): string {
   return plural ? `${site.fieldEn} artists` : `${site.fieldEn} artist`;
 }
 
+/** Browser-tab title of a page: "<page> · GIYE". The home page is "GIYE" alone. */
+export function pageTitle(name?: string): string {
+  return name ? `${name} · GIYE` : "GIYE";
+}
+
+/**
+ * Absolute URL on the configured public origin, for canonical, og:url and JSON-LD.
+ * Search engines treat a relative canonical as a hint at best.
+ */
+export function absoluteUrl(path: string): string {
+  return `${site.origin}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
 /** "Korean Media Artists Index" from the English field name. */
 export function datasetIndexTitle(): string {
   const people = fieldPeopleEn(true).replace(/(^|\s)\S/g, (word) => word.toUpperCase());

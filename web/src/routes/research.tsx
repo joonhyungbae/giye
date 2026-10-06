@@ -2,12 +2,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getResearch } from "@/lib/giye.functions";
 import { useLang } from "@/lib/i18n";
+import { absoluteUrl, pageTitle } from "@/config/site";
 
 export const Route = createFileRoute("/research")({
   loader: () => getResearch(),
   head: () => ({
     meta: [
-      { title: "GIYE" },
+      { title: pageTitle("연구 Research") },
       {
         name: "description",
         content:
@@ -15,9 +16,9 @@ export const Route = createFileRoute("/research")({
       },
       { property: "og:title", content: "연구 Research — 기예 Giye" },
       { property: "og:description", content: "Publications that cite the Giye dataset." },
-      { property: "og:url", content: "/research" },
+      { property: "og:url", content: absoluteUrl("/research") },
     ],
-    links: [{ rel: "canonical", href: "/research" }],
+    links: [{ rel: "canonical", href: absoluteUrl("/research") }],
   }),
   component: ResearchPage,
 });

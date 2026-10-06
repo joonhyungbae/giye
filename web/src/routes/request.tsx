@@ -2,7 +2,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
-import { contactHref, site } from "@/config/site";
+import { absoluteUrl, contactHref, pageTitle, site } from "@/config/site";
 import { submitRequest } from "@/lib/giye.functions";
 import { REQUEST_TYPE_LABEL, useLang } from "@/lib/i18n";
 
@@ -18,7 +18,7 @@ export const Route = createFileRoute("/request")({
   }),
   head: () => ({
     meta: [
-      { title: "GIYE" },
+      { title: pageTitle("요청 Request") },
       {
         name: "description",
         content:
@@ -28,9 +28,9 @@ export const Route = createFileRoute("/request")({
       { property: "og:description", content: "Submit a request to the Giye archive." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { property: "og:url", content: "/request" },
+      { property: "og:url", content: absoluteUrl("/request") },
     ],
-    links: [{ rel: "canonical", href: "/request" }],
+    links: [{ rel: "canonical", href: absoluteUrl("/request") }],
   }),
   component: RequestPage,
 });

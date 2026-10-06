@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { createFileRoute } from "@tanstack/react-router";
 import { CiteDialog } from "@/components/CiteDialog";
-import { contactHref, datasetIndexTitle, fieldPeopleEn, site } from "@/config/site";
+import { absoluteUrl, contactHref, datasetIndexTitle, fieldPeopleEn, pageTitle, site } from "@/config/site";
 import { admittedProgrammesEn, admittedProgrammesKo } from "@/lib/frame-population";
 import { getDatasetVersions, getHomeStats } from "@/lib/giye.functions";
 import { useLang } from "@/lib/i18n";
@@ -13,7 +13,7 @@ export const Route = createFileRoute("/data")({
   }),
   head: () => ({
     meta: [
-      { title: "GIYE" },
+      { title: pageTitle("인용 Citation") },
       {
         name: "description",
         content:
@@ -24,9 +24,9 @@ export const Route = createFileRoute("/data")({
         property: "og:description",
         content: `${fieldPeopleEn(true)} index — versions and citation.`,
       },
-      { property: "og:url", content: "/data" },
+      { property: "og:url", content: absoluteUrl("/data") },
     ],
-    links: [{ rel: "canonical", href: "/data" }],
+    links: [{ rel: "canonical", href: absoluteUrl("/data") }],
   }),
   component: DataPage,
 });

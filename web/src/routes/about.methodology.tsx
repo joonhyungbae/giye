@@ -16,6 +16,7 @@ import {
   countFrameDecisions,
 } from "@/lib/frame-population";
 import { useLang } from "@/lib/i18n";
+import { absoluteUrl, pageTitle } from "@/config/site";
 
 export const Route = createFileRoute("/about/methodology")({
   loader: async () => ({
@@ -25,7 +26,7 @@ export const Route = createFileRoute("/about/methodology")({
   }),
   head: () => ({
     meta: [
-      { title: "GIYE" },
+      { title: pageTitle("구축 방법론 Methodology") },
       {
         name: "description",
         content:
@@ -33,9 +34,9 @@ export const Route = createFileRoute("/about/methodology")({
       },
       { property: "og:title", content: "구축 방법론 Methodology — 기예 Giye" },
       { property: "og:description", content: "How the Giye dataset is built." },
-      { property: "og:url", content: "/about/methodology" },
+      { property: "og:url", content: absoluteUrl("/about/methodology") },
     ],
-    links: [{ rel: "canonical", href: "/about/methodology" }],
+    links: [{ rel: "canonical", href: absoluteUrl("/about/methodology") }],
   }),
   component: MethodologyPage,
 });

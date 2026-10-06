@@ -3,7 +3,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Search as SearchIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { fieldPeopleEn } from "@/config/site";
+import { absoluteUrl, fieldPeopleEn, pageTitle } from "@/config/site";
 import { getArtistIndex, getFrameEntries, getVocabularies } from "@/lib/giye.functions";
 import { filterArtists, seededShuffle, type Artist } from "@/lib/giye.types";
 import { useLang, VERIFICATION_LABEL } from "@/lib/i18n";
@@ -57,16 +57,16 @@ export const Route = createFileRoute("/artists")({
   }),
   head: () => ({
     meta: [
-      { title: "GIYE" },
+      { title: pageTitle("탐색 Browse") },
       {
         name: "description",
         content: `매체·기법·주제·지역별로 한국 미디어 작가 기록을 목록으로 탐색합니다. Browse ${fieldPeopleEn(false)} records as a list.`,
       },
       { property: "og:title", content: "탐색 Browse — 기예 Giye" },
       { property: "og:description", content: `Browse the Giye index of ${fieldPeopleEn(true)}.` },
-      { property: "og:url", content: "/artists" },
+      { property: "og:url", content: absoluteUrl("/artists") },
     ],
-    links: [{ rel: "canonical", href: "/artists" }],
+    links: [{ rel: "canonical", href: absoluteUrl("/artists") }],
   }),
   component: Artists,
 });

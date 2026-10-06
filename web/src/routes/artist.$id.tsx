@@ -9,7 +9,7 @@ import {
   VERIFICATION_LABEL,
 } from "@/lib/i18n";
 import { CiteDialog } from "@/components/CiteDialog";
-import { site } from "@/config/site";
+import { absoluteUrl, pageTitle, site } from "@/config/site";
 import { Button } from "@/components/ui/button";
 import type { Activity, BackgroundEntry } from "@/lib/giye.types";
 
@@ -35,14 +35,17 @@ export const Route = createFileRoute("/artist/$id")({
   head: ({ params, loaderData }) => {
     if (!loaderData) {
       return {
-        meta: [{ title: "GIYE" }, { name: "robots", content: "noindex" }],
+        meta: [{ title: pageTitle(params.id) }, { name: "robots", content: "noindex" }],
       };
     }
     const a = loaderData.artist;
     const hidden = a.status !== "PUBLISHED"; // hidden or withdrawn: no name in the title
-    const title = hidden
-      ? `${params.id} — 기예 Giye`
-      : `${a.name_ko}${a.name_en ? ` ${a.name_en}` : ""} (${a.id}) — 기예 Giye`;
+    // name_ko falls back to name_en in the snapshot; do not print the same name twice.
+    const name =
+      a.name_en && a.name_en !== a.name_ko ? `${a.name_ko} ${a.name_en}` : a.name_ko;
+    const tabTitle = pageTitle(hidden ? params.id : name);
+    const title = hidden ? `${params.id} — 기예 Giye` : `${name} (${a.id}) — 기예 Giye`;
+    const url = absoluteUrl(`/artist/${params.id}`);
     const description = hidden
       ? a.status === "WITHDRAWN"
         ? "더 이상 공개하지 않는 기록입니다. / This record is no longer published."
@@ -51,15 +54,15 @@ export const Route = createFileRoute("/artist/$id")({
         `${a.name_ko}${a.name_en ? ` / ${a.name_en}` : ""} — 기예 Giye 작가 기록 ${a.id}.`);
     return {
       meta: [
-        { title: "GIYE" },
+        { title: tabTitle },
         { name: "description", content: description },
         { property: "og:title", content: title },
         { property: "og:description", content: description },
         { property: "og:type", content: "profile" },
-        { property: "og:url", content: `/artist/${params.id}` },
+        { property: "og:url", content: url },
         ...(hidden ? [{ name: "robots", content: "noindex" }] : []),
       ],
-      links: [{ rel: "canonical", href: `/artist/${params.id}` }],
+      links: [{ rel: "canonical", href: url }],
       scripts: hidden
         ? []
         : [
@@ -72,7 +75,7 @@ export const Route = createFileRoute("/artist/$id")({
                 alternateName: [a.name_en, ...a.aliases].filter(Boolean),
                 identifier: a.id,
                 description: a.bio_short ?? undefined,
-                url: `/artist/${a.id}`,
+                url,
                 sameAs: a.external_ids?.wikidata
                   ? [`https://www.wikidata.org/wiki/${a.external_ids.wikidata}`]
                   : undefined,
