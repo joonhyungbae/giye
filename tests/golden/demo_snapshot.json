@@ -614,7 +614,9 @@
         "id": "GY-000013",
         "name_ko": "Lee Haru",
         "name_en": "Lee Haru",
-        "aliases": [],
+        "aliases": [
+          "Haru Lee"
+        ],
         "type": "individual",
         "bio_short": null,
         "birth_year": null,

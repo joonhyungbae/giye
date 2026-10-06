@@ -225,3 +225,44 @@ def test_same_personal_name_on_another_programme_does_not_attach(tmp_path: Path)
     assert queued[0]["status"] == "open"
     assert "SOUTH-2021" in queued[0]["detail"]
     assert "LED-" in queued[0]["detail"]
+
+
+def test_a6_shared_link_does_not_join_two_latin_personal_names(tmp_path: Path) -> None:
+    """Software review round 6, CRITICAL-1: a duo site listed by two differently named people."""
+    ledger = _ledger(tmp_path)
+    ledger.apply_roster("NORTH-2019", [_row("", "Bo Kim", website="https://duo.example.org")], task="collect")
+    ledger.apply_roster("SOUTH-2021", [_row("", "Ann Lee", website="https://duo.example.org/")], task="collect")
+    artists = ledger.read("artists")
+    assert len(artists) == 2
+    assert sorted(row["name_en"] for row in artists) == ["Ann Lee", "Bo Kim"]
+    assert [rule for _code, rule in _rules(ledger)] == ["first", "first"]
+
+
+def test_a6_shared_link_does_not_join_a_hangul_name_to_another_latin_name(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    ledger.apply_roster("NORTH-2019", [_row("", "Bo Kim", website="https://duo.example.org")], task="collect")
+    ledger.apply_roster("SOUTH-2021", [_row("윤가온", website="https://duo.example.org")], task="collect")
+    assert len(ledger.read("artists")) == 2
+
+
+def test_a6_joins_a_romanised_spelling_and_keeps_the_printed_name(tmp_path: Path) -> None:
+    """The romanisation keys meet, so the link may join; the roster's spelling stays as an alias."""
+    ledger = _ledger(tmp_path)
+    ledger.apply_roster("NORTH-2019", [_row("", "Gaon Yoon", website="https://gaon.example.org")], task="collect")
+    ledger.apply_roster("SOUTH-2021", [_row("윤가온", website="https://gaon.example.org/cv")], task="collect")
+    artists = ledger.read("artists")
+    assert len(artists) == 1
+    assert _rules(ledger)[1][1] == "A6"
+    assert "윤가온" in artists[0]["aliases"].split("|")
+
+
+def test_an_attached_row_keeps_a_spelling_the_person_lacks(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    ledger.apply_roster("NORTH-2019", [_row("김하늘", "Haneul Kim")], task="collect")
+    ledger.apply_roster("SOUTH-2021", [_row("김하늘", "Kim  Haneul")], task="collect")
+    artists = ledger.read("artists")
+    assert len(artists) == 1
+    assert artists[0]["aliases"] == "Kim Haneul"
+    # A re-run adds nothing: the spelling is already listed.
+    ledger.apply_roster("SOUTH-2021", [_row("김하늘", "Kim Haneul")], task="collect")
+    assert ledger.read("artists")[0]["aliases"] == "Kim Haneul"

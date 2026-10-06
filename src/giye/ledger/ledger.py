@@ -569,8 +569,10 @@ def _attach_one_roster_row(
     language: Any,
 ) -> tuple[str, str, bool, bool]:
     """One roster row: attach or insert, then website and same-name queue."""
-    raw_ko = str(row.get("name_ko") or "").strip()
-    raw_en = str(row.get("name_en") or "").strip()
+    # Runs of whitespace are one space: "Jonas  Berg" on one page and
+    # "Jonas Berg" on the next are one spelling, not a second alias.
+    raw_ko = " ".join(str(row.get("name_ko") or "").split())
+    raw_en = " ".join(str(row.get("name_en") or "").split())
     aliases = str(row.get("aliases") or "")
     identity = str(row.get("identity") or "").strip()
     websites = _roster_websites(row)
@@ -596,6 +598,7 @@ def _attach_one_roster_row(
     if attached:
         before = dict(state.by_id[decision.ledger_id or ""])
         artist, rule = _fill_attached_artist(ledger, state, decision, raw_ko, stored_en, source_url)
+        _keep_printed_names(artist, raw_ko, raw_en)
     else:
         artist, rule = _insert_roster_artist(ledger, state, stored_ko, stored_en, aliases, source_url, collected)
         state.created.add(artist["ledger_id"])
@@ -646,6 +649,33 @@ def _fill_attached_artist(
         artist["source_url"] = source_url
         artist["source_type"] = artist.get("source_type") or "PUBLIC_RECORD"
     return artist, rule
+
+
+def _spelling(text: str) -> str:
+    """A name compared for "already listed": NFC, whitespace collapsed, case folded."""
+    return " ".join(unicodedata.normalize("NFC", text or "").split()).casefold()
+
+
+def _keep_printed_names(artist: dict[str, str], raw_ko: str, raw_en: str) -> None:
+    """Add the roster's printed names to an attached person when the person lacks them.
+
+    Why: attachment can join a different spelling (A2 across scripts, A3, A6,
+    a stored alias). Without this the roster's own spelling of the person was
+    in no table, and the membership could no longer be checked against the
+    kept page by name (software review, round 6). A name already present as
+    ``name_ko``, ``name_en`` or an alias, after whitespace and case folding, is
+    not added again, so a re-run leaves the row byte-identical.
+    """
+    have = [artist.get("name_ko") or "", artist.get("name_en") or "", *split_pipe(artist.get("aliases"))]
+    known = {_spelling(item) for item in have} - {""}
+    extra: list[str] = []
+    for name in (raw_ko, raw_en):
+        key = _spelling(name)
+        if key and key not in known:
+            extra.append(name)
+            known.add(key)
+    if extra:
+        artist["aliases"] = join_pipe([*split_pipe(artist.get("aliases")), *extra])
 
 
 def _latin_only(text: str) -> bool:

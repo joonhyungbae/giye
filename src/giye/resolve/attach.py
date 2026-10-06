@@ -40,8 +40,17 @@ A5. The collector's identity key matches a key already stored on a row.
 A6. The same own website is owned by exactly one existing row.
     Used when the name rules and the identity key did not choose a row. A
     non-social link owned by one row can join a different spelling. A link
-    owned by two rows is not used. Two different bare Korean personal names
-    are not joined by a shared link.
+    owned by two rows is not used. When either side is a bare personal name
+    (Hangul or Latin-only), the names must also meet (:func:`names_meet`):
+    the same Hangul spelling, a shared name key, or a shared romanisation key
+    (X1). Why: a duo or a studio site is listed by people with different
+    names, so a shared link alone joined a Latin-named member to another
+    person (software review, round 6). Korean names had this guard; Latin
+    names did not. A group spelling (``Lumen Lab`` / ``루멘 랩``) still
+    joins on the link.
+
+The roster row's printed name is never dropped: the ledger keeps a spelling
+the person does not already carry as an alias (``giye.ledger.ledger``).
 """
 
 from __future__ import annotations
@@ -332,15 +341,53 @@ def attach_row(
     }
     if decision.ambiguous:
         owners &= set(decision.ambiguous)
-    if person_like(name_ko, language):
-        owners = {
-            owner
-            for owner in owners
-            if not (
-                person_like(by_id.get(owner, {}).get("name_ko") or "", language)
-                and hangul_compact(by_id[owner]["name_ko"]) != hangul_compact(name_ko)
-            )
-        }
-    if len(owners) == 1:
-        return Attachment(owners.pop(), "A6", ())
-    return decision
+    if len(owners) != 1:
+        return decision
+    owner = by_id.get(next(iter(owners)))
+    if owner is None:
+        return decision
+    words = field.compiled_team_words()
+    personal = _bare_personal(name_ko, name_en, language, words) or _bare_personal(
+        owner.get("name_ko") or "", owner.get("name_en") or "", language, words
+    )
+    if personal and not names_meet(name_ko, name_en, aliases, owner, language):
+        return decision
+    return Attachment(owner["ledger_id"], "A6", ())
+
+
+def names_meet(
+    name_ko: str,
+    name_en: str,
+    aliases: str,
+    artist: dict,
+    language: LanguageModule | None = None,
+) -> bool:
+    """True when a roster name and a stored row name one person by spelling (A6 guard).
+
+    Any of: the same Hangul syllables (spaces removed), a shared attachment
+    name key (:func:`name_keys`, stored aliases included), or a shared
+    romanisation key of the language module (X1, so ``윤가온`` meets
+    ``Gaon Yoon``). This is the overlap the website rules require; it is not
+    a reason to join on its own.
+    """
+    incoming = [value for value in (name_ko, name_en, *split_pipe(aliases)) if (value or "").strip()]
+    stored = [
+        value
+        for value in (artist.get("name_ko") or "", artist.get("name_en") or "", *split_pipe(artist.get("aliases") or ""))
+        if value.strip()
+    ]
+    hangul_in = {hangul_compact(value) for value in incoming} - {""}
+    hangul_stored = {hangul_compact(value) for value in stored} - {""}
+    if hangul_in & hangul_stored:
+        return True
+    if name_keys(name_ko, name_en, aliases) & (
+        name_keys(artist.get("name_ko") or "", artist.get("name_en") or "", "") | _alias_keys(artist)
+    ):
+        return True
+    if language is None:
+        from giye.normalize.language import default_language
+
+        language = default_language()
+    left = set().union(*(language.name_keys(value) for value in incoming)) if incoming else set()
+    right = set().union(*(language.name_keys(value) for value in stored)) if stored else set()
+    return bool(left & right)
