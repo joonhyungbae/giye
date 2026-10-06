@@ -23,6 +23,7 @@ import {
   loadGyRedirects,
   loadContentRevisions,
   loadCoverage,
+  loadCitationMeta,
   loadDatasetVersions,
   loadFrames,
   loadLinks,
@@ -148,9 +149,11 @@ export const getArtistRecord = createServerFn({ method: "GET" })
         .map((v) => [v.term_ko, v.term_en as string]),
     );
     const stamp = await studyStampHash();
+    const citation = loadCitationMeta();
     if (artist.status !== "PUBLISHED") {
       return {
         stamp,
+        citation,
         artist,
         terms_en,
         activities: [] as Activity[],
@@ -198,6 +201,7 @@ export const getArtistRecord = createServerFn({ method: "GET" })
       }));
     return {
       stamp,
+      citation,
       artist,
       terms_en,
       activities,
@@ -223,6 +227,7 @@ export const getHomeStats = createServerFn({ method: "GET" }).handler(async () =
     adjacentStrands: population.adjacent,
     lastRefreshedAt: coverage?.generated_at ?? versions[0]?.released_at ?? null,
     cadence: coverage?.cadence ?? null,
+    citation: loadCitationMeta(),
   };
 });
 

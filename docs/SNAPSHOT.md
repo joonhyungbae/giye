@@ -135,10 +135,17 @@ key is absent and the site states no maintenance schedule.
 
 ### `dataset_versions.json`
 
-One object. `version` comes from `[publish] dataset_version` (default `0.2`, the
-production label). `id` is a uuid5 of `site-version` and that label. `released_at` is
-the build date. `doi` is null until a release sets one. `artist_count` is the published
-people. `notes` includes the build timestamp.
+A list, oldest first: the version history. `version` comes from `[publish] dataset_version`
+(default `0.2`, the production label). `content_digest` is the sha256 of the published
+content (artists, activities, links, collaborations, background, frames, stubs, redirects)
+with the build stamp removed. Publish reads the existing file, keeps every row as it is, and
+appends a row only when the version string or the content digest differs from the last row.
+So `released_at` is the UTC date the content first appeared, and a weekly rebuild of an
+unchanged ledger leaves the file unchanged. `id` is a uuid5 of `site-version`, the label and
+the digest. `doi` is null until a release sets one. `artist_count` is the published people.
+`notes` includes the build timestamp of the build that added the row. Why: one version label
+covers every weekly rebuild, so only the release date tells a reader which content a
+citation names. Deleting the file starts a new history.
 
 ### `artist_stubs.json`
 
@@ -152,7 +159,7 @@ Object: retired `gy_id` → survivor `gy_id`.
 
 ```json
 {
-  "dataset": {"title": "", "version": "", "url": "", "year": 0, "accessed": "", "apa": "", "chicago": "", "bibtex": ""},
+  "dataset": {"title": "", "author": "", "version": "", "released_at": "", "url": "", "year": 0, "accessed": "", "apa": "", "chicago": "", "bibtex": ""},
   "artists": [{"id": "", "title": "", "url": "", "year": 0, "accessed": "", "apa": "", "chicago": "", "bibtex": ""}]
 }
 ```
@@ -161,11 +168,12 @@ The dataset URL is `<site_url>/data`. A person URL is `<site_url>/artist/<gy_id>
 The author, title, and origin come from `[publish]` (`citation_author`, `dataset_title`,
 `site_url`). The default author is `기예 Giye`. Publish fails when `site_url` is unset;
 the reference archive sets `https://giye.org`. The BibTeX key is `giye_<id with hyphens turned to underscores>`,
-or `giye_dataset`. The version in both citations is the dataset version. The artist page
-in the production web app hard-codes version `1.0`; this file uses the dataset version.
-
-`accessed` and the dataset year are the UTC build date. A person citation's year is the
-UTC year of that row's `updated_at`. The browser dialog uses the viewer's local clock.
+or `giye_dataset`. Both citations name the current row of `dataset_versions.json`:
+`[Dataset v0.2 of 2026-01-15]` and `[Artist record GY-000001, Dataset v0.2 of 2026-01-15]`,
+where the date is that row's `released_at`. The year is the year of `released_at`. `accessed`
+is the UTC build date. The site's cite dialog reads `author`, `version` and `released_at`
+from this file (the artist page and `/data`) and uses the viewer's local clock for the
+access date.
 
 ### Placeholders
 

@@ -37,6 +37,7 @@ registry without per-edition sizes yields the same snapshot as before.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Mapping
@@ -181,9 +182,27 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
     active = _active_frame_count(frame_rows)
     coverage = _coverage_document(stamp, artists_out, artists_in, frame_rows, config, active)
     version = config.dataset_version or "0.2"
-    versions = [_version_record(version, today, stamp, active, len(artists_out))]
-    citations = _citations(config, artists_out, version, today, clock.year)
     redirects = _redirects(artists_in, ledger.read("gy_retired"))
+    content = {
+        "artists.json": artists_out,
+        "activities.json": activities_out,
+        "links.json": links_out,
+        "collaborations.json": collaborations_out,
+        "background.json": background_out,
+        "frames.json": frames_out,
+        "artist_stubs.json": stubs,
+        "gy_redirects.json": redirects,
+    }
+    versions, current = _version_history(
+        config.site / "dataset_versions.json",
+        version,
+        _content_digest(content, stamp),
+        today,
+        stamp,
+        active,
+        len(artists_out),
+    )
+    citations = _citations(config, artists_out, current, today)
     payloads = {
         "artists.json": artists_out,
         "activities.json": activities_out,
@@ -381,10 +400,38 @@ def _coverage_document(
     return coverage
 
 
-def _version_record(version: str, today: str, stamp: str, active: int, n_artists: int) -> dict:
-    """One dataset-version row. The id is stable for this version string."""
-    return {
-        "id": mint_id(f"site-version\x1f{version}"),
+def _content_digest(content: dict, stamp: str) -> str:
+    """sha256 of the published content, without the build stamp.
+
+    The stamp is a fallback for ``updated_at`` and similar fields, so it is
+    removed: a rebuild of an unchanged ledger has the same digest.
+    """
+    text = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(text.replace(stamp, "").encode("utf-8")).hexdigest()
+
+
+def _version_history(
+    path: Path, version: str, digest: str, today: str, stamp: str, active: int, n_artists: int
+) -> tuple[list[dict], dict]:
+    """``dataset_versions.json`` with this build's row, and that row.
+
+    The rows already published are kept as they are, and a row is appended
+    only when the content changed (by ``content_digest``) or the version
+    string changed. Why: one version string (``[publish] dataset_version``)
+    covers every weekly rebuild, and a citation must say which content it
+    names; the row's ``released_at`` is the date that content first appeared,
+    so the history records what each citation pointed at. The id is stable
+    for one version string and one content.
+    """
+    previous: list[dict] = []
+    if path.exists():
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+        previous = [row for row in loaded if isinstance(row, dict)] if isinstance(loaded, list) else []
+    last = previous[-1] if previous else None
+    if last and last.get("version") == version and last.get("content_digest") == digest:
+        return previous, last
+    row = {
+        "id": mint_id(f"site-version\x1f{version}\x1f{digest}"),
         "version": version,
         "released_at": today,
         "doi": None,
@@ -393,7 +440,9 @@ def _version_record(version: str, today: str, stamp: str, active: int, n_artists
             f"published={n_artists} · generated {stamp}"
         ),
         "artist_count": n_artists,
+        "content_digest": digest,
     }
+    return [*previous, row], row
 
 
 def _write_snapshot(site: Path, payloads: dict) -> list[Path]:
@@ -963,31 +1012,42 @@ def _redirects(artists_in: list[dict], retired: list[dict]) -> dict[str, str]:
     }
 
 
-def _citations(config: Config, artists: list[dict], version: str, today: str, clock_year: int) -> dict:
+def _citations(config: Config, artists: list[dict], current: dict, today: str) -> dict:
+    """Citations of the dataset and of each person, naming the current version row.
+
+    The version label and the year come from that row (``version``, and the
+    ``released_at`` of its content), not from the build clock or a person's
+    ``updated_at``: a rebuild of unchanged content then cites the same way,
+    and different content cites a different date.
+    """
     title = config.dataset_title or config.name
     author = config.citation_author
     origin = config.site_url.rstrip("/")
     dataset_url = f"{origin}/data"
+    version = str(current["version"])
+    released = str(current["released_at"])
+    year = int(released[:4])
     dataset = {
         "title": title,
+        "author": author,
         "version": version,
+        "released_at": released,
         "url": dataset_url,
-        "year": clock_year,
+        "year": year,
         "accessed": today,
         **citation_texts(
             author=author,
             title=title,
             record_id=None,
             version=version,
+            released=released,
             url=dataset_url,
-            year=clock_year,
+            year=year,
             accessed=today,
         ),
     }
     people = []
     for artist in artists:
-        updated = str(artist.get("updated_at") or "")
-        year = int(updated[:4]) if re.match(r"\d{4}", updated) else clock_year
         url = f"{origin}/artist/{artist['id']}"
         people.append(
             {
@@ -1001,6 +1061,7 @@ def _citations(config: Config, artists: list[dict], version: str, today: str, cl
                     title=str(artist.get("name_ko") or artist["id"]),
                     record_id=artist["id"],
                     version=version,
+                    released=released,
                     url=url,
                     year=year,
                     accessed=today,

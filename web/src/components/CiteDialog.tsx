@@ -6,20 +6,24 @@ import { Button } from "@/components/ui/button";
 export type CiteInput = {
   title: string;
   id?: string;
+  /** From citations.json (loadCitationMeta): [publish] citation_author. */
+  author: string;
   version: string;
+  /** released_at of the cited dataset_versions.json row; part of the version label. */
+  released: string | null;
   url: string;
   year: number;
 };
 
-function formats({ title, id, version, url, year }: CiteInput, accessed: string) {
-  const bracket = id
-    ? `[Artist record ${id}, Dataset v${version}]`
-    : `[Dataset v${version}]`;
+/** The same sentences as giye.publish.cite.citation_texts. */
+function formats({ title, id, author, version, released, url, year }: CiteInput, accessed: string) {
+  const label = released ? `v${version} of ${released}` : `v${version}`;
+  const bracket = id ? `[Artist record ${id}, Dataset ${label}]` : `[Dataset ${label}]`;
   return {
-    APA: `기예 Giye. (${year}). ${title} ${bracket}. Retrieved ${accessed}, from ${url}`,
-    Chicago: `기예 Giye. "${title}." ${bracket} ${year}. Accessed ${accessed}. ${url}.`,
+    APA: `${author}. (${year}). ${title} ${bracket}. Retrieved ${accessed}, from ${url}`,
+    Chicago: `${author}. "${title}." ${bracket} ${year}. Accessed ${accessed}. ${url}.`,
     BibTeX: `@misc{giye_${(id ?? "dataset").replace(/-/g, "_")},
-  author       = {{기예 Giye}},
+  author       = {{${author}}},
   title        = {${title}},
   note         = {${bracket.slice(1, -1)}},
   year         = {${year}},

@@ -19,6 +19,7 @@ import type {
   Artist,
   ArtistLink,
   BackgroundEntry,
+  CitationMeta,
   Collaboration,
   DatasetVersion,
   Vocabulary,
@@ -184,6 +185,24 @@ export function loadVocabularies(): Vocabulary[] {
 
 export function loadDatasetVersions(): DatasetVersion[] {
   return readJson<DatasetVersion[]>("dataset_versions.json", []);
+}
+
+/**
+ * Who and which snapshot a citation names: citations.json's dataset entry, written by
+ * `giye publish` from [publish] and the current dataset_versions.json row. A snapshot without
+ * that file falls back to the last version row (the history is appended, oldest first).
+ */
+export function loadCitationMeta(): CitationMeta {
+  const dataset = readJson<{ dataset?: Partial<CitationMeta> } | null>("citations.json", null)?.dataset;
+  const versions = loadDatasetVersions();
+  const last = versions[versions.length - 1];
+  const released = dataset?.released_at ?? last?.released_at ?? null;
+  return {
+    author: dataset?.author ?? "기예 Giye",
+    version: dataset?.version ?? last?.version ?? "0.1",
+    released_at: released,
+    year: dataset?.year ?? (released ? Number(released.slice(0, 4)) : new Date().getFullYear()),
+  };
 }
 
 export function loadFrames(): FrameEntry[] {

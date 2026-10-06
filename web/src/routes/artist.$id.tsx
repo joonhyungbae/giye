@@ -190,7 +190,7 @@ function latinPart(label: string): string | null {
 }
 
 function ArtistPage() {
-  const { artist, terms_en, activities, links, collaborations, background, frames, sameName } =
+  const { artist, citation, terms_en, activities, links, collaborations, background, frames, sameName } =
     Route.useLoaderData();
   const { lang, t } = useLang();
   // English page: tags read through vocabularies.json (L1); a tag with no English term stays as written.
@@ -297,9 +297,11 @@ function ArtistPage() {
               <CiteDialog
                 title={artist.name_ko}
                 id={artist.id}
-                version="1.0"
+                author={citation.author}
+                version={citation.version}
+                released={citation.released_at}
                 url={`${site.origin}/artist/${artist.id}`}
-                year={new Date(artist.updated_at).getFullYear()}
+                year={citation.year}
               />
             </p>
             <SourceDisclosure

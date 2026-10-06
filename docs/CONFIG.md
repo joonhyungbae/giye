@@ -143,7 +143,7 @@ Backups themselves are not configurable: each run copies a ledger file once per 
 | Key | Type | Default | Required | Read by | Example |
 |---|---|---|---|---|---|
 | `site_url` | string | — | yes, for `giye publish` | `giye.publish.snapshot` and `giye.publish.cite`. Citations use `<site_url>/artist/<id>` and `<site_url>/data`. A trailing slash is stripped. Unset or empty is a config error at publish: there is no default origin. The demo sets `https://example.org`. | `"https://example.org"` |
-| `dataset_version` | string | `"0.2"` | no | `giye.publish.snapshot` (`dataset_versions.json` and the citation) | `"0.2"` |
+| `dataset_version` | string | `"0.2"` | no | `giye.publish.snapshot` (`dataset_versions.json` and the citation; a row is appended when the label or the content changes, docs/SNAPSHOT.md) | `"0.2"` |
 | `dataset_title` | string | `""` (the archive `name`) | no | `giye.publish.snapshot` | `"Synthetic media-art field (demo)"` |
 | `citation_author` | string | `"기예 Giye"` | no | `giye.publish.snapshot`, `giye.publish.cite` | `"Example Archive"` |
 | `data_license` | string | unset | no | `giye.export.rocrate`: the RO-Crate dataset's `license`. `data_licence` is the same key. `[publish]` wins over `[archive] data_license`. Unset points the crate to `#no-data-licence` (no data licence is granted). | `"CC-BY-4.0"` |

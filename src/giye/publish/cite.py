@@ -16,6 +16,7 @@ def citation_texts(
     title: str,
     record_id: str | None,
     version: str,
+    released: str | None = None,
     url: str,
     year: int,
     accessed: str,
@@ -24,12 +25,17 @@ def citation_texts(
 
     Returns the three strings. ``accessed`` is an ISO date (``YYYY-MM-DD``).
     A snapshot has one build time, so the publisher uses that UTC date.
+    ``released`` is the date the cited snapshot's content was first published
+    (its ``dataset_versions.json`` row). It is part of the version label,
+    because one version string covers every weekly rebuild and only the date
+    tells two different contents apart.
     """
+    label = f"v{version} of {released}" if released else f"v{version}"
     if record_id:
-        bracket = f"[Artist record {record_id}, Dataset v{version}]"
+        bracket = f"[Artist record {record_id}, Dataset {label}]"
         key = record_id.replace("-", "_")
     else:
-        bracket = f"[Dataset v{version}]"
+        bracket = f"[Dataset {label}]"
         key = "dataset"
     note = bracket[1:-1]
     bibtex = (

@@ -109,6 +109,17 @@ export type DatasetVersion = {
   doi: string | null;
   notes: string | null;
   artist_count: number;
+  /** sha256 of the published content; a new row is appended when it changes. */
+  content_digest?: string;
+};
+
+/** The author and the snapshot every citation names (citations.json dataset entry). */
+export type CitationMeta = {
+  author: string;
+  version: string;
+  /** Date the cited content was first published; part of the version label. */
+  released_at: string | null;
+  year: number;
 };
 
 export type ArtistFilters = {

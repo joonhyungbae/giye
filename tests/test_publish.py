@@ -123,23 +123,24 @@ def test_citation_sentences_match_the_production_dialog():
         title="김하늘",
         record_id="GY-000001",
         version="0.2",
+        released="2026-01-10",
         url="https://giye.org/artist/GY-000001",
         year=2026,
         accessed="2026-01-15",
     )
     assert text["apa"] == (
-        "기예 Giye. (2026). 김하늘 [Artist record GY-000001, Dataset v0.2]. "
+        "기예 Giye. (2026). 김하늘 [Artist record GY-000001, Dataset v0.2 of 2026-01-10]. "
         "Retrieved 2026-01-15, from https://giye.org/artist/GY-000001"
     )
     assert text["chicago"] == (
-        '기예 Giye. "김하늘." [Artist record GY-000001, Dataset v0.2] 2026. '
+        '기예 Giye. "김하늘." [Artist record GY-000001, Dataset v0.2 of 2026-01-10] 2026. '
         "Accessed 2026-01-15. https://giye.org/artist/GY-000001."
     )
     assert text["bibtex"] == (
         "@misc{giye_GY_000001,\n"
         "  author       = {{기예 Giye}},\n"
         "  title        = {김하늘},\n"
-        "  note         = {Artist record GY-000001, Dataset v0.2},\n"
+        "  note         = {Artist record GY-000001, Dataset v0.2 of 2026-01-10},\n"
         "  year         = {2026},\n"
         "  howpublished = {\\url{https://giye.org/artist/GY-000001}},\n"
         "  urldate      = {2026-01-15}\n"
@@ -150,11 +151,12 @@ def test_citation_sentences_match_the_production_dialog():
         title="Index",
         record_id=None,
         version="0.2",
+        released="2026-01-10",
         url="https://giye.org/data",
         year=2026,
         accessed="2026-01-15",
     )
-    assert dataset["apa"].startswith("기예 Giye. (2026). Index [Dataset v0.2].")
+    assert dataset["apa"].startswith("기예 Giye. (2026). Index [Dataset v0.2 of 2026-01-10].")
     assert dataset["bibtex"].startswith("@misc{giye_dataset,")
 
 
@@ -647,3 +649,54 @@ def test_background_drops_ungrounded_and_suppressed_lines(tmp_path: Path):
     ]
     site = _publish(tmp_path, artists, activities, membership)
     assert [row["title"] for row in site["background.json"]] == ["서울예시대학교 미술학 학사"]
+
+
+def test_version_history_is_appended_and_citations_name_the_snapshot(tmp_path: Path):
+    """A rebuild with the same content keeps the version row; new content appends one.
+
+    Citations name the version and the date its content was first published,
+    so two different snapshots of one version string are told apart, and a
+    rebuild of the same content does not change the citation.
+    """
+    from datetime import timedelta
+
+    artists = [_artist("LED-haneul", "김하늘", gy_id="GY-000001")]
+    membership = [
+        empty_row(
+            MEMBERSHIP_FIELDS,
+            ledger_id="LED-haneul",
+            frame_code="EXAMPLE-RESIDENCY",
+            source_url="https://example.org/residency/alumni",
+            collected_at="2026-01-15",
+        )
+    ]
+    site = _publish(tmp_path, artists, [_activity("LED-haneul", activity_id="act-roster")], membership)
+    first = site["dataset_versions.json"]
+    assert len(first) == 1 and first[0]["released_at"] == "2026-01-15" and first[0]["content_digest"]
+    cite = site["citations.json"]
+    assert cite["dataset"]["released_at"] == "2026-01-15"
+    assert cite["dataset"]["author"]
+    assert "Dataset v0.2 of 2026-01-15" in cite["artists"][0]["apa"]
+    assert "v1.0" not in json.dumps(cite)
+
+    cfg = load(_config(tmp_path, frames=FRAMES))
+    later = NOW + timedelta(days=7)
+    publish(cfg, now=later)
+    same = json.loads((cfg.site / "dataset_versions.json").read_text(encoding="utf-8"))
+    assert same == first
+    again = json.loads((cfg.site / "citations.json").read_text(encoding="utf-8"))
+    assert again["artists"][0]["year"] == 2026
+    assert "Dataset v0.2 of 2026-01-15" in again["artists"][0]["apa"]
+
+    ledger = Ledger.open(cfg)
+    rows = ledger.read("activities")
+    rows.append(_activity("LED-haneul", activity_id="act-new", title="〈새 기록〉", year="2025"))
+    ledger.write("activities", rows, task="test")
+    publish(cfg, now=later)
+    history = json.loads((cfg.site / "dataset_versions.json").read_text(encoding="utf-8"))
+    assert history[0] == first[0]
+    assert len(history) == 2
+    assert history[1]["released_at"] == later.date().isoformat()
+    assert history[1]["id"] != history[0]["id"]
+    cite = json.loads((cfg.site / "citations.json").read_text(encoding="utf-8"))
+    assert f"Dataset v0.2 of {later.date().isoformat()}" in cite["artists"][0]["apa"]

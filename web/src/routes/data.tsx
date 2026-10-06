@@ -70,9 +70,11 @@ function DataPage() {
           <p className="flex flex-wrap gap-3 text-sm">
             <CiteDialog
               title={`기예 Giye — ${datasetIndexTitle()}`}
-              version={stats.version}
+              author={stats.citation.author}
+              version={stats.citation.version}
+              released={stats.citation.released_at}
               url={`${site.origin}/data`}
-              year={new Date().getFullYear()}
+              year={stats.citation.year}
             />
           </p>
           <div className="mt-8 grid max-w-xl grid-cols-2 border-t border-border pt-5 sm:grid-cols-4">
