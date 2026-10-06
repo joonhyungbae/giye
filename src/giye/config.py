@@ -19,7 +19,7 @@ Example (see examples/demo/giye.toml)::
     field = "field.toml"        # programme phrases, team words, tags, ring aliases
 
     [collect]
-    user_agent = "GiyeArchive/0.1 (+https://example.org/about)"
+    user_agent = "GiyeArchive/0.1 (+https://example.org/about)"  # use a contact you read
     min_delay_s = 2.0
     timeout_s = 45
     robots_timeout_s = 20
@@ -111,12 +111,23 @@ class GiyeError(Exception):
 class ConfigError(GiyeError):
     """``giye.toml`` or ``frames.yml`` cannot be used. The message is the line."""
 
+
+class ConfigWarning(UserWarning):
+    """A ``giye.toml`` key or table this package does not read (most often a typo).
+
+    A warning, not an error: other tables carry keys read elsewhere (the RO-Crate
+    export reads ``data_license``), and the loader has never refused an unknown
+    key. The CLI prints it as one ``giye: warning:`` line.
+    """
+
 from giye.field import Field, load_field
 
 try:  # Python 3.11+
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover - Python 3.10
     import tomli as tomllib  # type: ignore[no-redef]
+
+import warnings
 
 
 @dataclass(frozen=True)
@@ -159,7 +170,9 @@ class Config:
     field_config: Field = field(default_factory=Field)
     # ``module:Class`` with a ``load`` classmethod. Default is Korean–English.
     language_module: str = "giye.normalize.lang.ko_en:KoEn"
-    user_agent: str = "GiyeArchive/0.1 (+https://example.org/contact)"
+    # No default: a run that fetches must name its crawler and a contact the
+    # archive reads (giye.collect.fetch.require_contact). Empty refuses to fetch.
+    user_agent: str = ""
     min_delay_s: float = 2.0
     timeout_s: float = 45.0
     robots_timeout_s: float = 20.0
@@ -296,23 +309,76 @@ def checked_frames(config: Config) -> FrameRegistry:
         raise ConfigError(str(exc)) from exc
 
 
+# Tables ``load`` reads. Another top-level name is warned about (ConfigWarning).
+KNOWN_TABLES = frozenset(
+    {"archive", "paths", "collect", "evidence", "resolve", "normalize", "extract", "publish", "ledger"}
+)
+# Keys of ``[collect]``. A misspelt key (``user-agent``, ``min_delay``) would
+# otherwise leave the default in force without a word.
+COLLECT_KEYS = frozenset(
+    {"user_agent", "min_delay_s", "timeout_s", "robots_timeout_s", "collector_modules", "offline_roots"}
+)
+
+
+def _table(raw: dict, name: str, path: Path) -> dict:
+    """``[name]`` as a dict, empty when absent. Another type is a one-line error."""
+    value = raw.get(name)
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise TypeError(f"{path}: [{name}] must be a table")
+    return value
+
+
+def _seconds(collect: dict, key: str, default: float, *, zero_ok: bool) -> float:
+    """A non-negative number of seconds; a timeout must also be above zero."""
+    value = collect.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f"[collect] {key} must be a number of seconds")
+    value = float(value)
+    if value < 0 or (value == 0 and not zero_ok):
+        raise ValueError(f"[collect] {key} must be {'>= 0' if zero_ok else '> 0'} (got {value:g})")
+    return value
+
+
+def _user_agent(collect: dict) -> str:
+    value = collect.get("user_agent", "")
+    if not isinstance(value, str):
+        raise TypeError("[collect] user_agent must be a string")
+    return value.strip()
+
+
+def _warn_unknown(raw: dict, collect: dict, path: Path) -> None:
+    for name in sorted(set(raw) - KNOWN_TABLES):
+        warnings.warn(f"{path}: unknown table or key [{name}] is ignored", ConfigWarning, stacklevel=3)
+    for key in sorted(set(collect) - COLLECT_KEYS):
+        warnings.warn(f"{path}: unknown key [collect] {key} is ignored", ConfigWarning, stacklevel=3)
+
+
 def load(path: str | Path) -> Config:
-    """Read a ``giye.toml``; relative paths are taken from the file's directory."""
+    """Read a ``giye.toml``; relative paths are taken from the file's directory.
+
+    A table that is not a table, or a setting of the wrong type, raises
+    ``TypeError``/``ValueError`` (the CLI prints one line). An unknown top-level
+    table and an unknown ``[collect]`` key raise a ``ConfigWarning``.
+    """
     path = Path(path).resolve()
     raw = tomllib.loads(path.read_text(encoding="utf-8"))
     root = path.parent
-    archive, paths, collect = raw.get("archive", {}), raw.get("paths", {}), raw.get("collect", {})
+    archive, paths, collect = _table(raw, "archive", path), _table(raw, "paths", path), _table(raw, "collect", path)
+    _warn_unknown(raw, collect, path)
     # archive_fallback_for_disallowed is not a setting. A disallowed host is
     # link-only (giye.collect.evidence). A leftover key in this table is ignored.
     evidence = raw.get("evidence") or {}
     if "name" not in archive:
         raise ValueError(f"{path}: [archive] name is required")
+    if not isinstance(archive["name"], str):
+        raise TypeError(f"{path}: [archive] name must be a string")
     if not isinstance(evidence, dict):
         raise TypeError(f"{path}: [evidence] must be a table")
     resolve = raw.get("resolve") or {}
     if not isinstance(resolve, dict):
         raise TypeError(f"{path}: [resolve] must be a table")
-    known = {"archive", "paths", "collect", "evidence", "resolve", "normalize", "extract", "publish", "ledger"}
     ledger = raw.get("ledger") or {}
     if not isinstance(ledger, dict):
         raise TypeError(f"{path}: [ledger] must be a table")
@@ -344,10 +410,10 @@ def load(path: str | Path) -> Config:
         field_file=_optional_path(root, paths.get("field")),
         field_config=_field_config(root, paths.get("field"), frames),
         language_module=_language_module(normalize.get("language_module", "giye.normalize.lang.ko_en:KoEn")),
-        user_agent=collect.get("user_agent", "GiyeArchive/0.1 (+https://example.org/contact)"),
-        min_delay_s=float(collect.get("min_delay_s", 2.0)),
-        timeout_s=float(collect.get("timeout_s", 45.0)),
-        robots_timeout_s=float(collect.get("robots_timeout_s", 20.0)),
+        user_agent=_user_agent(collect),
+        min_delay_s=_seconds(collect, "min_delay_s", 2.0, zero_ok=True),
+        timeout_s=_seconds(collect, "timeout_s", 45.0, zero_ok=False),
+        robots_timeout_s=_seconds(collect, "robots_timeout_s", 20.0, zero_ok=False),
         offline_roots=_offline_roots(root, collect),
         collector_modules=_collector_modules(collect),
         event_patterns=_event_patterns(resolve),
@@ -375,7 +441,7 @@ def load(path: str | Path) -> Config:
         citation_author=_plain(publish.get("citation_author", "기예 Giye"), "기예 Giye", "[publish] citation_author"),
         cadence=_cadence(publish.get("cadence")),
         keep_backups_days=_keep_backups_days(ledger.get("keep_backups_days")),
-        extra={k: v for k, v in raw.items() if k not in known},
+        extra={k: v for k, v in raw.items() if k not in KNOWN_TABLES},
     )
 
 

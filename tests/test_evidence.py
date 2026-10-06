@@ -18,7 +18,9 @@ from giye.collect.fetch import Fetcher
 from giye.collect.snapshot import SnapshotStore
 from giye.config import Config
 
-UA = "GiyeTest/0.1 (+https://example.org/contact)"
+# A fake session answers every request. The contact is the project's own domain: a
+# placeholder (example.org) is not sent to archive.org (giye.collect.fetch.check_contact_for).
+UA = "GiyeTest/0.1 (+https://giye.org/contact)"
 PAGE = "https://example.org/residency/alumni"
 ARCHIVED = "<p>archived alumni 김하늘</p>".encode()
 TS = "20200101120000"

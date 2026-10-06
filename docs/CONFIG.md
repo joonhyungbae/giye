@@ -2,7 +2,7 @@
 
 One archive is one file. `giye.config.load` reads it. Paths are relative to the file's directory and are resolved to absolute paths. A copied file that sets `frames` to an absolute path and leaves `field` as a bare filename is looked up beside `frames.yml` when that filename is not found from the config directory.
 
-Only `[archive] name` is required. Every other key has a default or may be omitted. Unknown top-level tables are stored on `Config.extra` and nothing reads them.
+Only `[archive] name` is required to load the file. A command that fetches (`collect`, `evidence`, a CV pull) also needs `[collect] user_agent`. Every other key has a default or may be omitted. An unknown top-level table and an unknown key in `[collect]` print a `giye: warning:` line (`ConfigWarning`), because a misspelt key such as `user-agent` or `min_delay` would otherwise leave the default in force without a word. Unknown tables are still stored on `Config.extra`. A table of the wrong type (`collect = "x"`) or a setting of the wrong type is a one-line error (exit 2).
 
 `[evidence]` is accepted and type-checked. Keys inside it are not read. A disallowed host stays link-only (`giye.collect.evidence`).
 
@@ -27,10 +27,10 @@ Only `[archive] name` is required. Every other key has a default or may be omitt
 
 | Key | Type | Default | Required | Read by | Example |
 |---|---|---|---|---|---|
-| `user_agent` | string | `"GiyeArchive/0.1 (+https://example.org/contact)"` | no | `giye.collect.fetch`. It must contain `http://`, `https://`, or `@`. | `"GiyeDemo/0.1 (+https://example.org/contact)"` |
-| `min_delay_s` | number | `2.0` | no | `giye.collect.fetch` (per-host delay) | `0.0` |
-| `timeout_s` | number | `45.0` | no | `giye.collect.fetch` | `20` |
-| `robots_timeout_s` | number | `20.0` | no | `giye.collect.fetch` | `10` |
+| `user_agent` | string | none | yes, to fetch | `giye.collect.fetch.require_contact`. It must start with the crawler's own product token (not `Mozilla`: robots.txt groups are chosen by that token) and contain a contact URL with a host or an e-mail address. A contact on a reserved documentation domain (example.org, example.com, example.net, `.test`, `.example`, `.invalid`, localhost) is sent only to such hosts and to loopback addresses; a request to any other host stops with an error before it is sent. | `"MyArchiveBot/0.1 (+https://your.site/contact)"` |
+| `min_delay_s` | number | `2.0` | no | `giye.collect.fetch` (per-host delay). Must be `>= 0`. | `0.0` |
+| `timeout_s` | number | `45.0` | no | `giye.collect.fetch`. Must be `> 0`. | `20` |
+| `robots_timeout_s` | number | `20.0` | no | `giye.collect.fetch`. Must be `> 0`. | `10` |
 | `collector_modules` | array of paths, or one path string | `[]` | no | `giye.collect.base` imports each path relative to the config file. Empty means `giye collect` exits 2. | `["collectors.py"]` |
 
 ### `[collect.offline_roots]`

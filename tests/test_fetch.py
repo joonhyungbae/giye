@@ -596,3 +596,36 @@ def test_terms_block_covers_current_domains_and_short_links():
         "https://lnkd.in/abc",
     ):
         assert is_social(url), url
+def test_contact_must_be_a_real_url_or_address():
+    from giye.collect.fetch import require_contact
+
+    for ua in ("x@", "Bot http://", "@", "Bot (+https://)", ""):
+        with pytest.raises(ValueError):
+            require_contact(ua)
+    assert require_contact("Bot/1 (+mailto:ops@archive.test)")
+    assert require_contact("Bot/1 (+https://archive.test/contact)")
+
+
+def test_browser_style_user_agent_is_refused():
+    from giye.collect.fetch import require_contact
+
+    with pytest.raises(ValueError, match="product token"):
+        require_contact("Mozilla/5.0 (compatible; GiyeBot/0.1; +https://archive.test/bot)")
+
+
+def test_placeholder_contact_is_not_sent_to_a_real_host():
+    from giye.collect.fetch import ContactError
+
+    sent = []
+
+    class Session:
+        max_redirects = 30
+
+        def get(self, url, **_kw):
+            sent.append(url)
+            raise AssertionError("sent")
+
+    fetcher = Fetcher(UA, min_delay_s=0, session=Session())
+    with pytest.raises(ContactError):
+        fetcher.get("https://real-archive-host.kr/roster")
+    assert sent == []

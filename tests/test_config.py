@@ -93,3 +93,53 @@ weekly = "link check"
     publish(cfg)
     coverage = json.loads((cfg.site / "coverage.json").read_text(encoding="utf-8"))
     assert coverage["cadence"] == {"weekly": "link check"}
+
+
+def _write(tmp_path: Path, body: str) -> Path:
+    path = tmp_path / "giye.toml"
+    path.write_text('[archive]\nname = "Synthetic"\n' + body, encoding="utf-8")
+    return path
+
+
+def test_user_agent_has_no_placeholder_default(tmp_path: Path) -> None:
+    import pytest
+
+    from giye.collect.fetch import ContactError, fetcher_from_config
+
+    config = load(_write(tmp_path, ""))
+    assert config.user_agent == ""
+    with pytest.raises(ContactError):
+        fetcher_from_config(config)
+
+
+def test_unknown_collect_key_and_table_warn(tmp_path: Path) -> None:
+    import pytest
+
+    from giye.config import ConfigWarning
+
+    body = '[collect]\nuser-agent = "Bot/1 (+mailto:ops@archive.test)"\nmin_delay = 30\n[colect]\nx = 1\n'
+    with pytest.warns(ConfigWarning) as caught:
+        load(_write(tmp_path, body))
+    messages = " ".join(str(item.message) for item in caught)
+    assert "user-agent" in messages and "min_delay" in messages and "[colect]" in messages
+
+
+def test_wrong_types_and_bad_numbers_are_config_errors(tmp_path: Path) -> None:
+    import pytest
+
+    for body in ('collect = "x"\n', '[collect]\nuser_agent = 5\n', "[collect]\nmin_delay_s = -5\n",
+                 "[collect]\ntimeout_s = 0\n"):
+        path = tmp_path / "giye.toml"
+        path.write_text(body + '[archive]\nname = "Synthetic"\n' if body.startswith("collect") else
+                        '[archive]\nname = "Synthetic"\n' + body, encoding="utf-8")
+        with pytest.raises((TypeError, ValueError)):
+            load(path)
+
+
+def test_cli_prints_one_line_for_a_wrong_table_type(tmp_path: Path, capsys) -> None:
+    from giye.cli import main
+
+    path = tmp_path / "giye.toml"
+    path.write_text('paths = "oops"\n[archive]\nname = "Synthetic"\n', encoding="utf-8")
+    assert main(["evidence", "--config", str(path)]) == 2
+    assert capsys.readouterr().err.startswith("giye: error:")

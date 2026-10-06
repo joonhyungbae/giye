@@ -547,6 +547,26 @@ def _add_tool_parsers(sub: argparse._SubParsersAction) -> None:
     evidence_cmd.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
 
 
+def _one_line_config_warnings() -> None:
+    """Print a ``ConfigWarning`` (an unknown config key) as ``giye: warning: ...``."""
+    import warnings
+
+    from giye.config import ConfigWarning
+
+    previous = warnings.showwarning
+    if getattr(previous, "giye_config", False):
+        return
+
+    def show(message, category, filename, lineno, file=None, line=None):
+        if issubclass(category, ConfigWarning):
+            print(f"giye: warning: {message}", file=sys.stderr)
+            return
+        previous(message, category, filename, lineno, file, line)
+
+    show.giye_config = True  # type: ignore[attr-defined]
+    warnings.showwarning = show
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run one ``giye`` command. Returns 0 on success and 2 on a usage or stage error."""
     args = _parser().parse_args(argv)
@@ -554,6 +574,7 @@ def main(argv: list[str] | None = None) -> int:
     from giye.ledger.io import start_backup_run
 
     start_backup_run()
+    _one_line_config_warnings()
     try:
         return _dispatch(args)
     except GiyeError as exc:

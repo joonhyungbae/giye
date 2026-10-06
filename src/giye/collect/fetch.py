@@ -23,8 +23,11 @@ refusal is the same whoever asked (docs/RULES.md, collection policy). The decisi
 - A certificate failure is retried once with verification off. The page result carries
   ``tls_unverified``. When the robots.txt fetch needed that retry, ``robots_tls_unverified``
   is set as well. The path verdict does not depend on the flag.
-- The configured User-Agent is sent on every request, including robots.txt. It must contain
-  a contact URL or email.
+- The configured User-Agent is sent on every request, including robots.txt. It must start
+  with the crawler's product token and contain a contact URL with a host or an e-mail
+  address (``require_contact``). A contact on a reserved documentation domain such as
+  example.org is sent only to reserved or loopback hosts (tests, the demo); a request to
+  any other host raises ``ContactError`` before it is sent.
 - ``request`` also sends a POST (``post``). Some archives answer a list only to a
   form submission. The same robots.txt and terms checks run before it. The body
   is hashed (``body_sha256``) so the snapshot line and replay can tell two POSTs
@@ -42,7 +45,9 @@ not fall back to the Internet Archive for that refusal (see ``giye.collect.evide
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import logging
+import re
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -60,12 +65,15 @@ from giye.collect.robots import (
     RobotsDisallowed,
     RobotsRefused,
     _location,
+    _product_token,
     decide,
 )
 from giye.collect.snapshot import SnapshotStore
+from giye.config import ConfigError
 
 __all__ = [
     "SOCIAL_HOSTS",
+    "ContactError",
     "Fetcher",
     "Page",
     "RobotsDisallowed",
@@ -211,15 +219,108 @@ def body_hash(body: bytes, method: str) -> str:
     return hashlib.sha256(body).hexdigest()
 
 
+class ContactError(ConfigError, ValueError):
+    """The configured User-Agent cannot identify the archive to a site operator.
+
+    A ``ConfigError`` so the command prints one line, and a ``ValueError`` for
+    callers that caught the earlier exception type.
+    """
+
+
+# A contact URL with a host, or an e-mail address (``mailto:`` included).
+_CONTACT_URL = re.compile(r"https?://([^/\s;()<>,]+)", re.IGNORECASE)
+_CONTACT_MAIL = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)")
+
+# Hosts reserved for documentation and testing (RFC 2606, RFC 6761). A contact
+# there reaches nobody, so it identifies no one to a real site's operator.
+_RESERVED_SUFFIXES = ("example", "test", "invalid", "localhost")
+_RESERVED_DOMAINS = ("example.org", "example.com", "example.net")
+
+
+def _is_reserved_host(host: str) -> bool:
+    """True for RFC 2606/6761 names and loopback addresses."""
+    host = (host or "").lower().rstrip(".").split("@")[-1]
+    if host.startswith("[") and "]" in host:
+        host = host[1 : host.index("]")]
+    else:
+        host = host.split(":", 1)[0]
+    if not host:
+        return False
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        pass
+    if any(host == name or host.endswith("." + name) for name in _RESERVED_DOMAINS):
+        return True
+    return host.rsplit(".", 1)[-1] in _RESERVED_SUFFIXES
+
+
+def _contact_hosts(ua: str) -> list[str]:
+    """Hosts of every contact in ``ua``: URL hosts and e-mail domains."""
+    hosts = [match.group(1) for match in _CONTACT_URL.finditer(ua)]
+    hosts.extend(match.group(1) for match in _CONTACT_MAIL.finditer(ua))
+    found = []
+    for host in hosts:
+        name = host.split("@")[-1].split(":", 1)[0].lower().rstrip(".")
+        # A host needs a dot (a domain) or must be localhost.
+        if "." in name or name == "localhost":
+            found.append(name)
+    return found
+
+
 def require_contact(user_agent: str) -> str:
-    """The archive's User-Agent has to carry a contact URL or email address."""
+    """The archive's User-Agent has to name the crawler and carry a working contact.
+
+    Rules (docs/CONFIG.md, ``[collect] user_agent``):
+
+    - a contact is an http(s) URL whose host is a domain, or an e-mail address
+      ``local@domain.tld``. A bare ``@`` or ``http://`` is not a contact;
+    - the product token (the leading name, RFC 9309 §2.2.1) is what robots.txt
+      groups are matched on, so a browser-style ``Mozilla/5.0 (...)`` string is
+      refused: a site's rules for the crawler's own name would not apply.
+
+    A contact on a reserved documentation domain (example.org and the like) is
+    accepted here, so tests and the demo can build a fetcher, but
+    ``Fetcher`` refuses to send it to any real host (see ``check_contact_for``).
+    """
     ua = (user_agent or "").strip()
-    if "http://" not in ua and "https://" not in ua and "@" not in ua:
-        raise ValueError(
-            "user_agent must include a contact URL or email "
-            "(for example 'GiyeArchive/0.1 (+https://example.org/contact)')"
+    if not ua:
+        raise ContactError(
+            "[collect] user_agent is required before anything is fetched: name the crawler and give "
+            "a contact URL or e-mail address (for example 'MyArchiveBot/0.1 (+https://your.site/contact)')"
+        )
+    if not _contact_hosts(ua):
+        raise ContactError(
+            "user_agent must include a contact URL with a host or an e-mail address "
+            "(for example 'MyArchiveBot/0.1 (+https://your.site/contact)')"
+        )
+    if _product_token(ua).lower() == "mozilla":
+        raise ContactError(
+            "user_agent must start with the crawler's own product token, not 'Mozilla': "
+            "robots.txt groups are chosen by that first token (RFC 9309 §2.2.1)"
         )
     return ua
+
+
+def placeholder_contact(user_agent: str) -> bool:
+    """True when every contact in ``user_agent`` is on a reserved documentation or test host."""
+    hosts = _contact_hosts(user_agent or "")
+    return bool(hosts) and all(_is_reserved_host(host) for host in hosts)
+
+
+def check_contact_for(user_agent: str, url: str) -> None:
+    """Refuse to send a placeholder contact to a real host.
+
+    A contact on example.org (or another reserved name) reaches nobody, so a
+    request carrying it does not identify the archive. It may still go to a
+    reserved or loopback host (the tests' local servers and fakes), which
+    no third party operates.
+    """
+    if placeholder_contact(user_agent) and not _is_reserved_host(urlparse(url).netloc):
+        raise ContactError(
+            f"user_agent {user_agent!r} gives only a placeholder contact (a reserved documentation domain); "
+            f"set [collect] user_agent to a contact you read before fetching {url}"
+        )
 
 
 class Fetcher:
@@ -481,6 +582,7 @@ class Fetcher:
         before the first attempt; the retry is the same request after a certificate
         failure, not a new visit. ``allow_redirects`` is always false.
         """
+        check_contact_for(self.user_agent, url)
         netloc = urlparse(url).netloc
         self._throttle(netloc)
         headers = {
