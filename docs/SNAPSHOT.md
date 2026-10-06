@@ -193,6 +193,20 @@ script does the same so the front-end always has the files.
   into the same directory (docs/EXPLORE.md), and the site rebuild runs both.
 - The embedding flight file. `build_site_dataset.py` calls it at the end; stage 6 is not ported, so publish does not.
 
+## Golden demo snapshot
+
+`tests/test_demo_golden.py` runs `giye demo` offline on `examples/demo/` and compares
+the site JSON, the processed venue tables, and the co-presence report with
+`tests/golden/demo_snapshot.json`, after replacing timestamps and dates. When a change to
+the snapshot is intended, regenerate the file with the test's own run and normalisation
+and review the diff before committing:
+
+```
+GIYE_UPDATE_GOLDEN=1 PYTHONPATH=src .venv/bin/python -m pytest -q tests/test_demo_golden.py
+```
+
+Without `GIYE_UPDATE_GOLDEN=1` the test only compares.
+
 ## Static pages
 
 `giye render` writes `<data>/site/html/index.html` and `<gy_id>.html` for each published

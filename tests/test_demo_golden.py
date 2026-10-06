@@ -9,11 +9,20 @@ Timestamps and calendar dates are normalised before the comparison. The clock
 is frozen at 2026-01-15 because the synthetic CVs treat 2026 as the current
 year. Ledger ids are pinned inside ``run_demo``, so the file does not depend
 on uuid4.
+
+When a change to the snapshot format is intended, regenerate the file with this
+test's own run and normalisation, then review its diff before committing::
+
+    GIYE_UPDATE_GOLDEN=1 PYTHONPATH=src .venv/bin/python -m pytest -q tests/test_demo_golden.py
+
+The file is written as UTF-8 JSON, ``ensure_ascii=False``, two-space indent,
+with a trailing newline. docs/SNAPSHOT.md names the same command.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 import socket
 from datetime import datetime, timezone
@@ -65,6 +74,8 @@ def test_demo_snapshot_matches_golden(tmp_path: Path, monkeypatch):
     for artist in got["site"]["artists.json"]:
         assert "record_depth" not in (artist.get("derived") or {})
     assert "P6 record depth" in got["processed"]["artist_attributes.csv"]
+    if os.environ.get("GIYE_UPDATE_GOLDEN") == "1":
+        GOLDEN.write_text(json.dumps(got, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     expected = json.loads(GOLDEN.read_text(encoding="utf-8"))
     assert got == expected
     assert "rim_order.json" in got["site"]
