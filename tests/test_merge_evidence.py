@@ -237,3 +237,42 @@ def test_cli_refuses_an_unchecked_e1_on_the_demo(tmp_path, capsys):
     assert main([*args, "H the catalogue photo matches, checked 2099-01-01"]) == 2
     assert "future" in capsys.readouterr().err
     assert len(_artists(dest)) == len(artists)
+
+
+def test_h_dates_must_be_written_as_iso_dates(tmp_path):
+    ledger = _pair(tmp_path)
+    for bad in (
+        "H same face in both catalogues 2026-01-15, seen again 01/01/2099",
+        "H same face in both catalogues 2026.01.15",
+    ):
+        with pytest.raises(GiyeError, match="YYYY-MM-DD"):
+            merge_people(ledger, "LED-a", "LED-b", evidence=bad)
+    assert _live(ledger) == {"LED-a", "LED-b"}
+
+
+def test_h_merge_of_two_lines_of_one_edition_warns_and_is_recorded(tmp_path):
+    ledger = _pair(
+        tmp_path,
+        membership=[_mem("LED-a", "EXAMPLE-WORKSHOP-2021"), _mem("LED-b", "EXAMPLE-WORKSHOP-2021")],
+    )
+    with pytest.warns(UserWarning, match="EXAMPLE-WORKSHOP-2021"):
+        merge_people(ledger, "LED-a", "LED-b", evidence="H same face in both catalogues, checked by the author 2026-01-15")
+    [kept] = ledger.read("artists")
+    assert "listed separately on EXAMPLE-WORKSHOP-2021" in kept["reviewer_note"]
+
+
+def test_h_merge_of_two_members_of_one_team_warns_and_is_recorded(tmp_path):
+    ledger = _ledger(tmp_path)
+    _seed(
+        ledger,
+        [
+            _artist("LED-a", "GY-000001", "이하루", "Lee Haru", note="team=Example Duo"),
+            _artist("LED-b", "GY-000002", "김서연", "Kim Seoyeon", note="team=Example Duo"),
+        ],
+        [_act("LED-a", "EXAMPLE-WORKSHOP-2021", 2021), _act("LED-b", "EXAMPLE-RESIDENCY-2019", 2019)],
+        [_mem("LED-a", "EXAMPLE-WORKSHOP-2021"), _mem("LED-b", "EXAMPLE-RESIDENCY-2019")],
+    )
+    with pytest.warns(UserWarning, match="Example Duo"):
+        merge_people(ledger, "LED-a", "LED-b", evidence="H same face in both catalogues, checked by the author 2026-01-15")
+    [kept] = ledger.read("artists")
+    assert "both members of team Example Duo" in kept["reviewer_note"]

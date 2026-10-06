@@ -27,6 +27,7 @@ overrides.
 from __future__ import annotations
 
 import re
+import warnings
 from datetime import date, datetime, timezone
 
 from giye.config import GiyeError
@@ -148,6 +149,13 @@ def merge_people(
             _h_not_before(text, distinct)
         # A comma, not a semicolon: the kept row's note is split on ";".
         text = f"{text}, overrides distinct decision of {dates}"
+    if code == "H":
+        cautions = _h_cautions(ledger, kept, dropped)
+        if cautions:
+            # Allowed (a person may know better), but said aloud and kept with
+            # the merge: these are the pairs the roster itself lists as two.
+            warnings.warn(f"H merges {keep_id} and {drop_id}, {'; '.join(cautions)}", UserWarning, stacklevel=2)
+            text = f"{text}, " + ", ".join(cautions)
     # verify_merge_evidence ran above, so the unchecked path writes the merge.
     ledger._merge_rows(keep_id, drop_id, evidence=text, rule=code)
     if distinct:
@@ -284,10 +292,51 @@ def verify_merge_evidence(ledger: Ledger, keep: str, drop: str, evidence: str) -
     return code
 
 
+_TEAM_NOTE = re.compile(r"(?:^|;)\s*team=([^;]+)")
+_MEMBER_NOTE = re.compile(r"팀 구성원:\s*[^;]*?\((\S+)\)")
+
+
+def _h_cautions(ledger: Ledger, left: dict[str, str], right: dict[str, str]) -> list[str]:
+    """Why an H merge of these two records goes against what the rosters list, or ``[]``.
+
+    Two records that are separate lines of one roster edition (a shared
+    ``frame_code`` in ``frame_membership``), or two members of one team (the
+    same ``team=`` value, or the same team ledger id in a ``팀 구성원:`` note),
+    are the pairs the sources themselves list as two people.
+    """
+    found: list[str] = []
+    ids = (left["ledger_id"], right["ledger_id"])
+    frames: dict[str, set[str]] = {lid: set() for lid in ids}
+    if ledger.path("frame_membership").exists():
+        for row in ledger.read("frame_membership"):
+            if row.get("ledger_id") in frames:
+                frames[row["ledger_id"]].add(row.get("frame_code") or "")
+    shared = sorted(frames[ids[0]] & frames[ids[1]] - {""})
+    if shared:
+        found.append(f"listed separately on {', '.join(shared)}")
+    teams = [
+        {value.strip() for value in _TEAM_NOTE.findall(row.get("reviewer_note") or "")}
+        | set(_MEMBER_NOTE.findall(row.get("reviewer_note") or ""))
+        for row in (left, right)
+    ]
+    common = sorted(teams[0] & teams[1] - {""})
+    if common:
+        found.append(f"both members of team {', '.join(common)}")
+    return found
+
+
+# A date written another way (01/01/2099, 2026.01.15) is not read by the ISO
+# checks, so a future or impossible date would pass unseen.
+_OTHER_DATE = re.compile(r"\b\d{1,4}[./]\d{1,2}[./]\d{1,4}\b|\b\d{1,2}-\d{1,2}-\d{2,4}\b")
+
+
 def _verify_h(rest: str) -> None:
     """H: real dates, none in the future, and a reason of at least ``_H_MIN_WORDS`` words."""
     # The local calendar day, so a judgement dated today where the person sits is accepted.
     today = datetime.now(timezone.utc).astimezone().date()
+    other = _OTHER_DATE.search(_ISO_DATE.sub(" ", rest))
+    if other:
+        raise GiyeError(f"merge refused: H date {other.group(0)!r} must be written YYYY-MM-DD")
     for year, month, day in _ISO_DATE.findall(rest):
         try:
             when = date(int(year), int(month), int(day))
