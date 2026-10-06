@@ -9,6 +9,7 @@ import { StudySearch } from "./StudySearch";
 import { LinkLegend, type LegendKey, type LinkStats } from "./LinkLegend";
 import { verLabel } from "./labels";
 import { readTheme, withAlpha } from "./theme";
+import { chooseHomeRenderer, GLPainter, GLPath, GLRec } from "./glRenderer";
 import { mulberry32 } from "@/components/flight/flightState";
 import { ACTIVITY_TYPE_LABEL, useLang } from "@/lib/i18n";
 import {
@@ -36,6 +37,11 @@ const qa = (a: number) => Math.round(a * 200) / 200;
 /** Subpaths per Path2D. One huge path is slow to rasterise (overlap/winding work grows with it),
     so a batch key rolls over to a fresh path every CHUNK marks. */
 const CHUNK = 192;
+/* Batch paths are Path2D for Canvas 2D; while a frame records for WebGL (glRenderer.ts) they are
+   GLPath, which keeps the same commands for the GL recorder. */
+let newPath: () => Path2D = () => new Path2D();
+const newPath2D = () => new Path2D();
+const newGLPath = () => new GLPath() as unknown as Path2D;
 const chunkCount = new WeakMap<Batch, Map<string, number>>();
 const pathIn = (b: Batch, key: string): Path2D => {
   let counts = chunkCount.get(b);
@@ -48,7 +54,7 @@ const pathIn = (b: Batch, key: string): Path2D => {
   const k = n < CHUNK ? key : `${key}\u0000${Math.floor(n / CHUNK)}`;
   let p = b.get(k);
   if (!p) {
-    p = new Path2D();
+    p = newPath();
     b.set(k, p);
   }
   return p;
@@ -822,8 +828,51 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
     // Not desynchronized: with a 2x device pixel ratio a desynchronized canvas left headless Chrome
     // unable to produce a frame (screenshots timed out), a risk for high-DPI screens that is not worth
     // the main-thread time it saves.
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    const ctx0 = canvas.getContext("2d");
+    if (!ctx0) return;
+    /* Renderer. chooseHomeRenderer() (glRenderer.ts) is the single switch. With WebGL the frame is
+       split over five stacked canvases so the compositing order of the single 2D canvas is kept:
+         0 this canvas (2D): the sheet, the frame plates and their labels
+         1 WebGL: per-artist lines and the source threads
+         2 2D: piers, year plates, year labels, programme dots, rim arcs and their labels
+         3 WebGL: chords, strands, ticks, record dots, sounded rings, knots, partner rings
+         4 2D: knot names and everything drawn after the knots (labels, needle, card, …)
+       Each 2D canvas is transparent except the bottom one. Without WebGL, or once a context is
+       lost or asked for something it cannot draw, every layer is drawn here as before. */
+    type GLKit = {
+      a: GLPainter;
+      b: GLPainter;
+      recA: GLRec;
+      recB: GLRec;
+      mid: CanvasRenderingContext2D;
+      top: CanvasRenderingContext2D;
+      els: HTMLCanvasElement[];
+    };
+    let glKit: GLKit | null = null;
+    if (chooseHomeRenderer() === "gl") {
+      const mk = () => {
+        const c = document.createElement("canvas");
+        c.className = "pointer-events-none absolute left-0 top-0 block";
+        c.setAttribute("aria-hidden", "true");
+        return c;
+      };
+      const els = [mk(), mk(), mk(), mk()];
+      canvas.after(...els);
+      const a = new GLPainter(els[0]!);
+      const b = new GLPainter(els[2]!);
+      const mid = els[1]!.getContext("2d");
+      const top = els[3]!.getContext("2d");
+      if (a.ok && b.ok && mid && top)
+        glKit = { a, b, recA: new GLRec(a), recB: new GLRec(b), mid, top, els };
+      else for (const el of els) el.remove();
+    }
+    (window as unknown as { __homeRenderer?: string }).__homeRenderer = glKit ? "gl" : "2d";
+    // the context 2D drawing goes to, and the one strokes and fills of the heavy layers go to;
+    // both are this canvas unless WebGL is on (see draw)
+    let ctx: CanvasRenderingContext2D = ctx0;
+    let gx: CanvasRenderingContext2D = ctx0;
+    let glShown = !!glKit;
+    let glEpoch = glKit ? glKit.b.epoch : 0;
     // offscreen copy of the chord/strand/dot layers (see "Layer cache" in draw)
     const layer = document.createElement("canvas");
     const lctx = layer.getContext("2d")!;
@@ -851,6 +900,11 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
       canvas.height = Math.floor(st.h * st.dpr);
       canvas.style.width = `${st.w}px`;
       canvas.style.height = `${st.h}px`;
+      if (glKit)
+        for (const el of glKit.els) {
+          el.style.width = `${st.w}px`;
+          el.style.height = `${st.h}px`;
+        }
       st.theme = readTheme();
     };
     resize();
@@ -1237,6 +1291,74 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         }
       };
 
+      /* -- renderer for this frame (see "Renderer" above) -- */
+      const glOn = !!glKit && glKit.a.ok && glKit.b.ok;
+      // a restored WebGL context has lost the offscreen copy of the link layers
+      if (glKit && glKit.b.epoch !== glEpoch) {
+        glEpoch = glKit.b.epoch;
+        lc.sig = "";
+        asm.key = "";
+      }
+      if (glKit && glOn !== glShown) {
+        glShown = glOn;
+        for (const el of glKit.els) el.style.display = glOn ? "" : "none";
+        // the offscreen copy of the link layers was painted by the other renderer
+        lc.sig = "";
+        asm.key = "";
+      }
+      ctx = ctx0;
+      gx = ctx0;
+      newPath = glOn ? newGLPath : newPath2D;
+      let layerNow = 0;
+      if (glOn) {
+        const K = glKit!;
+        const W = canvas.width;
+        const H = canvas.height;
+        K.a.begin(W, H);
+        K.b.begin(W, H);
+        for (const c2 of [K.mid, K.top]) {
+          if (c2.canvas.width !== W) c2.canvas.width = W;
+          if (c2.canvas.height !== H) c2.canvas.height = H;
+          c2.setTransform(1, 0, 0, 1, 0, 0);
+          c2.clearRect(0, 0, W, H);
+          c2.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+        K.recA.setTransform(dpr, 0, 0, dpr, 0, 0);
+        K.recB.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      /* Moving to the next canvas of the stack carries the context state over, so drawing
+         continues as it would on one canvas. Strokes and fills of a WebGL layer go to its
+         recorder (gx); text drawn among them goes to the 2D canvas above it (ctx). */
+      type Ctx2 = CanvasRenderingContext2D & { letterSpacing: string };
+      const carry = (from: CanvasRenderingContext2D, to: CanvasRenderingContext2D, text: boolean) => {
+        to.lineWidth = from.lineWidth;
+        to.strokeStyle = from.strokeStyle;
+        to.fillStyle = from.fillStyle;
+        to.globalAlpha = from.globalAlpha;
+        to.lineCap = from.lineCap;
+        to.lineJoin = from.lineJoin;
+        to.setLineDash(from.getLineDash());
+        if (text) {
+          to.font = from.font;
+          to.textAlign = from.textAlign;
+          to.textBaseline = from.textBaseline;
+          (to as Ctx2).letterSpacing = (from as Ctx2).letterSpacing;
+        }
+      };
+      const toLayer = (n: number) => {
+        if (!glOn || n <= layerNow) return;
+        const K = glKit!;
+        const txt = n >= 3 ? K.top : n >= 1 ? K.mid : ctx0;
+        const geo = n === 1 ? (K.recA as unknown as CanvasRenderingContext2D)
+          : n === 3 ? (K.recB as unknown as CanvasRenderingContext2D) : txt;
+        if (txt !== ctx) carry(ctx, txt, true);
+        if (gx !== ctx) carry(gx, txt, false);
+        if (geo !== txt) carry(txt, geo, true);
+        ctx = txt;
+        gx = geo;
+        layerNow = n;
+      };
+
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.fillStyle = paper;
       ctx.fillRect(0, 0, w, h);
@@ -1508,7 +1630,8 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
           ctx.fillText(plateLabel, lxc, ly);
           letter("0em");
         });
-        ctx.lineWidth = 0.8;
+        toLayer(1);
+        gx.lineWidth = 0.8;
         // V3. Per-artist lines from the top plate to the frame plate. N is how many of
         // those lines are drawn this frame; stages 2–4 scale their background alpha by
         // min(1, K/sqrt(N)) so a few thousand strands stay a veil. `horiz` blends that
@@ -1552,16 +1675,16 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
               0.5,
             emph,
           );
-          ctx.strokeStyle = withAlpha(
+          gx.strokeStyle = withAlpha(
             emph ? accent : ink,
             qa(plateA * (emph ? 0.7 : (emphasised ? 0.03 : 0.1) * artistScale) * lineFog),
           );
-          ctx.beginPath();
-          ctx.moveTo(x0, y0);
-          ctx.lineTo(x1, y1);
-          ctx.stroke();
+          gx.beginPath();
+          gx.moveTo(x0, y0);
+          gx.lineTo(x1, y1);
+          gx.stroke();
         }
-        if (batchArtistLines) strokeBatch(ctx, artistLines);
+        if (batchArtistLines) strokeBatch(gx, artistLines);
       }
 
       /* ============================ layer: sources ============================ */
@@ -1574,6 +1697,7 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         st.py[i] = y;
       }
       if (e > 0.01 || assembling) {
+        toLayer(1);
         const base: Batch = new Map();
         const top: Batch = new Map();
         // Budget: these faint lines only read as a veil where they bundle towards a source, so past
@@ -1694,9 +1818,15 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
             p.lineTo(st.px[si]!, st.py[si]!);
           }
         }
-        strokeBatch(ctx, base);
-        strokeBatch(ctx, top);
+        strokeBatch(gx, base);
+        strokeBatch(gx, top);
       }
+      toLayer(2);
+      /* With WebGL the pier ellipses go to layer 1 (just below this canvas, after the threads, as
+         on one canvas) and their numbers and names stay here. A pier drawn after a label it
+         overlaps would have covered that label, so such a pier is drawn here as well. Boxes in
+         CSS px: [x0, y0, x1, y1]. */
+      const pierText: Array<[number, number, number, number]> = [];
       for (let i = 0; i < nS; i++) {
         const sn = sources[i]!;
         const a = spa[i]!;
@@ -1710,22 +1840,44 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         const f = ssf[i]!;
         const pierFog = fogAt(sd[i]!, emph);
         const rad = sn.size * Math.sqrt(st.zoom) * f;
-        ctx.beginPath();
-        ctx.ellipse(x, y, rad, rad * Math.max(0.35, cosT), 0, 0, TAU);
-        ctx.fillStyle = withAlpha(paper, 0.9 * a * pierFog);
-        ctx.fill();
-        ctx.lineWidth = emph ? 1.4 : 1;
-        ctx.strokeStyle = withAlpha(
+        const ry = rad * Math.max(0.35, cosT);
+        let pc: CanvasRenderingContext2D = ctx;
+        if (glOn) {
+          pc = glKit!.recA as unknown as CanvasRenderingContext2D;
+          const m = 2;
+          for (const b of pierText)
+            if (x + rad + m > b[0] && x - rad - m < b[2] && y + ry + m > b[1] && y - ry - m < b[3]) {
+              pc = ctx;
+              break;
+            }
+        }
+        // a pier drawn here stays above every later pier that overlaps it
+        if (glOn && pc === ctx) pierText.push([x - rad - 1, y - ry - 1, x + rad + 1, y + ry + 1]);
+        pc.beginPath();
+        pc.ellipse(x, y, rad, ry, 0, 0, TAU);
+        pc.fillStyle = withAlpha(paper, 0.9 * a * pierFog);
+        pc.fill();
+        pc.lineWidth = emph ? 1.4 : 1;
+        pc.strokeStyle = withAlpha(
           emph ? accent : ink,
           a * (emph ? 0.95 : emphasised ? 0.18 : 0.55) * pierFog,
         );
-        ctx.stroke();
+        pc.stroke();
+        if (pc !== ctx) {
+          ctx.lineWidth = pc.lineWidth;
+          ctx.strokeStyle = pc.strokeStyle;
+          ctx.fillStyle = pc.fillStyle;
+        }
         if (sn.records.length >= 6 && rad > 6) {
           ctx.font = font(9);
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           ctx.fillStyle = withAlpha(emph ? accent : ink, a * 0.7);
           ctx.fillText(String(sn.records.length), x, y);
+          if (glOn) {
+            const tw = measure(ctx, String(sn.records.length));
+            pierText.push([x - tw / 2 - 1, y - 7, x + tw / 2 + 1, y + 7]);
+          }
         }
         const labelOk =
           emph ||
@@ -1738,6 +1890,10 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
           ctx.textBaseline = "middle";
           ctx.fillStyle = withAlpha(emph ? accent : ink, a * (emph ? 0.95 : 0.55));
           ctx.fillText(truncate(sn.domain, 28), x + rad + 5, y);
+          if (glOn) {
+            const tw = measure(ctx, truncate(sn.domain, 28));
+            pierText.push([x + rad + 4, y - 8, x + rad + 6 + tw, y + 8]);
+          }
         }
       }
 
@@ -2242,6 +2398,49 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
          records still in flight are drawn per frame.
          P1/P4. The stamp is orthographic. It only runs at w ≤ 0.001; perspective is not an affine
          map, so the layer is not reused once the diagram opens. */
+      toLayer(3);
+      /* The offscreen copy of the link layers is a 2D canvas, or with WebGL the framebuffer of
+         layer 3; these three helpers open it for painting, close it, and stamp it on the frame
+         (t: the 2D transform drawImage(layer, 0, 0, w, h) is drawn under; null: 1:1). */
+      const layerOpen = (fresh: boolean): CanvasRenderingContext2D => {
+        if (glOn) {
+          glKit!.b.target(true);
+          // the group tags always start fresh; the colour only when the layer is repainted
+          glKit!.b.clear(fresh);
+          return gx;
+        }
+        if (fresh) {
+          if (layer.width !== canvas.width || layer.height !== canvas.height) {
+            layer.width = canvas.width;
+            layer.height = canvas.height;
+          }
+          lctx.setTransform(1, 0, 0, 1, 0, 0);
+          lctx.clearRect(0, 0, layer.width, layer.height);
+          lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          lctx.lineCap = "round";
+          lctx.lineJoin = "round";
+        }
+        return lctx;
+      };
+      const layerClose = () => {
+        if (glOn) glKit!.b.target(false);
+      };
+      const layerStamp = (t: [number, number, number, number, number, number] | null) => {
+        if (glOn) {
+          const sx = w / canvas.width;
+          const sy = h / canvas.height;
+          glKit!.b.stamp(t ? [t[0] * sx, t[1] * sx, t[2] * sy, t[3] * sy, t[4], t[5]] : [1, 0, 0, 1, 0, 0]);
+          return;
+        }
+        if (t) {
+          ctx.setTransform(t[0], t[1], t[2], t[3], t[4], t[5]);
+          ctx.drawImage(layer, 0, 0, w, h);
+        } else {
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.drawImage(layer, 0, 0);
+        }
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      };
       const asmLayer =
         assembling &&
         !cacheable &&
@@ -2257,16 +2456,8 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         const dT = cosT / asm.cosT;
         const stale =
           asm.key !== key || Math.abs(dR) > 0.4 || dS > 1.12 || dS < 0.9 || dT > 1.12 || dT < 0.9;
+        const into = layerOpen(stale);
         if (stale) {
-          if (layer.width !== canvas.width || layer.height !== canvas.height) {
-            layer.width = canvas.width;
-            layer.height = canvas.height;
-          }
-          lctx.setTransform(1, 0, 0, 1, 0, 0);
-          lctx.clearRect(0, 0, layer.width, layer.height);
-          lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          lctx.lineCap = "round";
-          lctx.lineJoin = "round";
           if (asm.stamped.length !== records.length) asm.stamped = new Uint8Array(records.length);
           else asm.stamped.fill(0);
           asm.key = key;
@@ -2297,7 +2488,8 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
           asm.stamped[ri] = 1;
         }
         void asinT;
-        fillBatch(lctx, fresh);
+        fillBatch(into, fresh);
+        layerClose();
         // re-stamp the layer through turn, tilt and zoom, then draw what is still in flight
         const c0 = Math.cos(dR);
         const s0 = Math.sin(dR);
@@ -2315,10 +2507,8 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
           l11 = m10 * asm.rs + m11 * asm.rc;
         const tx = cx - (l00 * asm.cx + l01 * asm.cy);
         const ty = cy - (l10 * asm.cx + l11 * asm.cy);
-        ctx.setTransform(dpr * l00, dpr * l10, dpr * l01, dpr * l11, dpr * tx, dpr * ty);
-        ctx.drawImage(layer, 0, 0, w, h);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        paintLinks(ctx, "flying");
+        layerStamp([dpr * l00, dpr * l10, dpr * l01, dpr * l11, dpr * tx, dpr * ty]);
+        paintLinks(gx, "flying");
       }
       /* Layer cache. While the disc lies flat (no spread, no exploded diagram, every mark at z=0),
          turning it is one affine map of the whole picture, so the chord, strand and record-dot
@@ -2351,21 +2541,11 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
           l11 = m10 * lc.rs + m11 * lc.rc;
         const tx = cx - (l00 * lc.cx + l01 * lc.cy);
         const ty = cy - (l10 * lc.cx + l11 * lc.cy);
-        ctx.setTransform(dpr * l00, dpr * l10, dpr * l01, dpr * l11, dpr * tx, dpr * ty);
-        ctx.drawImage(layer, 0, 0, w, h);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        if (emphasised || chordHov >= 0) paintLinks(ctx, "emph");
+        layerStamp([dpr * l00, dpr * l10, dpr * l01, dpr * l11, dpr * tx, dpr * ty]);
+        if (emphasised || chordHov >= 0) paintLinks(gx, "emph");
       } else if (cacheable) {
-        if (layer.width !== canvas.width || layer.height !== canvas.height) {
-          layer.width = canvas.width;
-          layer.height = canvas.height;
-        }
-        lctx.setTransform(1, 0, 0, 1, 0, 0);
-        lctx.clearRect(0, 0, layer.width, layer.height);
-        lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        lctx.lineCap = "round";
-        lctx.lineJoin = "round";
-        paintLinks(lctx, "base");
+        paintLinks(layerOpen(true), "base");
+        layerClose();
         lc.sig = sig;
         lc.rot = st.rot;
         lc.cx = cx;
@@ -2375,13 +2555,11 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         lc.cosT = cosT;
         lc.rc = rc;
         lc.rs = rs;
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.drawImage(layer, 0, 0);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        if (emphasised || chordHov >= 0) paintLinks(ctx, "emph");
+        layerStamp(null);
+        if (emphasised || chordHov >= 0) paintLinks(gx, "emph");
       } else if (!asmLayer) {
         lc.sig = "";
-        paintLinks(ctx);
+        paintLinks(gx);
       }
 
       /* -- sounded records: a ring spreads from each record as it is played -- */
@@ -2398,16 +2576,16 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
           const x = st.sx[n.record]!;
           const y = st.sy[n.record]!;
           const fN = rf[n.record]!;
-          ctx.beginPath();
-          ctx.arc(x, y, (dotR + 1.5 + u * 15) * fN, 0, TAU);
-          ctx.lineWidth = 1;
-          ctx.strokeStyle = withAlpha(accent, (1 - u) * 0.6);
-          ctx.stroke();
+          gx.beginPath();
+          gx.arc(x, y, (dotR + 1.5 + u * 15) * fN, 0, TAU);
+          gx.lineWidth = 1;
+          gx.strokeStyle = withAlpha(accent, (1 - u) * 0.6);
+          gx.stroke();
           if (u < 0.25) {
-            ctx.beginPath();
-            ctx.arc(x, y, (dotR + 0.6) * fN, 0, TAU);
-            ctx.fillStyle = withAlpha(accent, (1 - u * 4) * 0.9);
-            ctx.fill();
+            gx.beginPath();
+            gx.arc(x, y, (dotR + 0.6) * fN, 0, TAU);
+            gx.fillStyle = withAlpha(accent, (1 - u * 4) * 0.9);
+            gx.fill();
           }
         }
         st.notes.length = keep;
@@ -2422,6 +2600,18 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
       const knotTicks: Batch = new Map();
       const knotRings: Batch = new Map();
       const knotLate: number[] = [];
+      /* With WebGL the knots are drawn on layer 3 and their names on layer 4 above it. A knot
+         drawn after a name it overlaps would have covered that name on one canvas, so such a knot
+         is drawn on layer 4 too (every other knot is ink of one colour, and ink over ink stacks
+         the same in either order). Boxes are in CSS px: [x0, y0, x1, y1]. */
+      const nameBoxes: Array<[number, number, number, number]> = [];
+      const knotCtx = (x: number, y: number): CanvasRenderingContext2D => {
+        if (gx === ctx || !nameBoxes.length) return gx;
+        const m = 11;
+        for (const b of nameBoxes)
+          if (x + m > b[0] && x - m < b[2] && y + m > b[1] && y - m < b[3]) return ctx;
+        return gx;
+      };
       const paintKnotMark = (i: number) => {
         const a = artists[i]!;
         const x = st.kx[i]!;
@@ -2440,20 +2630,21 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         const sa = Math.sin(ang);
         const t0 = roomy ? 4 : -2;
         const t1 = roomy ? 9 : 5;
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = knotStyle;
+        const mk = knotCtx(x, y);
+        mk.lineWidth = 1;
+        mk.strokeStyle = knotStyle;
         if (roomy) {
-          ctx.beginPath();
-          if (a.hidden) ctx.setLineDash([2, 2]);
+          mk.beginPath();
+          if (a.hidden) mk.setLineDash([2, 2]);
           const kr = (emph || isRead ? 3.6 : 2.6) * fK;
-          ctx.arc(x, y, kr, 0, TAU);
-          ctx.stroke();
-          ctx.setLineDash([]);
+          mk.arc(x, y, kr, 0, TAU);
+          mk.stroke();
+          mk.setLineDash([]);
         }
-        ctx.beginPath();
-        ctx.moveTo(x + ca * t0, y + sa * t0);
-        ctx.lineTo(x + ca * t1, y + sa * t1);
-        ctx.stroke();
+        mk.beginPath();
+        mk.moveTo(x + ca * t0, y + sa * t0);
+        mk.lineTo(x + ca * t1, y + sa * t1);
+        mk.stroke();
         if ((showNames || emph || (isRead && !st.needleOn)) && !a.hidden) {
           ctx.save();
           if (emph && diagram < 0.5) {
@@ -2494,6 +2685,7 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
             ctx.fillRect(bx - 3, by - 1, tw + 6, 18);
             ctx.fillStyle = col;
             ctx.fillText(label, nx, ny);
+            if (gx !== ctx) nameBoxes.push([bx - 3, by - 1, bx + tw + 3, by + 17]);
           } else {
             const upside = ca < 0;
             ctx.translate(x + ca * 13, y + sa * 13);
@@ -2503,6 +2695,20 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
             ctx.textBaseline = "middle";
             ctx.fillStyle = withAlpha(col, 0.6);
             ctx.fillText(nameOf(i), 0, 0);
+            if (gx !== ctx) {
+              // the rotated name: from 13 px out along the knot's direction, its width further
+              // out, and a generous half height across
+              const tw = measure(ctx, nameOf(i));
+              const hh = 9;
+              const xs: number[] = [];
+              const ys: number[] = [];
+              for (const along of [13, 13 + tw])
+                for (const across of [-hh, hh]) {
+                  xs.push(x + ca * along - sa * across);
+                  ys.push(y + sa * along + ca * across);
+                }
+              nameBoxes.push([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]);
+            }
           }
           ctx.restore();
         }
@@ -2547,8 +2753,8 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         paintKnotMark(i);
       }
       if (batchKnots) {
-        strokeBatch(ctx, knotTicks);
-        strokeBatch(ctx, knotRings);
+        strokeBatch(gx, knotTicks);
+        strokeBatch(gx, knotRings);
         for (const i of knotLate) paintKnotMark(i);
       }
 
@@ -2556,14 +2762,17 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
       if (emphasisArtist >= 0 && st.links.chords.length && diagram < 0.3) {
         const la = liftChords ? 1 : 0.75;
         ctx.lineWidth = 1;
+        gx.lineWidth = 1;
         for (const ci of st.links.chords) {
           const c = chords[ci]!;
           const far = records[c.a]!.artist === emphasisArtist ? c.b : c.a;
           if (ra[far]! <= 0) continue;
-          ctx.beginPath();
-          ctx.arc(st.sx[far]!, st.sy[far]!, (dotR + 2.2) * rf[far]!, 0, TAU);
-          ctx.strokeStyle = withAlpha(accent, 0.6 * la);
-          ctx.stroke();
+          // over a knot name (layer 4) the ring goes there too, as it was drawn after the name
+          const pk = knotCtx(st.sx[far]!, st.sy[far]!);
+          pk.beginPath();
+          pk.arc(st.sx[far]!, st.sy[far]!, (dotR + 2.2) * rf[far]!, 0, TAU);
+          pk.strokeStyle = withAlpha(accent, 0.6 * la);
+          pk.stroke();
         }
         const partners = st.links.partners;
         const placed: Array<[number, number, number, number]> = [];
@@ -2942,6 +3151,20 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
         });
       }
 
+      if (glOn) {
+        toLayer(4);
+        const K = glKit!;
+        K.a.flush();
+        K.b.flush();
+        const bad = K.a.unsupported || K.b.unsupported;
+        if (bad) console.warn(`home canvas: WebGL cannot draw "${bad}"; using Canvas 2D`);
+        // for the measurement harness (scripts/perf)
+        const w = window as unknown as { __glDraws?: number; __glFlushMs?: number; __glPasses?: number };
+        w.__glDraws = K.a.lastDrawCalls + K.b.lastDrawCalls;
+        w.__glFlushMs = K.a.lastFlushMs + K.b.lastFlushMs;
+        w.__glPasses = K.a.lastPasses + K.b.lastPasses;
+      }
+
       /* -- hit test -- */
       if (st.pointer.inside && st.gesture === "none") {
         const pxp = st.pointer.x;
@@ -3076,6 +3299,11 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
       ro.disconnect();
       mq.removeEventListener?.("change", onTheme);
       mo.disconnect();
+      newPath = newPath2D;
+      if (glKit) {
+        for (const p of [glKit.a, glKit.b]) p.gl?.getExtension("WEBGL_lose_context")?.loseContext();
+        for (const el of glKit.els) el.remove();
+      }
     };
   }, [layout, strata, data, lang, nameOf, reduced, st, t, total, lastRing, newSince, toggleMusic]);
 
