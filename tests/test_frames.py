@@ -66,6 +66,47 @@ def test_declared_roster_size_needs_a_source(tmp_path: Path):
         load_frames(path)
 
 
+EDITION_SIZES = """    roster_size_declared_by_edition:
+      2024:
+        size: 5
+        source: https://example.org/residency/2024
+"""
+
+
+def _with_edition_sizes(tmp_path: Path, block: str = EDITION_SIZES) -> Path:
+    text = (FIXTURES / "frames_valid.yml").read_text(encoding="utf-8")
+    text = text.replace("    included_count: 2\n", "    included_count: 2\n" + block, 1)
+    path = tmp_path / "frames.yml"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_edition_declares_its_own_size(tmp_path: Path):
+    frame = load_frames(_with_edition_sizes(tmp_path)).by_code("EXAMPLE-RESIDENCY")
+    assert frame is not None
+    declared = frame.declared_size("2024")
+    assert declared is not None
+    assert (declared.size, declared.source) == (5, "https://example.org/residency/2024")
+    assert frame.edition_coverage("2024", 4) == 0.8
+    # More rows than the stated size read 100%, not more.
+    assert frame.edition_coverage("2024", 6) == 1.0
+    # An edition that states no size has unknown coverage.
+    assert frame.declared_size("2023") is None
+    assert frame.edition_coverage("2023", 4) is None
+
+
+def test_edition_size_needs_a_source(tmp_path: Path):
+    block = EDITION_SIZES.replace("        source: https://example.org/residency/2024\n", "")
+    with pytest.raises(ValueError, match="2024: roster_size_declared_by_edition needs an http"):
+        load_frames(_with_edition_sizes(tmp_path, block))
+
+
+def test_edition_size_must_be_positive(tmp_path: Path):
+    block = EDITION_SIZES.replace("size: 5", "size: 0")
+    with pytest.raises(ValueError, match="positive integer"):
+        load_frames(_with_edition_sizes(tmp_path, block))
+
+
 def test_missing_criterion_names_the_rule(tmp_path: Path):
     text = (FIXTURES / "frames_valid.yml").read_text(encoding="utf-8").replace("      f1_purpose: States the field.\n", "")
     path = tmp_path / "frames.yml"

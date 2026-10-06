@@ -118,6 +118,7 @@ YAML. Top level is a mapping. `frames` must be a list. `giye.collect.frames.load
 | `roster_count` | integer | unset | no | The roster size the site displays (the greater of this and the membership count). Not a coverage denominator: in practice it is written from what was collected. |
 | `roster_size_declared` | integer | unset | no | A roster size the programme states itself (its own page, catalogue, or press release). Coverage is members recorded / max(this, members recorded). Unset or zero: coverage is null (unknown). |
 | `roster_size_source` | string | `""` | with `roster_size_declared` | The http(s) page that states the declared size. A declared size without it is refused. |
+| `roster_size_declared_by_edition` | mapping | unset | no | Edition (the year in a membership code such as `CODE-2024`) → `{size, source}`: a size one edition states itself and the http(s) page that states it. `size` must be a positive integer and `source` is required. That edition's coverage is its members / max(size, members). Edition sizes are not summed into `roster_size_declared`: the frame counts a person once across editions, edition sizes count a returning person in each. |
 | `included_count` | integer | unset | no | At collect time, the number of roster rows. Publish overwrites the snapshot count from membership. |
 | `years_covered` | string | `""` | no | A single `YYYY` is the edition when a membership code equals the frame code. |
 | `status` | string | `""` | no | Passed through to the snapshot. The loader does not interpret it. |

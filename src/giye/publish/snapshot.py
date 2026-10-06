@@ -28,6 +28,11 @@ declared size coverage is null (unknown): ``roster_count`` in ``frames.yml`` is
 written from what was collected, and dividing by it would read 100% by
 construction. ``roster_count`` in the snapshot stays the greater of that key
 and the membership count, the roster size the site displays.
+
+An edition whose own size is declared (``roster_size_declared_by_edition``)
+gets the same three keys in its ``editions`` entry, computed from that
+edition's members. Editions without a declared size carry none of them, so a
+registry without per-edition sizes yields the same snapshot as before.
 """
 
 from __future__ import annotations
@@ -41,7 +46,7 @@ from pathlib import Path
 
 import yaml
 
-from giye.collect.frames import FrameRegistry, load_frames, validate_transcribed_membership
+from giye.collect.frames import FrameRegistry, declared_sizes_by_edition, load_frames, validate_transcribed_membership
 from giye.config import Config, ConfigError
 from giye.extract.apply import PRIVATE_TITLE
 from giye.field import Field, edition_alias
@@ -875,6 +880,7 @@ def _frames(frame_rows, membership, edition_of, ledger_to_gy, scope) -> list[dic
             }
             for edition, ids in sorted(by_edition.items(), key=lambda pair: pair[0], reverse=True)
         ]
+        _declare_edition_sizes(editions, declared_sizes_by_edition(code, row.get("roster_size_declared_by_edition")))
         declared = int(row.get("roster_count") or 0)
         roster = max(declared, len(matched)) if matched or declared else 0
         included = len(matched)
@@ -913,6 +919,18 @@ def _matches(edition_of, frame_code: str, mem_code: str) -> bool:
     """True when the membership code resolves to this frame."""
     edition = edition_of(mem_code)
     return bool(edition) and edition[0] == frame_code
+
+
+def _declare_edition_sizes(editions: list[dict], sizes: Mapping) -> None:
+    """Add the declared size, its source, and coverage to each edition that states its size (F4)."""
+    for entry in editions:
+        declared = sizes.get(entry["edition"] or "")
+        if declared is None:
+            continue
+        recorded = entry["roster_count"]
+        entry["roster_size_declared"] = declared.size
+        entry["roster_size_source"] = declared.source
+        entry["coverage_pct"] = _coverage_pct(recorded, max(declared.size, recorded))
 
 
 def _declared_size(row: Mapping) -> int:

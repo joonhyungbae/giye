@@ -41,6 +41,14 @@ catalogue, or press release), cited by ``roster_size_source``. ``roster_count``
 is not a declared size: in practice it is written from what the collector
 found, so dividing by it would give 100% by construction. Coverage is
 ``None`` (unknown) when no size is declared independently.
+
+A programme usually states its size once per edition ("12 artists selected
+in 2024"), not for its whole history. ``roster_size_declared_by_edition``
+maps an edition (the year in a membership code such as ``CODE-2024``) to
+``{size, source}``. Edition coverage is that edition's members recorded /
+max(declared, recorded). Edition sizes are not summed into the frame-level
+size: the frame counts each person once across editions, while edition sizes
+count a returning person in every edition, so the sum is a different unit.
 """
 
 from __future__ import annotations
@@ -76,6 +84,14 @@ class Eligibility:
 
 
 @dataclass(frozen=True)
+class DeclaredSize:
+    """A roster size one edition of a programme states itself, and the http(s) page that states it."""
+
+    size: int
+    source: str
+
+
+@dataclass(frozen=True)
 class Frame:
     """One programme in ``frames.yml``: names, source, and the recorded F1–F5 judgement."""
 
@@ -89,6 +105,9 @@ class Frame:
     # this size is a coverage denominator (see the module docstring).
     roster_size_declared: int | None = None
     roster_size_source: str = ""
+    # Sizes stated per edition, as (edition, size) pairs sorted by edition.
+    # A tuple keeps the frozen dataclass hashable.
+    roster_size_declared_by_edition: tuple[tuple[str, DeclaredSize], ...] = ()
     included_count: int | None = None
     years_covered: str = ""
     status: str = ""
@@ -108,6 +127,20 @@ class Frame:
         if recorded is None or not self.roster_size_declared:
             return None
         return coverage(recorded, max(self.roster_size_declared, recorded))
+
+    def declared_size(self, edition: str) -> DeclaredSize | None:
+        """The size this edition states itself, or ``None`` when it states none."""
+        for key, declared in self.roster_size_declared_by_edition:
+            if key == str(edition):
+                return declared
+        return None
+
+    def edition_coverage(self, edition: str, members_recorded: int) -> float | None:
+        """Edition members recorded / max(the edition's declared size, recorded), or ``None``."""
+        declared = self.declared_size(edition)
+        if declared is None:
+            return None
+        return coverage(members_recorded, max(declared.size, members_recorded))
 
 
 @dataclass(frozen=True)
@@ -194,6 +227,7 @@ def _frame(entry: object, path: Path) -> Frame:
     declared_source = str(entry.get("roster_size_source") or "").strip()
     if declared_size is not None and not declared_source.startswith(("http://", "https://")):
         raise ValueError(f"{code}: roster_size_declared needs an http(s) roster_size_source (F4)")
+    by_edition = declared_sizes_by_edition(code, entry.get("roster_size_declared_by_edition"))
     return Frame(
         code=code,
         name_en=name_en,
@@ -203,11 +237,40 @@ def _frame(entry: object, path: Path) -> Frame:
         roster_count=_optional_int(entry.get("roster_count")),
         roster_size_declared=declared_size,
         roster_size_source=declared_source,
+        roster_size_declared_by_edition=tuple(sorted(by_edition.items())),
         included_count=_optional_int(entry.get("included_count")),
         years_covered=str(entry.get("years_covered") or ""),
         status=str(entry.get("status") or ""),
         collector=collector,
     )
+
+
+def declared_sizes_by_edition(code: str, raw: object) -> dict[str, DeclaredSize]:
+    """Parse ``roster_size_declared_by_edition``: edition → ``{size, source}``.
+
+    Each size is a fact about one edition, so like the frame-level size it needs
+    its own http(s) source (F4). A positive integer is required: a stated size
+    of zero would be a statement that nobody took part, not a roster.
+    """
+    if raw is None or raw == {}:
+        return {}
+    if not isinstance(raw, dict):
+        raise TypeError(f"{code}: roster_size_declared_by_edition must map an edition to {{size, source}}")
+    out: dict[str, DeclaredSize] = {}
+    for edition, value in raw.items():
+        key = str(edition).strip()
+        if not key:
+            raise ValueError(f"{code}: roster_size_declared_by_edition has an empty edition")
+        if not isinstance(value, dict):
+            raise TypeError(f"{code} {key}: roster_size_declared_by_edition needs {{size, source}}")
+        size = _optional_int(value.get("size"))
+        source = str(value.get("source") or "").strip()
+        if size is None or size <= 0:
+            raise ValueError(f"{code} {key}: roster_size_declared_by_edition size must be a positive integer")
+        if not source.startswith(("http://", "https://")):
+            raise ValueError(f"{code} {key}: roster_size_declared_by_edition needs an http(s) source (F4)")
+        out[key] = DeclaredSize(size=size, source=source)
+    return out
 
 
 def validate_transcribed_membership(registry: FrameRegistry, membership: list[Mapping[str, str]]) -> None:

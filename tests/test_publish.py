@@ -391,6 +391,35 @@ def test_declared_roster_size_smaller_than_the_rows_reads_100(tmp_path: Path):
     assert frame["coverage_pct"] == 100.0
 
 
+def test_edition_with_a_declared_size_gets_its_own_coverage(tmp_path: Path):
+    """F4 per edition: only the edition that states its size gets a coverage; the others carry no key."""
+    frames = FRAMES.replace(
+        '    years_covered: "2019"\n',
+        '    years_covered: "2019-2020"\n'
+        "    roster_size_declared_by_edition:\n"
+        "      '2020':\n"
+        "        size: 4\n"
+        "        source: https://example.org/residency/2020\n",
+    )
+    artists = [_artist("LED-haneul", "김하늘"), _artist("LED-seoyeon", "박서연")]
+    membership = [
+        _member("LED-haneul", "EXAMPLE-RESIDENCY-2019"),
+        _member("LED-haneul", "EXAMPLE-RESIDENCY-2020"),
+        _member("LED-seoyeon", "EXAMPLE-RESIDENCY-2020"),
+    ]
+    site = _publish(tmp_path, artists, [], membership, frames=frames)
+    frame = site["frames.json"][0]
+    by_edition = {entry["edition"]: entry for entry in frame["editions"]}
+    assert by_edition["2020"]["roster_count"] == 2
+    assert by_edition["2020"]["roster_size_declared"] == 4
+    assert by_edition["2020"]["roster_size_source"] == "https://example.org/residency/2020"
+    assert by_edition["2020"]["coverage_pct"] == 50.0
+    assert "coverage_pct" not in by_edition["2019"]
+    # Edition sizes are not summed into the frame: the frame-level size is still the frame's own.
+    assert frame["roster_size_declared"] == 4
+    assert frame["coverage_pct"] == 50.0
+
+
 def test_rows_without_a_collection_date_are_not_published(tmp_path: Path):
     # No date is filled in at publish time: an activity without collected_at is left out.
     artists = [_artist("LED-haneul", "김하늘", gy_id="GY-000001")]

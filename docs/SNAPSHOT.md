@@ -112,7 +112,10 @@ code, so a rebuild of the same registry does not mint a new id. Counts:
   null (unknown) when no size is declared (F4). `roster_count` is not used as the denominator,
   because it is written from what was collected and would read 100% by construction
 
-`editions` breaks membership into edition years. `eligibility` is the F1–F5 judgement
+`editions` breaks membership into edition years. An edition that declares its own size
+(`roster_size_declared_by_edition` in `frames.yml`) also carries `roster_size_declared`,
+`roster_size_source`, and `coverage_pct` = `round(100 * roster_count / max(roster_size_declared, roster_count), 1)`
+for that edition; editions without a declared size carry none of these keys. `eligibility` is the F1–F5 judgement
 as written in `frames.yml`. `status`, `stage`, and `last_fetched_at` are copied when present.
 
 `giye publish` does not write these counts back into `frames.yml`. Production did.
