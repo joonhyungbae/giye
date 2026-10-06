@@ -114,7 +114,8 @@ def merge_people(
     :func:`check_merge_evidence`) and hold on the ledger
     (:func:`verify_merge_evidence`); its code is stored as the merge's ``rule``.
     A pair decided ``distinct`` on the review queue is refused unless
-    ``override_distinct`` is set; the stored evidence then says
+    ``override_distinct`` is set, and an ``H`` that overrides it must be dated
+    on or after that decision; the stored evidence then says
     "overrides distinct decision of <date>" and that queue item is rewritten
     so it no longer reads ``decided=different``. The dropped ``gy_id`` is
     retired with a redirect, the same path an automatic merge uses.
@@ -141,6 +142,8 @@ def merge_people(
         )
     if distinct:
         dates = ", ".join(_decided_on(item) for item in distinct)
+        if code == "H":
+            _h_not_before(text, distinct)
         # A comma, not a semicolon: the kept row's note is split on ";".
         text = f"{text}, overrides distinct decision of {dates}"
     # verify_merge_evidence ran above, so the unchecked path writes the merge.
@@ -293,6 +296,26 @@ def _verify_h(rest: str) -> None:
     words = _WORD.findall(_ISO_DATE.sub(" ", rest))
     if len(words) < _H_MIN_WORDS:
         raise GiyeError(f"merge refused: H needs a reason of at least {_H_MIN_WORDS} words; {_EVIDENCE_FORM}")
+
+
+def _h_not_before(evidence: str, distinct: list[dict[str, str]]) -> None:
+    """An ``H`` that overrides a distinct decision is dated on or after that decision.
+
+    Why (software review, round 6): a judgement dated before the decision it
+    overrides was made without knowing that decision, so it cannot be the
+    reason to reverse it. An undated older decision cannot be compared and is
+    not checked.
+    """
+    decided = [_decided_on(item) for item in distinct]
+    latest = max((when for when in decided if when != "undated"), default="")
+    if not latest:
+        return
+    judged = max(("-".join(parts) for parts in _ISO_DATE.findall(evidence)), default="")
+    if judged < latest:
+        raise GiyeError(
+            f"merge refused: the H judgement ({judged or 'undated'}) is dated before the distinct decision "
+            f"it overrides ({latest}); date the judgement on or after that decision"
+        )
 
 
 def _name_keys_of(row: dict[str, str], language) -> set[str]:

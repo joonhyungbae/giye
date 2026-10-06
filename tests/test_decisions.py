@@ -240,6 +240,10 @@ def test_merge_over_a_distinct_decision_needs_the_override(tmp_path: Path):
     with pytest.raises(GiyeError, match="distinct"):
         merge_people(ledger, left, right, evidence=evidence)
     assert {row["ledger_id"] for row in ledger.read("artists")} >= {left, right}
+    # Review round 6: a judgement dated before the decision it overrides is refused.
+    with pytest.raises(GiyeError, match="dated before the distinct decision"):
+        merge_people(ledger, left, right, evidence="H the press release names both spellings 1999-01-01", override_distinct=True)
+    evidence = f"H the press release names both spellings {_today()}"
 
     keep, drop = merge_people(ledger, left, right, evidence=evidence, override_distinct=True)
     kept = next(row for row in ledger.read("artists") if row["ledger_id"] == keep)
@@ -271,7 +275,7 @@ def test_public_ledger_merge_honours_a_distinct_decision(tmp_path: Path):
     decide_queue(ledger, item["queue_id"], "distinct")
     left = item["ledger_id"]
     right = min(review_id_set(item) - {left})
-    evidence = "H x y z 1900-01-01"
+    evidence = f"H x y z {_today()}"
     with pytest.raises(GiyeError, match="distinct"):
         ledger.merge(left, right, evidence=evidence, rule="H")
     assert {row["ledger_id"] for row in ledger.read("artists")} >= {left, right}
@@ -284,3 +288,10 @@ def test_public_ledger_merge_honours_a_distinct_decision(tmp_path: Path):
     after = next(row for row in ledger.read("review_queue") if row["queue_id"] == item["queue_id"])
     assert "decided=different" not in after["detail"]
     assert "overrides distinct decision of " in after["detail"] and "decided=same" in after["detail"]
+
+
+def _today() -> str:
+    """The date ``decided_at`` records (UTC), so an H judgement is not dated before it."""
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).date().isoformat()
