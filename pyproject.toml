@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,9 +7,26 @@ name = "giye"
 version = "0.1.0"
 description = "Evidence-gated, provenance-first archiving of a creative field from public rosters and CVs."
 readme = "README.md"
-license = { text = "AGPL-3.0-only" }
+license = "AGPL-3.0-only"
+license-files = ["LICENSE"]
 authors = [{ name = "Joonhyung Bae" }]
 requires-python = ">=3.10"
+keywords = ["archive", "provenance", "census", "person register", "record linkage", "media art", "web archiving"]
+# Linux and macOS are tested in CI. Windows is not supported: the ledger lock uses fcntl.
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "Topic :: System :: Archiving",
+]
 dependencies = [
   "numpy>=1.24",
   "pydantic>=2",
@@ -20,12 +37,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-llm = ["anthropic>=0.40"]
-embed = ["sentence-transformers>=3"]
-# Clustering libraries the archive used to build candidate divisions. The core
-# scores (adjusted Rand, lift, AUC) do not import them.
-explore = ["scikit-learn>=1.3", "igraph>=0.11", "leidenalg>=0.10"]
+# AnthropicProvider streams through client.beta.messages with output_config and
+# betas; anthropic 0.40 has no client.beta.messages.stream, so the floor is 1.0.
+llm = ["anthropic>=1.0"]
 dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.urls]
+Homepage = "https://giye.org"
+Source = "https://github.com/joonhyungbae/giye"
+Documentation = "https://github.com/joonhyungbae/giye/tree/main/docs"
+Issues = "https://github.com/joonhyungbae/giye/issues"
+Changelog = "https://github.com/joonhyungbae/giye/blob/main/CHANGELOG.md"
 
 [project.scripts]
 giye = "giye.cli:main"
@@ -34,11 +56,13 @@ giye = "giye.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
+# Every non-Python file under src/giye is package data. tests/test_packaging.py
+# checks that each tracked data file matches one of these patterns.
 giye = [
-  "normalize/data/ko_en/*.yaml",
-  "normalize/data/ko_en/*.tsv",
-  "normalize/data/ko_en/*.txt",
-  "normalize/data/ko_en/countries/*.json",
+  "normalize/data/**/*.yaml",
+  "normalize/data/**/*.tsv",
+  "normalize/data/**/*.txt",
+  "normalize/data/**/*.json",
   "extract/prompts/*.txt",
   "fields/*/field.toml",
 ]

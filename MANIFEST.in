@@ -1,0 +1,9 @@
+# The sdist carries what is needed to run the test suite and the offline demo
+# from an unpacked archive, plus the citation and change records.
+include LICENSE Licence.txt README.md CHANGELOG.md CITATION.cff CONTRIBUTING.md
+recursive-include docs *.md
+recursive-include tests *.py *.json *.csv *.txt *.toml *.html *.yaml *.yml *.md *.tsv
+recursive-include examples *
+recursive-include tools *.py
+recursive-include src/giye *.txt *.toml *.tsv *.yaml *.json
+global-exclude __pycache__ *.py[cod] .DS_Store

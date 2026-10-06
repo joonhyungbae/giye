@@ -6,6 +6,19 @@ authors:
     given-names: Joonhyung
     orcid: "https://orcid.org/0000-0001-5933-4302"
 version: 0.1.0
+abstract: >-
+  Giye builds an evidence-gated, provenance-first person register of a creative
+  field from public programme rosters and CVs. It keeps the original bytes of
+  every cited page, resolves the same person across scripts and spellings by
+  written evidence rules, and publishes permanent identifiers. The reference
+  archive covers the Korean media art field at https://giye.org.
+keywords:
+  - archive
+  - provenance
+  - person register
+  - record linkage
+  - media art
+  - web archiving
 license: AGPL-3.0-only
 type: software
 repository-code: "https://github.com/joonhyungbae/giye"

@@ -2,7 +2,10 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.1.0] - unreleased
+
+First version of the package: a data-free toolkit that builds a provenance-first person register of a creative field from public programme rosters and CVs, and the website that serves it. No tag or release exists yet; the date is set when the version is released.
+
 
 - Collects programme rosters through a fetcher that checks robots.txt before every request and every redirect, and stores original bytes in a content-addressed snapshot.
 - Extracts public CVs into a validated activity schema, with a replay cache so a run can be repeated without calling a model.
@@ -15,3 +18,4 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Measures the home canvas with `web/scripts/perf/` (calls and frame times per phase, deterministic screenshots, pixel diffs between renderers).
 - Exports the snapshot store as WARC (optional WACZ) and writes an RO-Crate description of a run.
 - Reproduces the pipeline on a synthetic field with `giye demo`, without fetching the network.
+- Runs on Linux and macOS with Python 3.10 to 3.13. Windows is not supported.
