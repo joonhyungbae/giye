@@ -1,0 +1,113 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+"""Attachment across scripts: accented Latin names, spaced Hangul, contradicting names.
+
+People are fictitious. URLs are example.org. Each case applies roster rows to a
+fresh ledger and reads the membership rules and the review queue.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from giye.config import load
+from giye.ledger.ledger import Ledger
+from giye.normalize.language import default_language
+from giye.resolve.attach import latin_tokens, name_keys
+
+ROOT = Path(__file__).resolve().parents[1]
+SITE = "https://duo.example.org/"
+
+
+def _ledger(tmp_path: Path) -> Ledger:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    path = tmp_path / "giye.toml"
+    path.write_text(
+        f"""
+[archive]
+name = "Script fixtures"
+id_prefix = "GY"
+[paths]
+data = "{(tmp_path / "data").as_posix()}"
+frames = "{(ROOT / "examples" / "demo" / "frames.yml").as_posix()}"
+""",
+        encoding="utf-8",
+    )
+    return Ledger.open(load(path))
+
+
+def _row(name_ko: str, name_en: str = "", **extra: object) -> dict[str, object]:
+    row: dict[str, object] = {
+        "name_ko": name_ko,
+        "name_en": name_en,
+        "source_url": "https://example.org/roster",
+        "collected_at": "2026-01-15",
+    }
+    row.update(extra)
+    return row
+
+
+def _rules(ledger: Ledger) -> list[str]:
+    return [row["attach_rule"] for row in ledger.read("frame_membership")]
+
+
+def _two_programmes(tmp_path: Path, first: dict, second: dict) -> Ledger:
+    ledger = _ledger(tmp_path)
+    ledger.apply_roster("NORTH-2019", [first], task="collect")
+    ledger.apply_roster("SOUTH-2021", [second], task="collect")
+    return ledger
+
+
+# --- Latin script beyond A–Z -------------------------------------------------
+
+
+def test_accented_latin_name_is_a_latin_only_personal_name() -> None:
+    language = default_language()
+    for name in ("José García", "Zoë Müller", "Đặng Thị Lan", "Søren Kjær", "Łukasz Nowak"):
+        assert language.personal_name(name), name
+
+
+def test_accented_latin_names_are_not_joined_across_programmes(tmp_path: Path) -> None:
+    for name in ("José García", "Zoë Müller", "Đặng Thị Lan", "Søren Kjær"):
+        ledger = _two_programmes(tmp_path / name.replace(" ", "_"), _row("", name), _row("", name))
+        assert len(ledger.read("artists")) == 2, name
+        assert _rules(ledger) == ["first", "first"], name
+        [item] = ledger.read("review_queue")
+        assert item["detail"].endswith("(latin name only)")
+
+
+def test_name_keys_keep_accented_letters_apart() -> None:
+    assert latin_tokens("José García") == ["jose", "garcia"]
+    assert name_keys("", "José García", "") != name_keys("", "José Garcés", "")
+    assert name_keys("", "Łukasz Nowak", "") != name_keys("", "Tukasz Nowak", "")
+    assert name_keys("", "Ana Núñez", "") != name_keys("", "Ana Nú", "")
+
+
+def test_name_keys_fold_accents_so_one_spelling_meets_its_plain_form() -> None:
+    # Folding is deliberate: a roster in English often drops the accents of the
+    # same name. Folding removes marks only; it never drops a letter.
+    assert name_keys("", "José García", "") == name_keys("", "Jose Garcia", "")
+    assert name_keys("", "Søren Kjær", "") == name_keys("", "Soren Kjaer", "")
+
+
+def test_different_accented_names_do_not_meet(tmp_path: Path) -> None:
+    for left, right in (("José García", "José Garcés"), ("Zoë Müller", "Zoë Mürz"), ("Łukasz Nowak", "Tukasz Nowak")):
+        ledger = _two_programmes(tmp_path / left.replace(" ", "_"), _row("", left), _row("", right))
+        artists = ledger.read("artists")
+        assert len(artists) == 2, (left, right)
+        assert all(not row["aliases"] for row in artists)
+
+
+def test_accented_name_joins_its_plain_spelling_within_a_series(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    ledger.apply_roster("NORTH-2019", [_row("", "José García")], task="collect")
+    ledger.apply_roster("NORTH-2021", [_row("", "Jose Garcia")], task="collect")
+    assert len(ledger.read("artists")) == 1
+    assert _rules(ledger) == ["first", "A1"]
+
+
+def test_shared_website_does_not_join_two_accented_latin_names(tmp_path: Path) -> None:
+    ledger = _two_programmes(
+        tmp_path, _row("", "José García", websites=[SITE]), _row("", "Zoë Müller", websites=[SITE])
+    )
+    assert len(ledger.read("artists")) == 2
+    assert _rules(ledger) == ["first", "first"]

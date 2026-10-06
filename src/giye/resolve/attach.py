@@ -62,13 +62,13 @@ from typing import TYPE_CHECKING
 from giye.field import Field, frame_family
 from giye.ledger.schemas import split_pipe
 from giye.resolve.evidence import url_key
+from giye.resolve.names import fold_latin, latin_letter, latin_words
 from giye.resolve.teams import person_like, team_like
 
 if TYPE_CHECKING:  # pragma: no cover
     from giye.normalize.language import LanguageModule
 
 _HANGUL = re.compile(r"[가-힣]+")
-_LATIN = re.compile(r"[A-Za-z]+")
 
 
 @dataclass(frozen=True)
@@ -92,8 +92,20 @@ def hangul_compact(text: str) -> str:
 
 
 def latin_tokens(text: str) -> list[str]:
-    """Latin words of length at least 2, lower-cased, in order."""
-    return [token.lower() for token in _LATIN.findall(text or "") if len(token) >= 2]
+    """Latin-script words of length at least 2, accents folded and case folded, in order.
+
+    A word is a run of Latin-script letters (``giye.resolve.names.latin_words``),
+    so ``José García`` is ``jose garcia`` and not ``jos garc``. Folding is the
+    design choice of ``fold_latin``: ``García`` meets ``Garcia`` (one name with
+    and without its accent) and never meets ``Garcés`` (different letters).
+    """
+    tokens = (fold_latin(word) for word in latin_words(text))
+    return [token for token in tokens if len(token) >= 2]
+
+
+def _spelling_key(text: str) -> str:
+    """Letters and digits of ``text``, Latin accents folded and case folded (the ``lx:``/``cx:`` keys)."""
+    return "".join(char for char in fold_latin(text or "") if char.isalnum())
 
 
 def name_keys(name_ko: str, name_en: str, aliases: str) -> set[str]:
@@ -124,15 +136,21 @@ def name_keys(name_ko: str, name_en: str, aliases: str) -> set[str]:
         if len(tokens) >= 2:
             keys.add("lt:" + " ".join(sorted(tokens)))
         elif len(hangul_compact(part)) < 2:
-            spelling = "".join(char for char in part.lower() if char.isalnum())
+            spelling = _spelling_key(part)
             if len(spelling) >= 3:
                 keys.add("lx:" + spelling)
     if not keys:
         for part in (name_ko, name_en):
-            spelling = "".join(char for char in (part or "").lower() if char.isalnum())
+            spelling = _spelling_key(part)
             if spelling:
                 keys.add("cx:" + spelling)
     return keys
+
+
+def _all_latin(text: str) -> bool:
+    """Every letter of ``text`` is a Latin-script letter (accents included), and there is one."""
+    letters = [char for char in text if char.isalpha()]
+    return bool(letters) and all(latin_letter(char) for char in letters)
 
 
 def _latin_only_personal(
@@ -145,14 +163,15 @@ def _latin_only_personal(
     """A Latin-only personal name: the language module's shape, and not a team.
 
     Hangul on either field is not this case (a Hangul row with an agreeing
-    English name stays on A2). The field file's team words, a ``members=`` /
+    English name stays on A2), and neither is any other script: every letter
+    must be Latin, accents included (``José García`` is Latin-only). The field file's team words, a ``members=`` /
     ``rep=`` note, or person-shaped aliases make a group, which keeps A3.
     Group words are the archive's list, so they are not compiled into the
     language module.
     """
     ko = (name_ko or "").strip()
     en = (name_en or "").strip()
-    if _HANGUL.search(ko) or _HANGUL.search(en):
+    if not _all_latin(f"{ko} {en}"):
         return False
     primary = en or ko
     if not primary:

@@ -16,11 +16,58 @@ The raw answer is kept by the caller in reviewer_note / the ledger history.
 from __future__ import annotations
 
 import re
+import unicodedata
 
 _HANGUL = re.compile(r"[가-힣]")
 _PAREN = re.compile(r"\s*[\(（]([^\)）]*)[\)）]")
 _QUOTED = re.compile(r"[\"“”']([^\"“”']{1,40})[\"“”']")
 _MIDDLE = re.compile(r"^\s*middle\s*name\s*[:：]\s*(.+?)\s*$", re.IGNORECASE)
+
+
+# Latin letters that carry a stroke or are ligatures have no Unicode
+# decomposition, so removing combining marks does not reach them. Each is
+# mapped to the plain letters an English-language roster writes for it.
+_LATIN_FOLD = str.maketrans({"ø": "o", "ł": "l", "đ": "d", "ð": "d", "þ": "th", "æ": "ae", "œ": "oe", "ı": "i", "ħ": "h"})
+
+
+def latin_letter(char: str) -> bool:
+    """A letter of the Latin script, accented or not (Unicode name ``LATIN …``)."""
+    return char.isalpha() and unicodedata.name(char, "").startswith("LATIN ")
+
+
+def latin_words(text: str) -> list[str]:
+    """Runs of Latin-script letters in ``text`` (NFKC), combining marks included, in order.
+
+    Any other character (a space, a hyphen, an apostrophe, a digit, a letter
+    of another script) ends a run. Before 2026-10-06 a run was ``[A-Za-z]+``,
+    so ``José`` was the two runs ``Jos`` and nothing, and different accented
+    names shared a key.
+    """
+    words: list[str] = []
+    current: list[str] = []
+    for char in unicodedata.normalize("NFKC", text or ""):
+        if latin_letter(char) or (current and unicodedata.category(char) == "Mn"):
+            current.append(char)
+            continue
+        if current:
+            words.append("".join(current))
+            current = []
+    if current:
+        words.append("".join(current))
+    return words
+
+
+def fold_latin(text: str) -> str:
+    """Case-folded with diacritics removed: ``García`` → ``garcia``, ``Søren`` → ``soren``.
+
+    Why fold: an English-language roster often prints a name without its
+    accents, and those are one spelling of one name. Folding removes marks and
+    maps the few undecomposable letters (``_LATIN_FOLD``); it never drops a
+    letter, so ``García`` and ``Garcés`` stay different (``garcia``, ``garces``).
+    """
+    decomposed = unicodedata.normalize("NFKD", text or "")
+    bare = "".join(char for char in decomposed if unicodedata.category(char) != "Mn")
+    return unicodedata.normalize("NFC", bare).casefold().translate(_LATIN_FOLD)
 
 
 def _space(s: str) -> str:
@@ -331,7 +378,8 @@ def hangul_name_keys(name_ko: str) -> set[str]:
 
 def english_keys(name: str) -> set[tuple[str, str]]:
     """(surname token, remaining tokens joined) of a Latin-script name, in both orders."""
-    tokens = [tok.replace("-", "") for tok in re.findall(r"[a-z]+(?:-[a-z]+)*", (name or "").lower())]
+    # Accents are folded first, so ``José García`` has the keys of ``Jose Garcia``.
+    tokens = [tok.replace("-", "") for tok in re.findall(r"[a-z]+(?:-[a-z]+)*", fold_latin(name or ""))]
     tokens = [tok for tok in tokens if tok]
     if len(tokens) < 2:
         return set()

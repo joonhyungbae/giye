@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib
 import re
+import unicodedata
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
@@ -24,19 +25,21 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 import yaml
 
 from giye.normalize.gazetteer import Gazetteer
-from giye.resolve.names import hangul_name_keys, latin_name_keys, syllable_rr
+from giye.resolve.names import hangul_name_keys, latin_letter, latin_name_keys, syllable_rr
 
 if TYPE_CHECKING:  # pragma: no cover
     from giye.config import Config
 
 _HANGUL = re.compile(r"[가-힣]")
-# A Latin-only personal name is two to four alphabetic tokens. One token is too
+# A Latin-only personal name is two to four tokens of Latin-script letters
+# (accents included: ``José García``, ``Đặng Thị Lan``). One token is too
 # common to treat as a collision of people (the same floor A2 uses). Five or
 # more tokens are not the given-name-plus-surname shape this test is for.
 # Separators are spaces, hyphens, apostrophes, and periods. Group words are not
 # listed here: they differ by archive and live in the field file's team list,
 # which attachment applies on top of this shape.
-_LATIN_PERSONAL = re.compile(r"[A-Za-z]+(?:[\s.'’\-]+[A-Za-z]+){1,3}")
+_LATIN_SEPARATORS = re.compile(r"[\s.'’\-]+")
+LATIN_PERSONAL_TOKENS = (2, 4)
 DEFAULT_LANGUAGE = "giye.normalize.lang.ko_en:KoEn"
 
 # A bare 2–4 syllable Korean personal name starts with one of these surnames.
@@ -51,6 +54,27 @@ KOREAN_SURNAMES = frozenset(
     "라계시"
 )
 _KOREAN_PERSONAL_NAME = re.compile(r"[가-힣]{2,4}")
+
+
+def latin_personal_shape(text: str) -> bool:
+    """Two to four tokens of Latin-script letters, separated by spaces, hyphens, apostrophes or periods.
+
+    A token is a run of Latin letters with their combining marks (NFKC first),
+    so an accented name has the shape of its plain spelling. Before 2026-10-06
+    a token was ``[A-Za-z]+``, and ``José García`` failed the test and lost
+    every guard that reads it.
+    """
+    low, high = LATIN_PERSONAL_TOKENS
+    text = unicodedata.normalize("NFKC", text or "").strip()
+    tokens = [token for token in _LATIN_SEPARATORS.split(text) if token]
+    if not low <= len(tokens) <= high:
+        return False
+    for token in tokens:
+        if not latin_letter(token[0]):
+            return False
+        if not all(latin_letter(char) or unicodedata.category(char) == "Mn" for char in token):
+            return False
+    return True
 
 
 @dataclass(frozen=True)
@@ -204,7 +228,7 @@ class KoreanEnglish:
             return True
         if not text or _HANGUL.search(text):
             return False
-        return bool(_LATIN_PERSONAL.fullmatch(text))
+        return latin_personal_shape(text)
 
     def name_keys(self, name: str) -> set[str]:
         """Personal-name keys (rule X1). Hangul uses ``hangul_name_keys``; otherwise Latin keys.
