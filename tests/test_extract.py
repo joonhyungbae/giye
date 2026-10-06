@@ -1472,3 +1472,20 @@ def test_grounding_venue_reads_the_institution_part():
     # Cross-script: the V9 reading of a Hangul run in the text.
     assert failures({"year": "2022", "venue": "Seoul Museum of Art, Seoul"}, text) == []
     assert failures({"year": "2022", "venue": "Busan Museum of Art"}, text) == ["venue"]
+
+
+def test_grounding_venue_reads_a_bracketed_other_script_name():
+    from giye.extract.grounding import CvText, failures
+    from giye.normalize.language import default_language
+
+    lang = default_language()
+    text = CvText.of("2019 Example Light Hall group show\n2020 예시빛관 개인전\n2021 Example Dark Hall, Seoul\n", lang)
+    # Either form of a name given in two scripts grounds the venue, in either order.
+    assert failures({"year": "2019", "venue": "예시빛관 (Example Light Hall), Seoul"}, text) == []
+    assert failures({"year": "2020", "venue": "Example Moon Hall (예시빛관), Seoul"}, text) == []
+    # Neither form occurs.
+    assert failures({"year": "2019", "venue": "예시별관 (Example Star Hall), Seoul"}, text) == ["venue"]
+    # A bracketed place is not a second form of the name.
+    assert failures({"year": "2021", "venue": "예시어둠관 (Seoul)"}, text) == ["venue"]
+    # A same-script bracket (a branch, an acronym) is not used either.
+    assert failures({"year": "2021", "venue": "Example Night Hall (Example Dark Hall)"}, text) == ["venue"]

@@ -25,10 +25,21 @@ can verify against the document:
      V9 readings equals the bag of some run of one to eight Latin words in
      the text. This is the reading the venue rules already trust to join the
      Korean and the English name of one institution.
+  4. bracketed other-script name: when the institution part and a round-bracket
+     partner form one V2 bracket pair (``예시관 (Example Hall), City`` or the
+     reverse), one is mostly Hangul and the other Latin, and the partner is
+     not a place, the partner is tested by rules 2 and 3 as well. Either name
+     occurring grounds the venue.
 
 Why the institution part: a model reading "Venue (City, Country)" or a CV
 line that puts the city on another line writes "Venue, City, Country". Those
 venues are correct, and the city is not the claim a reader checks.
+
+Why rule 4 (author's delegate, 2026-10-06): a reading that gives one
+institution in two scripts, one in brackets, wrote both forms of one name; a
+CV that writes only one of them grounds it. A bracketed place ("Hall (Seoul)")
+a same-script bracket (an acronym, a branch) and a second script other than
+Latin (Hanja) are not a second form of the name and are not used.
 
 The title is not part of this rule; it is the field a model most often
 rewrites (brackets, line breaks, a second language), and whether a title test
@@ -50,7 +61,7 @@ from dataclasses import dataclass, field
 from giye.normalize import venue_names
 from giye.normalize.language import LanguageModule
 from giye.normalize.rules import norm_text
-from giye.normalize.venues import classify_fragments, institution_key, split_venue
+from giye.normalize.venues import bracketed_pairs, classify_fragments, institution_key, split_venue
 
 _SPACE = re.compile(r"\s+")
 _PUNCT = re.compile(r"[^\w\s]|_")
@@ -147,6 +158,44 @@ def institution_part(venue: str, lang: LanguageModule | None) -> str:
     return parts[0]
 
 
+def _latin(text: str) -> bool:
+    letters = [char for char in text if char.isalpha()]
+    return bool(letters) and all("LATIN" in unicodedata.name(char, "") for char in letters)
+
+
+def _other_script(left: str, right: str) -> bool:
+    """One side mostly Hangul, the other all Latin letters."""
+    return (venue_names.mostly_hangul(left) and _latin(right)) or (venue_names.mostly_hangul(right) and _latin(left))
+
+
+def bracket_alias(venue: str, part: str, lang: LanguageModule | None) -> str:
+    """Rule 4: the other-script name bracketed with the institution ``part``, or ``""``.
+
+    The partner must form one V2 bracket pair with the part, be in the other
+    script, and not be a V3 place.
+    """
+    if not part or lang is None:
+        return ""
+    for left, right in bracketed_pairs(norm_text(venue)):
+        if part not in (left, right):
+            continue
+        other = right if part == left else left
+        if not _other_script(part, other):
+            continue
+        if classify_fragments([other], lang)[0].kind == "place":
+            continue
+        return other
+    return ""
+
+
+def _part_in(part: str, text: CvText) -> bool:
+    """Rules 2 and 3 for one institution name."""
+    bare = strip_punct(part)
+    if bare and (bare in text.bare or bare.replace(" ", "") in text.nospace):
+        return True
+    return bool(part) and _cross_script(part, text)
+
+
 def _cross_script(part: str, text: CvText) -> bool:
     """Rule 3: the part's V9 reading equals the reading of some word run of the text."""
     lang = text.lang
@@ -161,7 +210,7 @@ def _cross_script(part: str, text: CvText) -> bool:
 
 
 def venue_in(venue: str, text: CvText) -> bool:
-    """An empty venue holds. Otherwise rule 1, 2 or 3 of the module docstring."""
+    """An empty venue holds. Otherwise rule 1, 2, 3 or 4 of the module docstring."""
     if not venue.strip():
         return True
     if collapse(venue) in text.collapsed:
@@ -169,10 +218,13 @@ def venue_in(venue: str, text: CvText) -> bool:
     bare = strip_punct(venue)
     if bare and bare in text.bare:
         return True
-    part = strip_punct(institution_part(venue, text.lang))
-    if part and (part in text.bare or part.replace(" ", "") in text.nospace):
+    part = institution_part(venue, text.lang)
+    if _part_in(part, text):
         return True
-    return _cross_script(institution_part(venue, text.lang), text)
+    alias = bracket_alias(venue, part, text.lang)
+    return bool(alias) and _part_in(alias, text)
+
+
 def failures(row: dict[str, str], text: CvText) -> list[str]:
     """``["year"]``, ``["venue"]``, both, or ``[]`` for a grounded row."""
     missing = []

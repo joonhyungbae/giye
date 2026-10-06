@@ -187,6 +187,21 @@ def split_venue(venue_norm: str) -> tuple[list[str], list[tuple[str, str]]]:
     return fragments, alias_pairs
 
 
+def bracketed_pairs(venue_norm: str) -> list[tuple[str, str]]:
+    """V2 round-bracket pairs only: ``(fragment before the bracket, the one fragment inside)``.
+
+    Unlike the alias list of :func:`split_venue`, a Hangul name followed by an
+    unbracketed acronym is not a pair here; a fragment before the bracket that
+    V2 expands into a name and an acronym pairs each of them with the inside.
+    """
+    _fragments, parent_pairs = _plain_fragments(venue_norm)
+    pairs: list[tuple[str, str]] = []
+    for left, right in parent_pairs:
+        inside = _expand_abbreviation(right)[0]
+        pairs.extend((piece, inside) for piece in _expand_abbreviation(left))
+    return pairs
+
+
 def _mostly_hangul(text: str) -> bool:
     return venue_names.mostly_hangul(text)
 
