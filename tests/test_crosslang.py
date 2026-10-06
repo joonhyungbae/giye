@@ -153,3 +153,19 @@ def test_title_bag_drops_numbers_and_one_letter_tokens():
     assert title_bag("Signal 2022 — a Show") == frozenset({"signal", "show"})
     assert titles_agree("Signal", "Signal 2022")
     assert not titles_agree("Signal Exhibition", "Noise Exhibition Garden")
+
+
+def test_generic_venues_or_two_cities_do_not_fold():
+    """N-2: a generic name names no particular place, and two cities are two events."""
+    cases = [
+        [_row("ko", "빛", "Art Space, 대구"), _row("en", "Machines", "Art Space, Berlin")],
+        [_row("ko", "빛", "갤러리, 부산"), _row("en", "Machines", "Gallery, London")],
+        [_row("ko", "빛", "Space 2019, 부산"), _row("en", "Machines", "Space, New York")],
+        [_row("ko", "빛", "예시미술관, 대구"), _row("en", "Machines", "Yesi Museum of Art, Busan")],
+    ]
+    for rows in cases:
+        assert _fold(rows) == [], rows[1]["venue"]
+    # The same specific institution with the same city, or with a city on one side only, still folds.
+    for venues in (("예시미술관, 부산", "Yesi Museum of Art, Busan"), ("예시미술관, 부산", "Yesi Museum of Art")):
+        rows = [_row("ko", "빛", venues[0]), _row("en", "Machines", venues[1])]
+        assert [fold.folded["activity_id"] for fold in _fold(rows)] == ["en"], venues

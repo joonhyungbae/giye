@@ -22,7 +22,10 @@ The rule is conservative. Two publishable ``cv:`` rows of one person fold when
   the two read as the same institution: the same V4/V7a–d key, the same V7e
   word bag, or a V9 reading of the Hangul name equal to the Latin bag. A V8b
   office is never joined to its place. An empty venue, or a venue that is only
-  a place, names no institution and never folds,
+  a place, names no institution and never folds. A name of generic venue words
+  only (``Art Space``, ``갤러리``: V4's generic test) never folds, and two venues
+  that name different places (``Art Space, 대구`` and ``Art Space, Berlin``) do
+  not fold: the place is part of the event (pre-release audit N-2),
 - the match is one to one: in that (person, year, type) neither row matches
   any other row on the other side, from any document. Two shows at one museum
   in one year stay separate,
@@ -129,19 +132,37 @@ def titles_agree(left: str, right: str) -> bool:
 
 def institutions(venue: str, lang: LanguageModule) -> list[str]:
     """V4/V7a–d keys of the institution fragments of one venue string (V2 split, V3 kinds)."""
+    return _venue_parts(venue, lang)[0]
+
+
+Places = tuple[frozenset[str], frozenset[str]]
+
+
+def places(venue: str, lang: LanguageModule) -> Places:
+    """Cities and countries named by the place fragments of one venue string."""
+    return _venue_parts(venue, lang)[1]
+
+
+def _venue_parts(venue: str, lang: LanguageModule) -> tuple[list[str], Places]:
     pieces, _aliases = split_venue(norm_text(venue))
     if not pieces:
-        return []
-    return [
-        institution_key(fragment.text, lang)
-        for fragment in classify_fragments(pieces, lang)
-        if fragment.kind == "institution"
-    ]
+        return [], (frozenset(), frozenset())
+    fragments = classify_fragments(pieces, lang)
+    keys = [institution_key(fragment.text, lang) for fragment in fragments if fragment.kind == "institution"]
+    found = [fragment.place for fragment in fragments if fragment.kind == "place" and fragment.place]
+    cities = frozenset(place.city.casefold() for place in found if place.city)
+    return keys, (cities, frozenset(place.country for place in found if place.country))
 
 
 def same_institution(left: str, right: str, lang: LanguageModule) -> bool:
-    """V7 key or word bag, or a V9 Hangul reading equal to the Latin bag. V8b blocks an office."""
+    """V7 key or word bag, or a V9 Hangul reading equal to the Latin bag. V8b blocks an office.
+
+    A generic name (V4: venue words only) is never the same institution: it
+    names no particular place (N-2).
+    """
     if not left or not right:
+        return False
+    if venue_names.generic_name(left, lang) or venue_names.generic_name(right, lang):
         return False
     if venue_names.forbids_place_office_merge(left, right, lang):
         return False
@@ -155,6 +176,11 @@ def same_institution(left: str, right: str, lang: LanguageModule) -> bool:
         if bag and bag in venue_names.hangul_bags(hangul, lang):
             return True  # V9
     return False
+
+
+def _other_places(left: Places, right: Places) -> bool:
+    """True when both venues name a city (or both a country) and none is shared: two events in two places."""
+    return any(mine and theirs and not mine & theirs for mine, theirs in zip(left, right))
 
 
 def fold_cross_language(
@@ -178,18 +204,20 @@ def fold_cross_language(
         if side:
             groups[(row["ledger_id"], row["year"], row.get("activity_type") or "")][side].append(row)
     keys_of: dict[str, list[str]] = {}
+    places_of: dict[str, Places] = {}
     folds: list[Fold] = []
     for (ledger_id, year, activity_type), sides in sorted(groups.items()):
         if not sides["ko"] or not sides["latin"]:
             continue
         for row in sides["ko"] + sides["latin"]:
             if row["activity_id"] not in keys_of:
-                keys_of[row["activity_id"]] = institutions(row.get("venue") or "", lang)
+                keys_of[row["activity_id"]], places_of[row["activity_id"]] = _venue_parts(row.get("venue") or "", lang)
         edges = [
             (ko, latin)
             for ko in sorted(sides["ko"], key=lambda item: item["activity_id"])
             for latin in sorted(sides["latin"], key=lambda item: item["activity_id"])
-            if any(
+            if not _other_places(places_of[ko["activity_id"]], places_of[latin["activity_id"]])
+            and any(
                 same_institution(left, right, lang)
                 for left in keys_of[ko["activity_id"]]
                 for right in keys_of[latin["activity_id"]]
