@@ -99,6 +99,46 @@ counts them as failures where stated.
 | Institution merges, refined rules (`venues`) | 70 | 70 | 64 | 91.4% (82.5–96.0%) |
 | Same, against the rule's own definition of a part | 70 | 70 | 67 | 95.7% (88.1–98.5%) |
 
+The person-merge sheet was not drawn with the `--n` allocation described
+under Strata (Hamilton seats in proportion to stratum size). It is a census
+plus a sample: all 42 merges whose stored rule names an evidence rule
+(`E1`–`E4` or `X1+E1`–`X1+E4`), and a seeded random draw of 40 of the 117
+merges with no stated rule (the `uncoded` stratum), 82 rows in all. The
+census strata carry no sampling error; the 40 uncoded rows stand for 117. The
+pooled precision in the table treats the 82 rows as one sample and is not
+weighted by stratum. The package's `sample` command draws only the
+proportional design; this sheet was put together from a census of the coded
+strata and a seeded draw from `uncoded`.
+
 Latin-only personal names: 21 joins of two Latin-only personal names were made
 before the restriction of 2026-10-05 (no join on the name alone). The author
 judged all 21; each was the same person.
+
+## Comparison with a probabilistic linker (Splink)
+
+The evidence rules were compared with Splink 5.0.0 on the reference archive.
+The Splink model compared name similarity, agreement on a programme edition,
+and agreement on a personal website. Its parameters were trained with
+expectation–maximisation, without term-frequency adjustment, and a pair was
+called a match at a match probability of 0.9 or more.
+
+Splink's matches include 131 pairs that rest on the name alone: no evidence
+rule (E1–E4) holds for them. The author judged these 131 pairs from the two
+careers, the author's own impression of how rare the name is, and whether the
+programme years fit one career. 110 pairs were judged one person (recorded as
+96 merges, because several pairs fall into one group), 13 pairs two people,
+and 8 were left undecided. These judgements are the author's, unblinded and
+by one coder, as for the other audits; they are not a second measurement of
+precision.
+
+## Rules changed after these audits
+
+The figures above were measured on the ledger as it stood before the rule
+changes of 2026-10-06 (software review, round 6): A6 needs overlapping names
+for personal names, A2 does not join a Latin-only personal name on either
+side, X1 also pairs a Korean record whose own Latin name meets the Latin-only
+record (`rule=x1_own_en`), manual E-code merges must meet the resolver's name
+and candidate conditions, E2 ignores an edition both records are on, and E3
+and CV grounding match whole words with generic venue words grounding
+nothing. A rerun of the pipeline changes the attachment, queue and grounding
+counts; the audited samples are not redrawn by that rerun.
