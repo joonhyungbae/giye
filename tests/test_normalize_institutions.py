@@ -12,7 +12,8 @@ import random
 from pathlib import Path
 
 from giye.normalize.language import KoreanEnglish
-from giye.normalize.venues import build
+from giye.normalize.venue_names import generic_name
+from giye.normalize.venues import build, institution_key
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "normalize" / "activities.csv"
@@ -68,3 +69,37 @@ def test_n6_clustering_does_not_depend_on_row_order() -> None:
             random.Random(seed).shuffle(shuffled)
             assert _signature(shuffled) == expected, seed
     assert not _together(venues, "XYZ Seoul", "XYZ")
+
+
+def test_n1_generic_names_in_two_cities_stay_apart() -> None:
+    """N-1: a name of generic venue words takes the row's place into its key."""
+    venues = [
+        "Museum of Art, Busan",
+        "Museum of Art, Daegu",
+        "Museum of Art, Busan",
+        "시립미술관 (부산)",
+        "시립미술관 (대구)",
+        "Art Center, Berlin",
+        "Art Center, Seoul",
+    ]
+    assert not _together(venues, "Museum of Art, Busan", "Museum of Art, Daegu")
+    assert not _together(venues, "시립미술관 (부산)", "시립미술관 (대구)")
+    assert not _together(venues, "Art Center, Berlin", "Art Center, Seoul")
+    assert {"Museum of Art, Busan"} in _groups(venues)  # one generic name in one city is one entity
+    # A proper name is not qualified: one entity across rows with and without a city.
+    proper = ["Example Museum of Art, Busan", "Example Museum of Art"]
+    assert _together(proper, *proper)
+
+
+def test_n1_stripping_a_year_or_qualifier_never_leaves_a_generic_name() -> None:
+    """N-1: V7b/V7c keep the V4 key when stripping would leave generic words only."""
+    assert institution_key("Space 1957", LANG) == "space 1957"
+    assert institution_key("Studio Etc", LANG) == "studio etc"
+    assert institution_key("Example Gallery 2019", LANG) == "example gallery"
+    assert institution_key("제12회 예시비엔날레", LANG) == "예시비엔날레"
+    venues = ["Space 1957, Seoul", "Space, Seoul", "Factory 2020", "Factory", "Studio Etc", "Studio"]
+    assert not _together(venues, "Space 1957, Seoul", "Space, Seoul")
+    assert not _together(venues, "Factory 2020", "Factory")
+    assert not _together(venues, "Studio Etc", "Studio")
+    assert generic_name("시립미술관 외", LANG) and generic_name("museum of art", LANG)
+    assert not generic_name("gallery 1898", LANG) and not generic_name("예시미술관", LANG)

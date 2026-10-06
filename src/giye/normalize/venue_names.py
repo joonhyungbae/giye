@@ -108,11 +108,25 @@ GENERIC = {
 }
 DATE_RE = re.compile(r"\d+\s?(?:월|일|년)")
 ACRONYM_SPELLING_RE = re.compile(r"(?=.{2,8}$)(?=.*[A-Z])[A-Z0-9.&]+")
+# N-1: an entity key whose name is generic venue words only carries the row's
+# place after this separator (``museum of art<sep>busan``). It is a control
+# character, so no normalised venue string contains it (P2 removes them).
+PLACE_SEP = "\x1d"
+
+
+def name_part(key: str) -> str:
+    """The name of an entity key, without the place a generic name is qualified by."""
+    return key.split(PLACE_SEP, 1)[0]
+
+
+def is_qualified(key: str) -> bool:
+    """True for a generic name qualified by its row's place. The name rules V7e, V8 and V9 skip it."""
+    return PLACE_SEP in key
 
 
 def mostly_hangul(text: str) -> bool:
     """True when more than half the letters are Hangul. Used by V5e, V5f, and V9."""
-    letters = [char for char in text if char.isalpha()]
+    letters = [char for char in name_part(text) if char.isalpha()]
     return bool(letters) and sum(bool(HANGUL_RE.fullmatch(char)) for char in letters) > len(letters) / 2
 
 
@@ -159,18 +173,54 @@ def strip_titles(text: str) -> str:
     return stripped if len(re.findall(r"[가-힣A-Za-z]", stripped)) >= 2 else text
 
 
-def normalize_key(key: str, lang: LanguageModule | None = None) -> str:
-    """V7b–d on a V4 key (already casefolded, quotes and periods removed)."""
-    words = _words(lang)
+def _strip_markers(key: str, words: SimpleNamespace) -> str:
+    """V7b and V7c without the guard: qualifiers and edition markers removed."""
     text = EDITION_GLUED_RE.sub("", key)
     for _ in range(2):
         if words.qualifier is not None:
             text = words.qualifier.sub("", text).strip()
         text = words.edition_lead.sub("", text).strip()
         text = words.edition_tail.sub("", text).strip()
-    text = re.sub(r"\s+", " ", text).strip()
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def generic_name(key: str, lang: LanguageModule | None = None) -> bool:
+    """N-1: every word of the name is a generic venue word (museum, gallery, 미술관, 시립…).
+
+    Function words, municipal markers, qualifiers (V7b) and edition markers
+    (V7c, years) do not make a name specific. Another number does (Gallery
+    1898). A key with no letters is not a name and is not generic.
+    """
+    language = lang or default_language()
+    text = _strip_markers(name_part(key).casefold(), _words(language))
+    tokens = re.findall(r"[a-z]+|\d+|[가-힣]+", text)
+    if not any(token[0].isalpha() for token in tokens):
+        return False
+    for token in tokens:
+        if token.isdigit():
+            if not re.fullmatch(_YEAR, token):
+                return False
+        elif HANGUL_RE.match(token):
+            if hangul_bags(token, language) or DATE_RE.search(token):
+                return False
+        elif _latin_word(token) not in GENERIC and token not in STOP and token not in DROP:
+            return False
+    return True
+
+
+def normalize_key(key: str, lang: LanguageModule | None = None) -> str:
+    """V7b–d on a V4 key (already casefolded, quotes and periods removed).
+
+    V7b and V7c never reduce a name to generic words only (N-1): ``Space 1957``
+    stays ``space 1957`` and is not joined to every bare ``Space``. The V4 key
+    is kept (V7d still applies).
+    """
+    words = _words(lang)
+    text = _strip_markers(key, words)
     if len(words.letters.findall(text)) < 2:
         return key  # nothing name-like left: keep the V4 key
+    if text != key.strip() and generic_name(text, lang):
+        text = re.sub(r"\s+", " ", key).strip()
     if (lang or default_language()).venue_words.unstable_spacing and _mostly_script(text, words.script):
         text = text.replace(" ", "")  # V7d
     return text
@@ -226,6 +276,7 @@ def _canon(tokens: list[str], lang: LanguageModule, cross_script: bool) -> tuple
 
 def latin_bag(key: str, lang: LanguageModule, cross_script: bool = False) -> tuple[str, ...] | None:
     """V7e (exact words) or, with ``cross_script``, the V9 form compared with Hangul readings."""
+    key = name_part(key)
     if HANGUL_RE.search(key):
         return None
     return _canon([_latin_word(word) for word in re.findall(r"[a-z0-9]+", key)], lang, cross_script)
@@ -238,6 +289,7 @@ def hangul_bags(key: str, lang: LanguageModule) -> tuple[tuple[str, ...], ...]:
     (서울시립 = 서울 + 시립, not 서울시 + 립).
     """
     glossary = lang.glossary
+    key = name_part(key)
     if not mostly_hangul(key) or DATE_RE.search(key) or re.search(r"[a-z]", key):
         return ()
     text = key.replace(" ", "")

@@ -19,7 +19,7 @@ import random
 import re
 import unicodedata
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from giye.normalize import venue_names
@@ -75,6 +75,7 @@ class Fragment:
     text: str
     kind: str
     place: Place | None = None
+    key: str = ""
 
 
 @dataclass
@@ -87,6 +88,7 @@ class ParsedVenue:
     norm: str
     fragments: list[Fragment]
     alias_pairs: list[tuple[str, str]]
+    qualifier: str = ""
 
 
 @dataclass
@@ -204,6 +206,29 @@ def bracketed_pairs(venue_norm: str) -> list[tuple[str, str]]:
 
 def _mostly_hangul(text: str) -> bool:
     return venue_names.mostly_hangul(text)
+
+
+def place_qualifier(fragments: list[Fragment]) -> str:
+    """N-1: the row's place for a generic name: the first city, else the first country, else ""."""
+    places = [fragment.place for fragment in fragments if fragment.kind == "place" and fragment.place]
+    city = next((place.city for place in places if place.city), "")
+    if city:
+        return city.casefold()
+    return next((place.country for place in places if place.country), "")
+
+
+def entity_key(text: str, qualifier: str, lang: LanguageModule) -> str:
+    """V4 key (with V7a–d), qualified by the row's place when the name is generic words only.
+
+    N-1: ``Museum of Art, Busan`` and ``Museum of Art, Daegu`` are two
+    institutions. A name of generic venue words names no particular place, so
+    the place written in the same row is part of its key. Without a place the
+    key is the bare name. A name with a proper word is never qualified.
+    """
+    key = institution_key(text, lang)
+    if qualifier and venue_names.generic_name(key, lang):
+        return f"{key}{venue_names.PLACE_SEP}{qualifier}"
+    return key
 
 
 def _latin_text(text: str) -> bool:
@@ -352,13 +377,22 @@ def parse_venue(row: dict, lang: LanguageModule) -> ParsedVenue:
     """V2 split and V3 classification of one activity row's venue."""
     venue_norm = norm_text(row.get("venue"))
     pieces, alias_pairs = split_venue(venue_norm)
+    fragments = classify_fragments(pieces, lang)
+    qualifier = place_qualifier(fragments)
+    fragments = [
+        replace(fragment, key=entity_key(fragment.text, qualifier, lang))
+        if fragment.kind in {"institution", "funder"}
+        else fragment
+        for fragment in fragments
+    ]
     return ParsedVenue(
         activity_id=row["activity_id"],
         ledger_id=row["ledger_id"],
         raw=row.get("venue") or "",
         norm=venue_norm,
-        fragments=classify_fragments(pieces, lang),
+        fragments=fragments,
         alias_pairs=alias_pairs,
+        qualifier=qualifier,
     )
 
 
@@ -393,7 +427,7 @@ def _audit_fragment_line(
         detail = ", ".join(value for value in (place.city, place.country, place.kr_region) if value)
         return f"`{_audit_clean(fragment.text)}` → place ({detail})"
     if fragment.kind in {"institution", "funder"}:
-        root = root_for_key[institution_key(fragment.text, lang)]
+        root = root_for_key[fragment.key]
         entity = entity_by_root[root]
         return (
             f"`{_audit_clean(fragment.text)}` → {fragment.kind} → "
@@ -515,7 +549,7 @@ def _audit_code_like_lines(
                 continue
             if not code_like.fullmatch(fragment.text.strip()) and not lang.gazetteer.is_admin1_name(fragment.text):
                 continue
-            key = institution_key(fragment.text, lang)
+            key = fragment.key
             item = suspicious[key]
             spellings = item["spellings"]
             assert isinstance(spellings, Counter)
@@ -658,7 +692,7 @@ def _merge_v7e(
     """V7e: Latin keys with one word-bag join the lexicographically first key."""
     by_bag: dict[tuple, list[str]] = defaultdict(list)
     for key in keys:
-        bag = venue_names.latin_bag(key, lang)
+        bag = None if venue_names.is_qualified(key) else venue_names.latin_bag(key, lang)
         if bag:
             by_bag[bag].append(key)
     for _bag, members in sorted(by_bag.items()):
@@ -689,11 +723,13 @@ def _v8_sites(
         ]
         for fragment in row.fragments:
             if fragment.kind == "institution" and cities:
-                key_cities[institution_key(fragment.text, lang)][cities[0]] += 1
+                key_cities[fragment.key][cities[0]] += 1
     acronym_sites: dict[str, set[str]] = defaultdict(set)
     branch_sites: dict[str, set[str]] = defaultdict(set)
     acronyms = venue_names.known_acronyms(spell_rows)
     for key in keys:
+        if venue_names.is_qualified(key):
+            continue
         acronym, place = venue_names.acronym_place_parent(key, list(spell_rows[key]), lang, acronyms)
         if acronym:
             acronym_sites[acronym].add(venue_names.city_name(place, lang))
@@ -723,6 +759,8 @@ def _join_v8_key(
     acronyms: set[str],
 ) -> None:
     """V8: a room joins its parent; an acronym plus its only city joins the acronym."""
+    if venue_names.is_qualified(key):
+        return  # a generic name qualified by its place has no parent or site
     parent = venue_names.hangul_part_parent(key, lang) or venue_names.latin_part_parent(key, lang)
     if parent and parent in keys and venue_names.part_parent_ok(parent, lang):
         _join_unless_office(union_find, lang, merges, "V8", parent, key)
@@ -777,12 +815,12 @@ def _merge_v9(
     """V9: join a Hangul reading to Latin bags only when the component has one reading."""
     latin_roots: dict[tuple, set[str]] = defaultdict(set)
     for key in keys:
-        bag = venue_names.latin_bag(key, lang, cross_script=True)
+        bag = None if venue_names.is_qualified(key) else venue_names.latin_bag(key, lang, cross_script=True)
         if bag:
             latin_roots[bag].add(key)
     # The first Hangul reading that matches anything decides (현대 = contemporary before modern).
     edges: list[tuple[str, str, tuple]] = []
-    for key in sorted(keys):
+    for key in sorted(key for key in keys if not venue_names.is_qualified(key)):
         for bag in venue_names.hangul_bags(key, lang):
             hits = sorted({union_find.find(latin) for latin in latin_roots.get(bag, ())})
             if hits:
@@ -863,7 +901,7 @@ def _index_named_fragments(
         for fragment in row.fragments:
             if fragment.kind not in {"institution", "funder"}:
                 continue
-            key = institution_key(fragment.text, lang)
+            key = fragment.key
             key_kinds[key].add(fragment.kind)
             marker = key, fragment.text
             if marker not in seen:
@@ -884,7 +922,8 @@ def _alias_candidates(
             left_fragment, right_fragment = classify_fragment(left, lang), classify_fragment(right, lang)
             if left_fragment.kind != "institution" or right_fragment.kind != "institution":
                 continue
-            left_key, right_key = institution_key(left, lang), institution_key(right, lang)
+            left_key = entity_key(left, row.qualifier, lang)
+            right_key = entity_key(right, row.qualifier, lang)
             if left_key == right_key or left_key not in key_kinds or right_key not in key_kinds:
                 continue
             candidate_artists[tuple(sorted((left_key, right_key)))].add(row.ledger_id)
@@ -1011,7 +1050,7 @@ def _collect_entity_use(
         for fragment in row.fragments:
             if fragment.kind not in {"institution", "funder"}:
                 continue
-            key = institution_key(fragment.text, lang)
+            key = fragment.key
             if fragment.kind == "institution" and chosen_institution is None:
                 chosen_institution = key
             root = root_for_key[key]
