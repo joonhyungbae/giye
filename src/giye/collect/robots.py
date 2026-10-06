@@ -109,7 +109,7 @@ _HEX = frozenset("0123456789abcdefABCDEF")
 
 # (origin, user-agent) → rules for this process. Unreachable stays a disallow
 # until the process ends; the next run tries again.
-_cache: dict[tuple[str, str], OriginRules] = {}
+_cache: dict[tuple[str, str, bool], OriginRules] = {}
 
 
 class RobotsRefused(Exception):
@@ -207,6 +207,7 @@ def decide(
     get=None,
     session=None,
     use_cache: bool = True,
+    tls_fallback: bool = False,
 ) -> Verdict:
     """Return the robots verdict for `url` under `user_agent`.
 
@@ -214,15 +215,19 @@ def decide(
     is omitted, robots.txt is fetched with redirects disabled so this function
     can stop at five hops. The fetch of robots.txt itself does not go through
     a caller's session wrapper: pass a plain session, not one that calls
-    decide() again.
+    decide() again. ``tls_fallback`` allows the default fetch one retry with
+    certificate checking off (``[collect] tls_fallback``); it is part of the
+    cache key, so a verdict reached through the retry is not reused without it.
     """
     origin = origin_of(url)
     if origin is None:
         return Verdict(VERDICT_UNREACHABLE, False, error="bad_url")
-    key = (origin, user_agent)
+    key = (origin, user_agent, bool(tls_fallback))
     rules = _cache.get(key) if use_cache else None
     if rules is None:
-        rules = _fetch_rules(origin, user_agent, timeout=timeout, get=get, session=session)
+        rules = _fetch_rules(
+            origin, user_agent, timeout=timeout, get=get, session=session, tls_fallback=tls_fallback
+        )
         if use_cache:
             _cache[key] = rules
     if rules.kind == "unavailable":
@@ -462,13 +467,19 @@ def install_document_guard(page: Any) -> None:
     page._giye_document_guard = True
 
 
-def _fetch_rules(origin: str, user_agent: str, *, timeout: float, get, session) -> OriginRules:
+def _fetch_rules(
+    origin: str, user_agent: str, *, timeout: float, get, session, tls_fallback: bool = False
+) -> OriginRules:
     current = f"{origin}/robots.txt"
     seen: set[str] = set()
     # Any hop may be the one that needed the certificate retry. Remember it
     # even when a later hop verifies cleanly.
     tls_unverified = False
-    fetcher = get or (lambda fetch_url, timeout: _default_get(fetch_url, timeout, session=session, user_agent=user_agent))
+    fetcher = get or (
+        lambda fetch_url, timeout: _default_get(
+            fetch_url, timeout, session=session, user_agent=user_agent, tls_fallback=tls_fallback
+        )
+    )
 
     def noted(response_or_exc: object) -> None:
         """Remember a hop that was fetched only after TLS verification was turned off."""
@@ -807,16 +818,32 @@ def _is_fetch_failure(exc: BaseException) -> bool:
     return isinstance(exc, requests.RequestException)
 
 
-def _default_get(url: str, timeout: float, *, session, user_agent: str):
+def unverified_call(send: Any, *args: Any, **kwargs: Any) -> Any:
+    """Call ``send(*args, verify=False, **kwargs)`` once, with ``InsecureRequestWarning`` silenced for that call only.
+
+    Why: the opt-in certificate retry ([collect] tls_fallback) must not turn
+    the warning off for the whole process, where it would also hide an
+    unverified request made by any other code.
+    """
+    import warnings
+
+    import urllib3
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", urllib3.exceptions.InsecureRequestWarning)
+        return send(*args, verify=False, **kwargs)
+
+
+def _default_get(url: str, timeout: float, *, session, user_agent: str, tls_fallback: bool = False):
     """GET one robots.txt hop. Redirects are not followed here.
 
-    A TLS verification failure is retried once with verification off. The
-    returned object has tls_unverified set when that retry was used. If the
-    retry also fails, the exception carries the same flag and the caller
-    records an unreachable file.
+    With ``tls_fallback`` (``[collect] tls_fallback``, default off) a TLS
+    verification failure is retried once with verification off. The returned
+    object has tls_unverified set when that retry was used. If the retry also
+    fails, the exception carries the same flag and the caller records an
+    unreachable file. Without it the certificate failure is a network failure.
     """
     import requests
-    import urllib3
 
     own_session = session is None
     http = session or requests.Session()
@@ -825,14 +852,8 @@ def _default_get(url: str, timeout: float, *, session, user_agent: str):
 
     def attempt(verify: bool) -> SimpleNamespace:
         """GET robots.txt once. ``verify`` is TLS certificate checking. Returns the capped response."""
-        response = http.get(
-            url,
-            timeout=timeout,
-            allow_redirects=False,
-            stream=True,
-            verify=verify,
-            headers={"User-Agent": user_agent},
-        )
+        options = {"timeout": timeout, "allow_redirects": False, "stream": True, "headers": {"User-Agent": user_agent}}
+        response = http.get(url, verify=True, **options) if verify else unverified_call(http.get, url, **options)
         try:
             chunks: list[bytes] = []
             total = 0
@@ -861,8 +882,9 @@ def _default_get(url: str, timeout: float, *, session, user_agent: str):
     try:
         return attempt(True)
     except requests.exceptions.SSLError:
+        if not tls_fallback:
+            raise
         # Same certificate retry as the evidence keeper: judge the file, not the cert.
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         try:
             return attempt(False)
         except Exception as exc:

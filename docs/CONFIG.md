@@ -31,6 +31,7 @@ Only `[archive] name` is required to load the file. A command that fetches (`col
 | `min_delay_s` | number | `2.0` | no | `giye.collect.fetch` (per-host delay). Must be `>= 0`. | `0.0` |
 | `timeout_s` | number | `45.0` | no | `giye.collect.fetch`. Must be `> 0`. | `20` |
 | `robots_timeout_s` | number | `20.0` | no | `giye.collect.fetch`. Must be `> 0`. | `10` |
+| `tls_fallback` | bool | `false` | no | `giye.collect.fetch` and `giye.collect.robots`. When true, a request (page or robots.txt) that fails certificate verification is retried once with verification off, and the snapshot records `tls_unverified` (`robots_tls_unverified` for robots.txt). The insecure-request warning is silenced for that one call only. When false, a certificate failure is a network failure. | `true` |
 | `collector_modules` | array of paths, or one path string | `[]` | no | `giye.collect.base` imports each path relative to the config file. Empty means `giye collect` exits 2. | `["collectors.py"]` |
 
 ### `[collect.offline_roots]`

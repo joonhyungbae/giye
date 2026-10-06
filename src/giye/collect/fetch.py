@@ -35,9 +35,13 @@ refusal is the same whoever asked (docs/RULES.md, collection policy). The decisi
   but its ``Retry-After`` is honoured the same way.
 - A robots.txt redirect onto a host whose terms forbid collection is not
   followed or sent; the file is unavailable, as for any other 4xx.
-- A certificate failure is retried once with verification off. The page result carries
-  ``tls_unverified``. When the robots.txt fetch needed that retry, ``robots_tls_unverified``
-  is set as well. The path verdict does not depend on the flag.
+- A certificate failure fails the request unless ``[collect] tls_fallback`` is true
+  (default false). With the flag on, that one request is retried once with verification
+  off; ``InsecureRequestWarning`` is silenced only around that call, never for the
+  process. The page result then carries ``tls_unverified``, and when the robots.txt
+  fetch needed the retry, ``robots_tls_unverified`` is set as well. The path verdict
+  does not depend on the flag. Why opt-in: an unverified answer may come from anyone
+  between the archive and the host, so keeping it is the archive's explicit choice.
 - The configured User-Agent is sent on every request, including robots.txt. It must start
   with the crawler's product token and contain a contact URL with a host or an e-mail
   address (``require_contact``). A contact on a reserved documentation domain such as
@@ -83,6 +87,7 @@ from giye.collect.robots import (
     _location,
     _product_token,
     decide,
+    unverified_call,
 )
 from giye.collect.snapshot import MAX_BYTES, SnapshotStore
 from giye.config import ConfigError
@@ -377,8 +382,11 @@ class Fetcher:
         snapshot_root: Path | None = None,
         prefer_frame: str = "",
         allow_missing: bool = False,
+        tls_fallback: bool = False,
     ) -> None:
         self.user_agent = require_contact(user_agent)
+        # Opt-in certificate retry ([collect] tls_fallback); see the module docstring.
+        self.tls_fallback = bool(tls_fallback)
         self.min_delay_s = float(min_delay_s)
         self.timeout_s = float(timeout_s)
         self.robots_timeout_s = float(robots_timeout_s)
@@ -540,8 +548,8 @@ class Fetcher:
         """One robots.txt hop for ``decide``. Redirects are not followed here.
 
         An offline prefix is read from that directory. A missing file is a 404, which
-        RFC 9309 treats as unavailable (allowed). A TLS failure is retried once; the
-        response or the exception then carries ``tls_unverified``.
+        RFC 9309 treats as unavailable (allowed). With ``tls_fallback`` a TLS failure is
+        retried once; the response or the exception then carries ``tls_unverified``.
         """
         offline = self._offline_root(url)
         if offline is not None:
@@ -661,12 +669,11 @@ class Fetcher:
                 self._note_retry_after(netloc, response)
                 return response, False
             except requests.exceptions.SSLError:
-                import urllib3
-
-                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+                if not self.tls_fallback:
+                    raise
                 try:
-                    response = send(
-                        url, timeout=timeout, headers=headers, allow_redirects=False, verify=False, **extra
+                    response = unverified_call(
+                        send, url, timeout=timeout, headers=headers, allow_redirects=False, **extra
                     )
                 except requests.RequestException as exc:
                     exc.tls_unverified = True  # type: ignore[attr-defined]
@@ -902,4 +909,5 @@ def fetcher_from_config(config: object, *, from_snapshots: bool = False, allow_m
         from_snapshots=from_snapshots,
         snapshot_root=Path(raw) if from_snapshots and raw is not None else None,
         allow_missing=allow_missing,
+        tls_fallback=bool(getattr(config, "tls_fallback", False)),
     )

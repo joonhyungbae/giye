@@ -17,6 +17,9 @@ field = "../data/field/field.toml"
 # helper modules beside them are imported by these files and are not listed.
 [collect]
 user_agent = "GiyeArchiveBot/0.2 (+https://giye.org)"
+# Some programme sites serve expired or incomplete certificate chains. The register keeps
+# those pages with tls_unverified recorded on the snapshot, as it did before the flag existed.
+tls_fallback = true
 collector_modules = [
   "../data/collectors/nemaf.py",
   "../data/collectors/njp.py",

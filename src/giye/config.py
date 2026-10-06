@@ -176,6 +176,10 @@ class Config:
     min_delay_s: float = 2.0
     timeout_s: float = 45.0
     robots_timeout_s: float = 20.0
+    # Retry a request once without certificate checking after a TLS failure
+    # (giye.collect.fetch). Off by default: an unverified answer is kept only
+    # when the archive chose that.
+    tls_fallback: bool = False
     offline_roots: tuple[tuple[str, Path], ...] = ()
     collector_modules: tuple[str, ...] = ()
     # Extra E2 event patterns (frame-code prefix → regex). Merged after the field
@@ -316,7 +320,15 @@ KNOWN_TABLES = frozenset(
 # Keys of ``[collect]``. A misspelt key (``user-agent``, ``min_delay``) would
 # otherwise leave the default in force without a word.
 COLLECT_KEYS = frozenset(
-    {"user_agent", "min_delay_s", "timeout_s", "robots_timeout_s", "collector_modules", "offline_roots"}
+    {
+        "user_agent",
+        "min_delay_s",
+        "timeout_s",
+        "robots_timeout_s",
+        "collector_modules",
+        "offline_roots",
+        "tls_fallback",
+    }
 )
 
 
@@ -414,6 +426,7 @@ def load(path: str | Path) -> Config:
         min_delay_s=_seconds(collect, "min_delay_s", 2.0, zero_ok=True),
         timeout_s=_seconds(collect, "timeout_s", 45.0, zero_ok=False),
         robots_timeout_s=_seconds(collect, "robots_timeout_s", 20.0, zero_ok=False),
+        tls_fallback=_tls_fallback(collect),
         offline_roots=_offline_roots(root, collect),
         collector_modules=_collector_modules(collect),
         event_patterns=_event_patterns(resolve),
@@ -506,6 +519,13 @@ def _venue_name_rules(value: object) -> str:
         return ",".join(value)
     if not isinstance(value, str):
         raise TypeError("[normalize] venue_name_rules must be a string or a list of strings")
+    return value
+
+
+def _tls_fallback(collect: dict) -> bool:
+    value = collect.get("tls_fallback", False)
+    if not isinstance(value, bool):
+        raise TypeError("[collect] tls_fallback must be true or false")
     return value
 
 

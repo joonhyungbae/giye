@@ -153,22 +153,57 @@ def test_robots_connection_error_refuses_the_page():
     assert [call["url"] for call in session.calls] == ["https://example.org/robots.txt"]
 
 
-def test_tls_failure_retries_unverified_and_sets_the_flag():
-    def handler(url, **kwargs):
-        if url.endswith("/robots.txt"):
-            return FakeResponse(200, "User-agent: *\nAllow: /\n", url, "text/plain")
-        if kwargs.get("verify", True):
-            raise requests.exceptions.SSLError("expired certificate")
-        return FakeResponse(200, "<p>lenient</p>", url)
+def _tls_handler(url, **kwargs):
+    if url.endswith("/robots.txt"):
+        return FakeResponse(200, "User-agent: *\nAllow: /\n", url, "text/plain")
+    if kwargs.get("verify", True):
+        raise requests.exceptions.SSLError("expired certificate")
+    return FakeResponse(200, "<p>lenient</p>", url)
 
-    session = FakeSession(handler)
-    fetcher = Fetcher(UA, min_delay_s=0, session=session)  # type: ignore[arg-type]
+
+def test_tls_failure_retries_unverified_and_sets_the_flag():
+    import warnings
+
+    session = FakeSession(_tls_handler)
+    fetcher = Fetcher(UA, min_delay_s=0, session=session, tls_fallback=True)  # type: ignore[arg-type]
     page = fetcher.get("https://example.org/page")
     assert page.tls_unverified is True
     assert "lenient" in page.text
     page_calls = [call for call in session.calls if not call["url"].endswith("/robots.txt")]
     assert "verify" not in page_calls[0] or page_calls[0]["verify"] is True
     assert page_calls[1]["verify"] is False
+    # The insecure-request warning is silenced for that call only, not for the process.
+    import urllib3
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("default")
+        warnings.warn("unverified", urllib3.exceptions.InsecureRequestWarning, stacklevel=1)
+    assert [item.category for item in caught] == [urllib3.exceptions.InsecureRequestWarning]
+
+
+def test_tls_failure_is_not_retried_without_the_flag():
+    session = FakeSession(_tls_handler)
+    fetcher = Fetcher(UA, min_delay_s=0, session=session)  # type: ignore[arg-type]
+    with pytest.raises(requests.exceptions.SSLError):
+        fetcher.get("https://example.org/page")
+    page_calls = [call for call in session.calls if not call["url"].endswith("/robots.txt")]
+    assert len(page_calls) == 1
+
+
+def test_tls_fallback_config_flag(tmp_path):
+    from giye.collect.fetch import fetcher_from_config
+    from giye.config import load
+
+    path = tmp_path / "giye.toml"
+    path.write_text(f'[archive]\nname = "t"\n[collect]\nuser_agent = "{UA}"\n', encoding="utf-8")
+    assert fetcher_from_config(load(path)).tls_fallback is False
+    path.write_text(
+        f'[archive]\nname = "t"\n[collect]\nuser_agent = "{UA}"\ntls_fallback = true\n', encoding="utf-8"
+    )
+    assert fetcher_from_config(load(path)).tls_fallback is True
+    path.write_text('[archive]\nname = "t"\n[collect]\ntls_fallback = "yes"\n', encoding="utf-8")
+    with pytest.raises((TypeError, ValueError)):
+        load(path)
 
 
 def test_per_host_delay_does_not_apply_across_hosts():

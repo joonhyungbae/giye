@@ -385,10 +385,27 @@ class TlsRetryTests(unittest.TestCase):
                     raise requests.exceptions.SSLError("expired")
                 return Resp()
 
-        verdict = decide("https://example.test/secret", UA, session=Sess(), use_cache=False)
+        verdict = decide("https://example.test/secret", UA, session=Sess(), use_cache=False, tls_fallback=True)
         self.assertEqual(verdict.verdict, VERDICT_DISALLOWED)
         self.assertTrue(verdict.tls_unverified)
         self.assertFalse(verdict.permits)
+
+    def test_without_the_flag_a_tls_failure_is_unreachable_and_not_retried(self) -> None:
+        import requests
+
+        class Sess:
+            def __init__(self) -> None:
+                self.verified: list[bool] = []
+
+            def get(self, url, timeout, allow_redirects, stream, verify, headers):
+                self.verified.append(verify)
+                raise requests.exceptions.SSLError("expired")
+
+        session = Sess()
+        verdict = decide("https://example.test/secret", UA, session=session, use_cache=False)
+        self.assertEqual(verdict.verdict, VERDICT_UNREACHABLE)
+        self.assertFalse(verdict.permits)
+        self.assertEqual(session.verified, [True])
 
 
 class _Frame(RosterCollector):
