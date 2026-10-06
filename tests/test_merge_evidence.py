@@ -142,6 +142,14 @@ def test_public_ledger_merge_refuses_free_text_and_unknown_rules(tmp_path):
     assert _live(ledger) == {"LED-a"}
 
 
+def test_public_ledger_merge_refuses_a_team_and_a_person(tmp_path):
+    """Review round 5: ``Ledger.merge`` merged a team into a person with a valid-looking H."""
+    ledger = _pair(tmp_path, names=(("김하늘", "Kim Haneul"), ("노을 스튜디오", "Noeul Studio")))
+    with pytest.raises(GiyeError, match="T1"):
+        ledger.merge("LED-a", "LED-b", evidence="H a b c 2026-01-01", rule="H")
+    assert _live(ledger) == {"LED-a", "LED-b"}
+
+
 def test_cli_refuses_an_unchecked_e1_on_the_demo(tmp_path, capsys):
     dest = _copy(tmp_path)
     config = str(dest / "giye.toml")

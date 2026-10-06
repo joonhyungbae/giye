@@ -2,9 +2,10 @@
 """The steps a person decides: the review queue, a merge, and hiding a page.
 
 The pipeline queues a pair it will not merge. These functions record that
-decision on the ledger the resolver already uses. A merge goes through
-``Ledger.merge`` (the dropped ``gy_id`` is retired and redirects) after the
-same team guard automatic merges use. CV files are joined and folded the same
+decision on the ledger the resolver already uses. :func:`merge_people` is the
+one checked merge path; the public ``Ledger.merge`` delegates to it. It runs
+the same team guard automatic merges use, then writes the merge (the dropped
+``gy_id`` is retired and redirects). CV files are joined and folded the same
 way. Every write is a ledger write, so the dated backup already happens there.
 
 A merge a person makes keeps the same documentary guarantee as an automatic

@@ -170,21 +170,30 @@ class Ledger:
         existing += [row.get("gy_id", "") for row in self.read("gy_retired")]
         return allocate_gy_id(existing, prefix=self._prefix)
 
-    def merge(self, kept: str, dropped: str | Iterable[str], *, evidence: str, rule: str) -> None:
-        """Absorb ``dropped`` into ``kept`` after checking the evidence against the ledger.
+    def merge(
+        self,
+        kept: str,
+        dropped: str | Iterable[str],
+        *,
+        evidence: str,
+        rule: str,
+        override_distinct: bool = False,
+    ) -> None:
+        """Absorb ``dropped`` into ``kept`` after the same checks as a manual merge.
 
-        This is the public merge. ``evidence`` must be a merge evidence string
-        (``E1``-``E4``, ``X1+E1``-``X1+E4`` with a citation, or ``H`` with a
-        reason and a date), ``rule`` must be the code that string names, and
-        the cited evidence must hold on this ledger for every dropped id
-        (``giye.resolve.decide.verify_merge_evidence``). Free text, an unknown
-        rule id, or a citation the data do not bear out is refused with
-        ``GiyeError``. Why: a stored ``E1`` tells a reader that a shared
-        website was checked, so a label nobody checked must not be written.
+        This is the public merge, and it has one path:
+        ``giye.resolve.decide.merge_people`` for every dropped id. That path
+        checks the evidence form and checks it against the ledger
+        (``verify_merge_evidence``), refuses a team and a person (T1), and
+        refuses a pair a person decided ``distinct`` unless
+        ``override_distinct`` is set, in which case the stored evidence and
+        the queue item record the override. ``rule`` must be the code the
+        evidence string names. Why one path: a second entry point with fewer
+        checks is how a guarantee stated in docs/RULES.md stops holding.
         """
         # Imported here: giye.resolve imports this module.
         from giye.config import GiyeError
-        from giye.resolve.decide import verify_merge_evidence
+        from giye.resolve.decide import check_merge_evidence, merge_people
 
         if not isinstance(evidence, str) or not evidence.strip():
             raise ValueError("merge refused without an evidence string")
@@ -193,11 +202,11 @@ class Ledger:
         drop_ids = _drop_ids(dropped)
         if not drop_ids:
             raise ValueError("merge needs at least one dropped ledger id")
+        code = check_merge_evidence(self, evidence)
+        if code != rule.strip():
+            raise GiyeError(f"merge refused: rule {rule.strip()!r} is not the rule the evidence names ({code})")
         for item in drop_ids:
-            code = verify_merge_evidence(self, kept, item, evidence)
-            if code != rule.strip():
-                raise GiyeError(f"merge refused: rule {rule.strip()!r} is not the rule the evidence names ({code})")
-        self._merge_rows(kept, drop_ids, evidence=evidence, rule=rule)
+            merge_people(self, kept, item, evidence=evidence, override_distinct=override_distinct)
 
     def _merge_rows(self, kept: str, dropped: str | Iterable[str], *, evidence: str, rule: str) -> None:
         """Absorb ``dropped`` into ``kept`` without checking what the evidence says.
@@ -205,7 +214,7 @@ class Ledger:
         Internal path for callers that have already decided the merge under a
         rule: the automatic resolver (its E1-E4 and X1 checks produce the
         evidence string) and ``giye.resolve.decide.merge_people`` (which ran
-        ``verify_merge_evidence``). Moves activities, frame memberships and CV
+        ``verify_merge_evidence`` and the T1 and decided-distinct guards). Moves activities, frame memberships and CV
         sources onto ``kept``, retires every dropped ``gy_id`` that ``kept``
         does not adopt, and points older retirements that landed on a dropped
         row at ``kept``. ``evidence`` is required: an empty string is not a

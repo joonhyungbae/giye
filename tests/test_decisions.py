@@ -251,3 +251,36 @@ def test_merge_over_a_distinct_decision_needs_the_override(tmp_path: Path):
     after = next(row for row in ledger.read("review_queue") if row["queue_id"] == item["queue_id"])
     assert "decided=different" not in after["detail"]
     assert "decided=same" in after["detail"] and "overrides distinct decision of " in after["detail"]
+
+
+def test_public_ledger_merge_honours_a_distinct_decision(tmp_path: Path):
+    """Review round 5: ``Ledger.merge`` merged a pair decided distinct and left the queue saying so."""
+    import re
+
+    from giye.config import GiyeError
+    from giye.resolve.candidates import review_id_set
+    from giye.resolve.decide import decide_queue
+
+    dest = _copy(tmp_path)
+    ledger = Ledger.open(load(dest / "giye.toml"))
+    item = next(
+        row
+        for row in ledger.read("review_queue")
+        if row["status"] == "open" and row["reason"] == "possible_same_person" and "서지우" in row["detail"]
+    )
+    decide_queue(ledger, item["queue_id"], "distinct")
+    left = item["ledger_id"]
+    right = min(review_id_set(item) - {left})
+    evidence = "H x y z 1900-01-01"
+    with pytest.raises(GiyeError, match="distinct"):
+        ledger.merge(left, right, evidence=evidence, rule="H")
+    assert {row["ledger_id"] for row in ledger.read("artists")} >= {left, right}
+
+    ledger.merge(left, right, evidence=evidence, rule="H", override_distinct=True)
+    live = {row["ledger_id"]: row for row in ledger.read("artists")}
+    assert len({left, right} & set(live)) == 1
+    kept = live[left] if left in live else live[right]
+    assert re.search(r"overrides distinct decision of \d{4}-\d{2}-\d{2}", kept["reviewer_note"])
+    after = next(row for row in ledger.read("review_queue") if row["queue_id"] == item["queue_id"])
+    assert "decided=different" not in after["detail"]
+    assert "overrides distinct decision of " in after["detail"] and "decided=same" in after["detail"]
