@@ -228,6 +228,30 @@ def _artist_class(artist: dict, language: LanguageModule | None, words: re.Patte
     )
 
 
+def _hangul_spellings(*values: str) -> set[str]:
+    """Compact Hangul spellings (two syllables or more) of the given names and pipe-separated alias lists."""
+    found: set[str] = set()
+    for value in values:
+        for part in split_pipe(value or "") or [value or ""]:
+            compact = hangul_compact(part)
+            if len(compact) >= 2:
+                found.add(compact)
+    return found
+
+
+def hangul_contradicts(name_ko: str, name_en: str, aliases: str, artist: dict) -> bool:
+    """Both sides carry a Hangul name and no Hangul spelling is shared.
+
+    Why: two different Hangul names can share one romanisation (``윤서정`` and
+    ``윤서중`` are both ``Seojung Yoon``), so a Latin key is not a name match
+    when the Hangul names say otherwise. Spaces do not count (``김 하늘`` is
+    ``김하늘``), and a stored alias is a spelling of the row.
+    """
+    incoming = _hangul_spellings(name_ko, name_en, aliases)
+    stored = _hangul_spellings(artist.get("name_ko") or "", artist.get("name_en") or "", artist.get("aliases") or "")
+    return bool(incoming and stored and not incoming & stored)
+
+
 def _member_list(artist: dict, language: LanguageModule | None = None) -> bool:
     """A group row whose aliases name two or more people."""
     if person_like(artist.get("name_ko") or "", language):
@@ -331,6 +355,12 @@ def match_artist(
     candidates = _same_key_rows(artists, name_ko, name_en, language)
     if not candidates:
         return Attachment(None, None, ())
+    # A Latin key shared by two different Hangul names is not the same name
+    # (A1–A4). The pair is queued, not joined.
+    contradicted = [artist for artist in candidates if hangul_contradicts(name_ko, name_en, aliases, artist)]
+    candidates = [artist for artist in candidates if artist not in contradicted]
+    if not candidates:
+        return Attachment(None, None, tuple(artist["ledger_id"] for artist in contradicted), "hangul names differ")
     words = field.compiled_team_words()
     incoming_latin = _latin_only_personal(name_ko, name_en, language, words)
     family = frame_family(frame_code, field)
@@ -430,12 +460,15 @@ def names_meet(
 ) -> bool:
     """True when a roster name and a stored row name one person by spelling (A6 guard).
 
-    Any of: the same Hangul syllables (spaces removed), a shared attachment
-    name key (:func:`name_keys`, stored aliases included), or a shared
+    Two rows whose Hangul names differ never meet (:func:`hangul_contradicts`).
+    Otherwise any of: the same Hangul syllables (spaces removed), a shared
+    attachment name key (:func:`name_keys`, stored aliases included), or a shared
     romanisation key of the language module (X1, so ``윤가온`` meets
     ``Gaon Yoon``). This is the overlap the website rules require; it is not
     a reason to join on its own.
     """
+    if hangul_contradicts(name_ko, name_en, aliases, artist):
+        return False
     incoming = [value for value in (name_ko, name_en, *split_pipe(aliases)) if (value or "").strip()]
     stored = [
         value

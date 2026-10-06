@@ -175,3 +175,41 @@ def test_shared_website_needs_meeting_names_unless_a_side_is_a_group(tmp_path: P
 def test_hangul_romanisation_keys_ignore_spaces() -> None:
     language = default_language()
     assert language.name_keys("김 하늘") == language.name_keys("김하늘") != set()
+
+
+# --- A shared English name does not override differing Hangul names ----------
+
+
+def test_a2_does_not_join_two_different_hangul_names_with_one_english_name(tmp_path: Path) -> None:
+    ledger = _two_programmes(tmp_path, _row("윤서정", "Seojung Yoon"), _row("윤서중", "Seojung Yoon"))
+    artists = ledger.read("artists")
+    assert sorted(row["name_ko"] for row in artists) == ["윤서정", "윤서중"]
+    assert all(not row["aliases"] for row in artists)
+    [item] = ledger.read("review_queue")
+    assert item["detail"].endswith("(hangul names differ)")
+
+
+def test_a1_does_not_join_two_different_hangul_names_in_one_series(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    ledger.apply_roster("NORTH-2019", [_row("이하늘", "Haneul Lee")], task="collect")
+    ledger.apply_roster("NORTH-2021", [_row("리하늘", "Haneul Lee")], task="collect")
+    assert len(ledger.read("artists")) == 2
+    assert _rules(ledger) == ["first", "first"]
+
+
+def test_a1_still_joins_a_stored_hangul_alias(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    ledger.apply_roster("NORTH-2019", [_row("김하늘", "Haneul Kim", aliases="김하눌")], task="collect")
+    ledger.apply_roster("NORTH-2021", [_row("김하눌", "Haneul Kim")], task="collect")
+    assert len(ledger.read("artists")) == 1
+    assert _rules(ledger) == ["first", "A1"]
+
+
+def test_a6_does_not_join_two_different_hangul_names_with_one_english_name(tmp_path: Path) -> None:
+    ledger = _two_programmes(
+        tmp_path,
+        _row("윤서정", "Seojung Yoon", websites=[SITE]),
+        _row("윤서중", "Seojung Yoon", websites=[SITE]),
+    )
+    assert len(ledger.read("artists")) == 2
+    assert _rules(ledger) == ["first", "first"]
