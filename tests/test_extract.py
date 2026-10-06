@@ -1573,6 +1573,8 @@ def test_grounding_venue_reads_a_bracketed_other_script_name():
     text = CvText.of("2019 Example Light Hall group show\n2020 예시빛관 개인전\n2021 Example Dark Hall, Seoul\n", lang)
     # Either form of a name given in two scripts grounds the venue, in either order.
     assert failures({"year": "2019", "venue": "예시빛관 (Example Light Hall), Seoul"}, text) == []
+    # Documented as not checked: the two forms need not read alike, so an
+    # invented outer name with the real one in brackets grounds (MINOR-3).
     assert failures({"year": "2020", "venue": "Example Moon Hall (예시빛관), Seoul"}, text) == []
     # Neither form occurs.
     assert failures({"year": "2019", "venue": "예시별관 (Example Star Hall), Seoul"}, text) == ["venue"]

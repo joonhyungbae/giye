@@ -47,9 +47,16 @@ to an institution that occurs (``Example Culture Center (Imaginary Hall)``),
 because a same-script bracket is not a second form of the name (rule 4) and
 the institution part is the claim; an invented city next to an institution
 that occurs (``Example Art Space, Daegu``), because the city is not checked;
-and an invented title at a venue and year that occur (G-T reads the title of
-an empty-venue row only). These are properties of the institution-part rule,
-not oversights.
+an invented title at a venue and year that occur (G-T reads the title of
+an empty-venue row only); an invented name with the real other-script name
+in brackets (``Imaginary Kunsthalle (서울시립미술관)``), because rule 4 lets
+either form ground the venue; and whether the year and the venue occur on
+one line, because G-Y and G-V are separate tests. These are properties of the
+institution-part rule, not oversights. Rule 4 does not ask that the two forms
+read as one institution (V9) because it exists for the pairs V9 cannot read:
+a translated name (``국립현대미술관`` / ``National Museum of Modern and
+Contemporary Art``) does not meet its Hangul reading, so the test would hide
+correct rows (final software review, MINOR-3, 2026-10-07).
 
 Why the institution part: a model reading "Venue (City, Country)" or a CV
 line that puts the city on another line writes "Venue, City, Country". Those
