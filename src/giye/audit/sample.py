@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Draw a judging sheet from a Giye ledger.
 
-Three frames, one command each (``docs/EVALUATION.md``):
+Four frames, one command each (``docs/EVALUATION.md``):
 
 - ``cv`` — publishable activities whose ``origin`` is ``cv:<source_id>``,
   stratified by ``activity_type``, with the CV snapshot line the title sits on.
@@ -10,6 +10,9 @@ Three frames, one command each (``docs/EVALUATION.md``):
   by the coded rule (``E1``–``E4``, ``X1+E*``) or ``uncoded``.
 - ``venues`` — each V7e, V8, and V9 line in section 7 of ``venue_audit.md``,
   with up to three activity rows for each spelling named on that line.
+- ``attach`` — each roster membership a given attachment rule joined to an
+  existing person (``attach_rule``, ``A2`` by default), with that record's
+  other rosters beside it.
 
 ``--n`` is the size of the whole sheet, not a quota per stratum. Seats are
 Hamilton's largest-remainder method on integer arithmetic, strata ordered by
@@ -19,6 +22,12 @@ and a partial Fisher–Yates draw uses ``random.Random(seed)`` only (not
 contributes all of its rows, or none, does not advance the generator, so a
 census does not depend on draw order. The same seed and the same ledger
 rewrite the same sheet.
+
+``people`` also has a census-plus-sample design (``census-coded``): every
+merge whose rule is coded is on the sheet, and ``--n`` rows are drawn from
+``uncoded`` with the same Fisher–Yates draw. A census stratum carries no
+sampling error, so the coded rules are judged in full and only the merges
+with no stated rule are estimated.
 """
 
 from __future__ import annotations
@@ -50,19 +59,41 @@ _BACKUP = re.compile(r"^(?P<table>.+)-(?P<day>\d{8})-before-merge(?:-(?P<n>\d+))
 _VENUE_SPLIT = {",", "/", "|", "·", ";"}
 _EXAMPLE_CAP = 3
 
+DESIGNS = ("proportional", "census-coded")
+SAMPLED_KINDS = ("cv", "people", "venues", "attach")
 
-def sample_sheet(config: Config, kind: str, n: int, seed: int, out: Path) -> list[dict[str, str]]:
-    """Write ``out`` and return the rows. ``label`` and ``note`` are empty."""
+
+def sample_sheet(
+    config: Config,
+    kind: str,
+    n: int,
+    seed: int,
+    out: Path,
+    *,
+    design: str = "proportional",
+    rule: str = "A2",
+) -> list[dict[str, str]]:
+    """Write ``out`` and return the rows. ``label`` and ``note`` are empty.
+
+    ``design`` is ``proportional`` (every frame) or ``census-coded``
+    (``people`` only). ``rule`` is the attachment rule of the ``attach`` frame.
+    """
     if n < 1:
         raise ValueError("--n must be at least 1")
+    if design not in DESIGNS:
+        raise ValueError(f"design must be one of {', '.join(DESIGNS)}")
+    if design != "proportional" and kind != "people":
+        raise ValueError("--design census-coded applies to the people frame only")
     if kind == "cv":
         rows = _cv_rows(config, n, seed)
     elif kind == "people":
-        rows = _people_rows(config, n, seed)
+        rows = _people_rows(config, n, seed, design)
     elif kind == "venues":
         rows = _venue_rows(config, n, seed)
+    elif kind == "attach":
+        rows = _attach_rows(config, n, seed, rule)
     else:
-        raise ValueError(f"kind must be cv, people, or venues (got {kind})")
+        raise ValueError(f"kind must be cv, people, venues, or attach (got {kind})")
     write_sheet(out, columns_for(kind), rows)
     return rows
 
@@ -200,6 +231,23 @@ def _select(population: list[dict[str, str]], n: int, seed: int) -> list[dict[st
     chosen: list[dict[str, str]] = []
     for name in sorted(grouped):
         chosen.extend(draw(rng, grouped[name], seats.get(name, 0)))
+    return _finish(chosen, seed)
+
+
+def _select_census(population: list[dict[str, str]], n: int, seed: int, sampled: str) -> list[dict[str, str]]:
+    """Every row outside stratum ``sampled``, plus ``n`` rows drawn from it.
+
+    The draw is the same partial Fisher–Yates as the proportional design,
+    on a fresh ``random.Random(seed)``, over the stratum sorted by ``item_id``.
+    """
+    _disambiguate(population)
+    census = [row for row in population if row["stratum"] != sampled]
+    pool = sorted((row for row in population if row["stratum"] == sampled), key=lambda row: row["item_id"])
+    return _finish(census + draw(random.Random(seed), pool, n), seed)
+
+
+def _finish(chosen: list[dict[str, str]], seed: int) -> list[dict[str, str]]:
+    """Stamp the seed, clear ``label`` and ``note``, and sort by stratum and item."""
     for row in chosen:
         row["seed"] = str(seed)
         row["label"] = ""
@@ -303,7 +351,7 @@ def _excerpt(text: str, title: str, year: str) -> str:
     return excerpt
 
 
-def _people_rows(config: Config, n: int, seed: int) -> list[dict[str, str]]:
+def _people_rows(config: Config, n: int, seed: int, design: str = "proportional") -> list[dict[str, str]]:
     artists = {row["ledger_id"]: row for row in _ledger_table(config, "artists")}
     memberships = _rosters(_ledger_table(config, "frame_membership"))
     backups = _backup_index(config.work / "backups")
@@ -333,6 +381,55 @@ def _people_rows(config: Config, n: int, seed: int) -> list[dict[str, str]]:
                     "rule": rule,
                 }
             )
+    if design == "census-coded":
+        return _select_census(population, n, seed, "uncoded")
+    return _select(population, n, seed)
+
+
+def _attach_rows(config: Config, n: int, seed: int, rule: str) -> list[dict[str, str]]:
+    """Memberships whose ``attach_rule`` is ``rule``, each with the record's other rosters.
+
+    The coder judges whether the roster row belongs to the person the record
+    already describes. The record's other memberships (with the rule that
+    put each there) are the evidence shown beside it.
+    """
+    wanted = (rule or "").strip()
+    if not wanted:
+        raise ValueError("--rule must name an attachment rule")
+    artists = {row["ledger_id"]: row for row in _ledger_table(config, "artists")}
+    memberships = _ledger_table(config, "frame_membership")
+    by_person: dict[str, list[dict[str, str]]] = defaultdict(list)
+    for row in memberships:
+        by_person[row.get("ledger_id") or ""].append(row)
+    population: list[dict[str, str]] = []
+    for row in memberships:
+        if (row.get("attach_rule") or "").strip() != wanted:
+            continue
+        ledger_id = row.get("ledger_id") or ""
+        frame_code = row.get("frame_code") or ""
+        person = artists.get(ledger_id, {})
+        others = sorted(
+            f"{other.get('frame_code') or ''} ({(other.get('attach_rule') or '').strip() or 'unrecorded'})"
+            for other in by_person[ledger_id]
+            if other is not row
+        )
+        population.append(
+            {
+                "item_id": f"{ledger_id}/{frame_code}",
+                "kind": "attach",
+                "stratum": wanted,
+                "ledger_id": ledger_id,
+                "gy_id": person.get("gy_id") or "",
+                "name_ko": person.get("name_ko") or "",
+                "name_en": person.get("name_en") or "",
+                "aliases": person.get("aliases") or "",
+                "attach_rule": wanted,
+                "frame_code": frame_code,
+                "source_url": row.get("source_url") or "",
+                "collected_at": row.get("collected_at") or "",
+                "other_rosters": " | ".join(others),
+            }
+        )
     return _select(population, n, seed)
 
 

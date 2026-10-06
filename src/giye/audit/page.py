@@ -116,6 +116,20 @@ _PAGE = """\
       addField(caseEl, "dropped id", [row.dropped_gy_id, row.dropped_ledger_id].filter(Boolean).join(" "));
       addField(caseEl, "dropped rosters", row.dropped_rosters);
       addBlock(caseEl, "evidence", row.evidence);
+    } else if (row.kind === "attach") {
+      addField(caseEl, "person", [row.name_ko, row.name_en, row.gy_id].filter(Boolean).join(" "));
+      addField(caseEl, "aliases", row.aliases);
+      addField(caseEl, "attached roster", row.frame_code + " (" + row.attach_rule + ")");
+      addField(caseEl, "source", row.source_url);
+      addBlock(caseEl, "other rosters", row.other_rosters);
+    } else if (row.kind === "splink") {
+      addField(caseEl, "match probability", row.match_probability);
+      addField(caseEl, "left", [row.left_name_ko, row.left_name_en, row.left_gy_id].filter(Boolean).join(" "));
+      addBlock(caseEl, "left rosters", row.left_rosters);
+      addField(caseEl, "right", [row.right_name_ko, row.right_name_en, row.right_gy_id].filter(Boolean).join(" "));
+      addBlock(caseEl, "right rosters", row.right_rosters);
+      addField(caseEl, "shared editions", row.shared_editions);
+      addField(caseEl, "shared websites", row.shared_websites);
     } else {
       addField(caseEl, "rule", row.rule);
       addField(caseEl, "kept spelling", (row.kept_spelling || "") + " (" + (row.kept_row_count || "") + ")");

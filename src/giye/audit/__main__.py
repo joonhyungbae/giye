@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """``python -m giye.audit`` — sample, score, or serve an accuracy-audit sheet.
 
-    python -m giye.audit sample {cv,people,venues} --config giye.toml --n N --seed S --out sheet.csv
-    python -m giye.audit score sheet.csv --kind {cv,people,venues} [--json]
-    python -m giye.audit page sheet.csv --kind {cv,people,venues} --out page.html
+    python -m giye.audit sample {cv,people,venues,attach} --config giye.toml --n N --seed S --out sheet.csv
+        [--design {proportional,census-coded}] [--rule A2]
+    python -m giye.audit splink --config giye.toml --out splink.csv [--threshold 0.9] [--seed S]
+    python -m giye.audit score sheet.csv --kind {cv,people,venues,attach,splink} [--json]
+    python -m giye.audit page sheet.csv --kind {cv,people,venues,attach,splink} --out page.html
     python -m giye.audit serve sheet.csv --port 5181
 
 The protocol is ``docs/EVALUATION.md``. ``serve`` listens on 127.0.0.1 and
@@ -18,8 +20,9 @@ import sys
 import time
 from pathlib import Path
 
+from giye.audit.linker import THRESHOLD, compare_sheet
 from giye.audit.page import render_page
-from giye.audit.sample import load_config, sample_sheet
+from giye.audit.sample import DESIGNS, SAMPLED_KINDS, load_config, sample_sheet
 from giye.audit.score import format_score, score_sheet
 from giye.audit.serve import serve_sheet
 from giye.audit.sheet import KINDS, read_sheet
@@ -31,12 +34,26 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     sample = sub.add_parser("sample", help="draw a sheet from a ledger")
-    sample.add_argument("kind", choices=KINDS)
+    sample.add_argument("kind", choices=SAMPLED_KINDS)
     sample.add_argument("--config", required=True, type=Path)
     sample.add_argument("--n", required=True, type=int)
     sample.add_argument("--seed", required=True, type=int)
     sample.add_argument("--out", required=True, type=Path)
+    sample.add_argument(
+        "--design",
+        choices=DESIGNS,
+        default="proportional",
+        help="people only: census-coded takes every coded merge and draws --n from uncoded",
+    )
+    sample.add_argument("--rule", default="A2", help="attach only: the attachment rule to sample (default A2)")
     sample.set_defaults(func=_sample)
+
+    linker = sub.add_parser("splink", help="Splink matches the evidence rules did not merge (needs the splink extra)")
+    linker.add_argument("--config", required=True, type=Path)
+    linker.add_argument("--threshold", type=float, default=THRESHOLD)
+    linker.add_argument("--seed", type=int, default=20261006, help="seed for the u-probability pair sample")
+    linker.add_argument("--out", required=True, type=Path)
+    linker.set_defaults(func=_splink)
 
     score = sub.add_parser("score", help="precision and Wilson intervals")
     score.add_argument("sheet", type=Path)
@@ -58,15 +75,23 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.func(args)
-    except (OSError, ValueError, KeyError) as exc:
+    except (OSError, ValueError, KeyError, RuntimeError) as exc:
         print(f"giye audit: {exc}", file=sys.stderr)
         return 2
 
 
 def _sample(args: argparse.Namespace) -> int:
     config = load_config(args.config)
-    rows = sample_sheet(config, args.kind, args.n, args.seed, args.out)
+    rows = sample_sheet(config, args.kind, args.n, args.seed, args.out, design=args.design, rule=args.rule)
     print(f"wrote {len(rows)} {args.kind} rows to {args.out}")
+    return 0
+
+
+def _splink(args: argparse.Namespace) -> int:
+    config = load_config(args.config)
+    rows = compare_sheet(config, args.out, threshold=args.threshold, seed=args.seed)
+    name_only = sum(row["stratum"] == "name_only" for row in rows)
+    print(f"wrote {len(rows)} splink pairs to {args.out} (name_only={name_only} shared={len(rows) - name_only})")
     return 0
 
 

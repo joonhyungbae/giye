@@ -62,13 +62,42 @@ COLUMNS = {
         "kept_examples",
         "joined_examples",
     ],
+    "attach": _COMMON
+    + [
+        "ledger_id",
+        "gy_id",
+        "name_ko",
+        "name_en",
+        "aliases",
+        "attach_rule",
+        "frame_code",
+        "source_url",
+        "collected_at",
+        "other_rosters",
+    ],
+    "splink": _COMMON
+    + [
+        "match_probability",
+        "left_ledger_id",
+        "left_gy_id",
+        "left_name_ko",
+        "left_name_en",
+        "left_rosters",
+        "right_ledger_id",
+        "right_gy_id",
+        "right_name_ko",
+        "right_name_en",
+        "right_rosters",
+        "shared_editions",
+        "shared_websites",
+    ],
 }
 
 KINDS = tuple(COLUMNS)
 
 
 def columns_for(kind: str) -> list[str]:
-    """Column names for an audit sheet of ``kind`` (``cv``, ``people``, or ``venues``)."""
+    """Column names for an audit sheet of ``kind`` (see ``COLUMNS``)."""
     try:
         return list(COLUMNS[kind])
     except KeyError:
