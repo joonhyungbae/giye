@@ -428,30 +428,36 @@ def _titles_before_venues(
     """N-5: in a row with two or more institution fragments, a title is not the venue.
 
     CV readings often write "Title, Venue, City" without brackets. A fragment
-    is read as a title (kind ``title``, not an entity) when it equals the row's
-    title, or when it names no kind of venue (``has_venue_word``) while another
-    institution fragment of the row does. An acronym and a fragment written as
-    the bracketed alias of another are names, not titles. With one institution
-    fragment, or none that names a kind of venue, nothing changes.
+    is venue-like when it names a kind of venue (``has_venue_word``) and is not
+    generic words only (``Museum of Modern Art`` alone is the tail of a name
+    such as ``Example, Museum of Modern Art``, so it does not count). When the
+    row has a venue-like fragment, a fragment that is not venue-like, or one
+    equal to the row's title while another fragment is venue-like, is read as a
+    title (kind ``title``, not an entity). An acronym and a fragment written as
+    the bracketed alias of another are names, not titles. Otherwise nothing
+    changes and the first institution fragment stays the venue.
     """
     named = [fragment for fragment in fragments if fragment.kind == "institution"]
     if len(named) < 2:
         return fragments
+    venue_like = {
+        fragment.text
+        for fragment in named
+        if venue_names.has_venue_word(fragment.text, lang) and not venue_names.generic_name(fragment.key or institution_key(fragment.text, lang), lang)
+    }
+    if not venue_like:
+        return fragments
     title_key = match_key(title)
     aliases = {text for pair in alias_pairs for text in pair}
-    venue_like = {fragment.text for fragment in named if venue_names.has_venue_word(fragment.text, lang)}
 
     def is_title(fragment: Fragment) -> bool:
-        if fragment.kind != "institution" or fragment.text in aliases:
+        if fragment.text in aliases:
             return False
-        if title_key and match_key(fragment.text) == title_key:
-            return True
-        return bool(venue_like) and fragment.text not in venue_like and not _acronym_symbols(fragment.text)
+        if fragment.text in venue_like:
+            return bool(title_key) and match_key(fragment.text) == title_key and len(venue_like - {fragment.text}) > 0
+        return not _acronym_symbols(fragment.text)
 
-    titles = [fragment for fragment in named if is_title(fragment)]
-    if len(titles) == len(named):
-        titles = titles[1:]  # every fragment equals the title: the first stays the venue
-    drop = {id(fragment) for fragment in titles}
+    drop = {id(fragment) for fragment in named if is_title(fragment)}
     return [replace(fragment, kind="title") if id(fragment) in drop else fragment for fragment in fragments]
 
 

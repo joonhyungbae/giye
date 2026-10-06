@@ -169,6 +169,9 @@ def test_n5_a_title_before_the_venue_is_not_the_venue() -> None:
     # A bracketed alias and an acronym stay names; two venue-like fragments keep the first.
     assert _together(["Nabi Example (Example Art Center)", "Nabi Example"], "Nabi Example (Example Art Center)", "Nabi Example")
     assert _together(["XYZ, Example Gallery", "XYZ"], "XYZ, Example Gallery", "XYZ")
+    # A generic tail is not venue-like: in "Kunstexample, Museum of Modern Art" the first part is the name.
+    tail = ["Kunstexample, Museum of Modern Art", "Kunstexample"]
+    assert _together(tail, *tail)
 
 
 def test_n7_the_packaged_gazetteer_reads_korean_units_as_places() -> None:
