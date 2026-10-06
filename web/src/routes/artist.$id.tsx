@@ -423,13 +423,15 @@ function ArtistPage() {
         </p>
         <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-end lg:gap-8">
           <div>
-            <h1 className="font-mono text-5xl font-bold italic leading-none sm:text-7xl">
+            {/* With leading-none the display face's descenders reach below the line box; pb-3
+                keeps whatever line follows the name (members, aliases, links) clear of them. */}
+            <h1 className="pb-3 font-mono text-5xl font-bold italic leading-none sm:text-7xl">
               {primaryName}
             </h1>
             {secondaryName && (
               <p
                 lang={secondaryName === artist.name_en ? "en" : "ko"}
-                className="mt-3 text-sm font-light text-muted-foreground sm:text-base"
+                className="text-sm font-light text-muted-foreground sm:text-base"
               >
                 {secondaryName}
               </p>
