@@ -42,6 +42,7 @@ from giye.audit.sheet import columns_for, write_sheet
 from giye.config import Config, load
 from giye.extract.paths import resolve_stored
 from giye.ledger.io import read_csv
+from giye.ledger.ledger import without_hidden
 from giye.ledger.schemas import TABLES
 from giye.normalize.rules import norm_text
 
@@ -110,10 +111,12 @@ def _ledger_table(config: Config, table: str) -> list[dict[str, str]]:
     exits. A sample only reads a ledger that another Giye process may already
     have open (a pipeline run, or the test process that just built the demo).
     Waiting on that lock does not end. The sheet is derived and is not written
-    back into the ledger.
+    back into the ledger. A person hidden by request is left out of every
+    table (a hide request stops processing).
     """
     filename, _columns = TABLES[table]
-    return read_csv(config.ledger / filename)
+    rows = read_csv(config.ledger / filename)
+    return without_hidden(rows, read_csv(config.ledger / TABLES["artists"][0]))
 
 
 def stratum_for(rule: str) -> str:

@@ -69,6 +69,17 @@ def hidden_ids(rows: Iterable[Mapping[str, Any]]) -> set[str]:
     return {str(row.get("ledger_id") or "") for row in rows if row.get("status") == HIDDEN}
 
 
+def without_hidden(rows: Iterable[Mapping[str, Any]], artists: Iterable[Mapping[str, Any]]) -> list[Any]:
+    """``rows`` minus those of a person hidden by request (matched on ``ledger_id``).
+
+    Why: a hide request is a request to stop processing (docs/RULES.md), so a
+    derived output of the package (``data/processed/``, explore, audit) reads
+    the ledger through this filter. The ledger rows themselves stay.
+    """
+    hidden = hidden_ids(artists)
+    return [row for row in rows if str(row.get("ledger_id") or "") not in hidden]
+
+
 def refuse_hidden(rows: Iterable[Mapping[str, Any]]) -> None:
     """Raise :class:`HiddenRecordError` when any of ``rows`` is hidden by request."""
     hidden = sorted(hidden_ids(rows))

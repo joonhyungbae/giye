@@ -415,12 +415,17 @@ KINDS = ("roster-independent", "cv-listing")
 
 
 def _inputs(config: Config) -> tuple[list[dict[str, str]], list[dict[str, str]], dict[str, str]]:
-    """Ledger activities, memberships, and the E2 event-pattern table."""
+    """Ledger activities, memberships, and the E2 event-pattern table.
+
+    A person hidden by request is left out (a hide request stops processing).
+    """
     from giye.ledger.io import read_csv
+    from giye.ledger.ledger import without_hidden
     from giye.resolve.evidence import pattern_table
 
-    activities = read_csv(config.ledger / "activities.csv")
-    memberships = read_csv(config.ledger / "frame_membership.csv")
+    artists = read_csv(config.ledger / "artists.csv")
+    activities = without_hidden(read_csv(config.ledger / "activities.csv"), artists)
+    memberships = without_hidden(read_csv(config.ledger / "frame_membership.csv"), artists)
     patterns = pattern_table(config.field_config.event_patterns, config.event_patterns)
     return activities, memberships, patterns
 

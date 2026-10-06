@@ -86,8 +86,8 @@ function PrivacyPage() {
               /request
             </Link>
             {t(
-              "로 보냅니다. 비공개된 기록은 이름 없는 표시로 그 주소에 남습니다. 합쳐져 폐기된 식별자는 남은 식별자로 리다이렉트됩니다.",
-              ". A hidden record stays at its URL as a tombstone with no name. An identifier retired by a merge redirects to the surviving one.",
+              "로 보냅니다. 비공개된 기록은 이름 없는 표시로 그 주소에 남습니다. 합쳐져 폐기된 식별자는 남은 식별자로 리다이렉트됩니다. 비공개된 사람은 다른 기록과 합쳐지지 않고, 기예 패키지가 만드는 사이트·정규화·분석 결과에서 빠집니다. 원장의 행과 인용된 원본 사본은 요청을 되돌리고 검증할 수 있도록 비공개 저장소에 남습니다. 패키지 밖에서 원장을 직접 읽는 분석과 비공개 이전에 계산된 결과에는 이 처리가 자동으로 적용되지 않습니다.",
+              ". A hidden record stays at its URL as a tombstone with no name. An identifier retired by a merge redirects to the surviving one. A hidden person is never merged with another record and is left out of what the Giye package builds: the site, the normalised data and its analyses. Their ledger rows and the copies of cited pages stay in private storage so the request can be reversed and checked. An analysis outside the package that reads the ledger directly, and a result computed before the hide, are not covered automatically.",
             )}
           </p>
         </section>

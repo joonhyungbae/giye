@@ -28,6 +28,7 @@ from pathlib import Path
 from giye.config import Config
 from giye.field import Field
 from giye.ledger.io import read_csv, write_csv
+from giye.ledger.ledger import without_hidden
 from giye.normalize.language import LanguageModule, language_for, packaged_dir
 from giye.normalize.rules import (
     HEAD_CHARS,
@@ -198,9 +199,14 @@ class _Inputs:
 
 
 def _read_inputs(config: Config) -> _Inputs:
-    """Ledger tables a normalisation run reads, in that order."""
-    artists = _table(config, "artists.csv")
-    activities = _table(config, "activities.csv")
+    """Ledger tables a normalisation run reads, in that order.
+
+    A person hidden by request is left out of every table here, so nothing of
+    theirs reaches ``data/processed/`` (a hide request stops processing).
+    """
+    everyone = _table(config, "artists.csv")
+    artists = without_hidden(everyone, everyone)
+    activities = without_hidden(_table(config, "activities.csv"), everyone)
     by_artist: dict[str, list[dict[str, str]]] = defaultdict(list)
     for row in activities:
         by_artist[row["ledger_id"]].append(row)
@@ -208,7 +214,7 @@ def _read_inputs(config: Config) -> _Inputs:
     for source in read_csv(config.ledger / "cv_sources.csv"):
         sources[source.get("ledger_id") or ""].append(source)
     frames_of: dict[str, list[str]] = defaultdict(list)
-    membership_rows = read_csv(config.ledger / "frame_membership.csv")
+    membership_rows = without_hidden(read_csv(config.ledger / "frame_membership.csv"), everyone)
     for membership in membership_rows:
         frames_of[membership.get("ledger_id") or ""].append(membership.get("frame_code") or "")
     link_of: dict[str, list[dict[str, str]]] = defaultdict(list)
