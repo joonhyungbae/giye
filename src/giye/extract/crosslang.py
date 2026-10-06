@@ -57,7 +57,7 @@ from dataclasses import dataclass
 from giye.normalize import venue_names
 from giye.normalize.language import LanguageModule
 from giye.normalize.rules import norm_text
-from giye.normalize.venues import classify_fragments, institution_key, split_venue
+from giye.normalize.venues import classify_fragments, fold_width, institution_key, split_venue
 
 RULE = "X2"
 HANGUL_RE = re.compile(r"[가-힣]")
@@ -146,7 +146,7 @@ def places(venue: str, lang: LanguageModule) -> Places:
 
 
 def _venue_parts(venue: str, lang: LanguageModule) -> tuple[list[str], Places]:
-    pieces, _aliases = split_venue(norm_text(venue))
+    pieces, _aliases = split_venue(fold_width(norm_text(venue)))
     if not pieces:
         return [], (frozenset(), frozenset())
     fragments = classify_fragments(pieces, lang)

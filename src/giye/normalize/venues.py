@@ -416,6 +416,21 @@ def institution_key(text: str, lang: LanguageModule | None = None) -> str:
     return key.strip()
 
 
+# Full-width ASCII forms (U+FF01–U+FF5E) and the ideographic space, read as ASCII.
+_WIDTH = {code: code - 0xFEE0 for code in range(0xFF01, 0xFF5F)} | {0x3000: 0x20}
+
+
+def fold_width(text: str) -> str:
+    """Full-width Latin letters, digits and punctuation as their ASCII forms (audit m3).
+
+    ``Ｓｅｏｕｌ Ｍｕｓｅｕｍ ｏｆ Ａｒｔ`` has no ASCII letter, so V3 found no
+    letters and the row was dropped as empty. Only the full-width block is
+    folded, not every NFKC compatibility form, so Hangul and other text stay as
+    written.
+    """
+    return text.translate(_WIDTH)
+
+
 def _funder_acronyms(fragments: list[Fragment], alias_pairs: list[tuple[str, str]]) -> list[Fragment]:
     """N-4: an acronym written as the alias of a funder is that funder, not an institution.
 
@@ -477,7 +492,7 @@ def _titles_before_venues(
 def parse_venue(row: dict, lang: LanguageModule) -> ParsedVenue:
     """V2 split and V3 classification of one activity row's venue."""
     venue_norm = norm_text(row.get("venue"))
-    pieces, alias_pairs = split_venue(venue_norm)
+    pieces, alias_pairs = split_venue(fold_width(venue_norm))
     fragments = _titles_before_venues(
         _funder_acronyms(classify_fragments(pieces, lang), alias_pairs), alias_pairs, row.get("title"), lang
     )
@@ -1369,6 +1384,8 @@ def _annotate_rows(
             venue_kind = "online"
         elif "place" in kinds:
             venue_kind = "place_only"
+        elif "unclassified" in kinds:
+            venue_kind = "unclassified"  # text that names nothing V3 knows; not an empty venue
         else:
             venue_kind = "empty"
         annotation = {

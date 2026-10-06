@@ -233,6 +233,15 @@ def test_m1_more_separator_forms_split_the_city_off() -> None:
     assert len(_groups(spellings)) == 1
 
 
+def test_m3_full_width_latin_is_read_and_unclassified_is_not_empty() -> None:
+    """m3: a full-width Latin venue is the ASCII institution; text that names nothing is unclassified."""
+    venues = ["Ｅｘａｍｐｌｅ Ｍｕｓｅｕｍ ｏｆ Ａｒｔ", "Example Museum of Art"]
+    assert len(_groups(venues)) == 1
+    result = build([_row(0, "?!"), _row(1, "")], write=False, lang=LANG)
+    assert result.annotations["a000"]["venue_kind"] == "unclassified"
+    assert result.annotations["a001"]["venue_kind"] == "empty"
+
+
 def test_n3_x2_does_not_fold_through_an_ambiguous_reading() -> None:
     from giye.extract.crosslang import clear_marks, fold_cross_language
 
