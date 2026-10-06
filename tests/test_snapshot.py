@@ -207,8 +207,16 @@ def test_a_tampered_kept_body_is_refused_on_read(tmp_path: Path):
     path.write_bytes(b"<p>Someone Else</p>")
     with pytest.raises(SnapshotIntegrityError, match=path.name):
         SnapshotStore(tmp_path).recall("https://example.org/roster")
-    # A legacy line without a digest cannot be checked and is read as it is.
-    assert verified_bytes(path, None) == b"<p>Someone Else</p>"
+    # The file name is the hash, so a manifest line without a digest is still checked.
+    with pytest.raises(SnapshotIntegrityError, match="file name"):
+        verified_bytes(path, None)
+    # Review round 6: editing the manifest digest to match the new body is caught by the name.
+    with pytest.raises(SnapshotIntegrityError, match="file name"):
+        verified_bytes(path, hashlib.sha256(b"<p>Someone Else</p>").hexdigest())
+    # A legacy file whose name is not a hash and whose line has no digest cannot be checked.
+    legacy = path.with_name("roster.html")
+    legacy.write_bytes(b"<p>Someone Else</p>")
+    assert verified_bytes(legacy, None) == b"<p>Someone Else</p>"
 
 
 def test_warc_export_refuses_a_tampered_body(tmp_path: Path):

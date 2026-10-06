@@ -26,8 +26,11 @@ Reading a kept body back (``recall``, and the WARC export through
 :func:`verified_bytes`) recomputes its SHA-256 and compares it with the
 manifest line. A mismatch raises :class:`SnapshotIntegrityError` naming the
 file: the store's name is the hash, so a body that no longer has it is not the
-capture the ledger cites (the trusty-URI property). A legacy line without a
-64-character ``sha256`` cannot be checked and is read as before.
+capture the ledger cites (the trusty-URI property). The file name is checked
+as well as the manifest line. A legacy line without a 64-character ``sha256``
+and without a hash file name cannot be checked and is read as before. The
+check is self-consistency: a body rewritten together with its manifest line
+and its file name is not detected here (see :func:`verified_bytes`).
 
 ``recall`` reads the lines back for ``giye collect --from-snapshots``. It scans
 ``<root>/*/snapshots/manifest.jsonl``. A line matches when its ``url`` or
@@ -115,20 +118,37 @@ class SnapshotIntegrityError(GiyeError):
     """A kept body whose SHA-256 is not the one its manifest line records."""
 
 
+def _digest(value: object) -> str:
+    """``value`` lower-cased when it is a 64-character hex SHA-256, else empty."""
+    text = value.lower() if isinstance(value, str) else ""
+    return text if len(text) == 64 and all(c in "0123456789abcdef" for c in text) else ""
+
+
 def verified_bytes(path: Path, expected_sha256: object) -> bytes:
-    """The bytes of ``path``, after checking them against the manifest's ``sha256``.
+    """The bytes of ``path``, after checking them against the manifest's ``sha256`` and the file name.
 
     Raises :class:`SnapshotIntegrityError` naming the file on a mismatch. A
-    value that is not a 64-character hex digest (a legacy line) is not checked.
+    manifest value that is not a 64-character hex digest (a legacy line) is not
+    compared. A content-addressed file name (``<sha256><ext>``) is compared
+    with the bytes too, so editing the body and the manifest line together,
+    without renaming the file, is also caught (software review, round 6).
+    What this does not catch: a rewrite of the body, its manifest line and its
+    file name together. The store checks itself; only a copy kept elsewhere
+    (the private repository, the VPS backup, or the digests in an earlier
+    WARC or RO-Crate export) can show that.
     """
     content = Path(path).read_bytes()
-    expected = expected_sha256.lower() if isinstance(expected_sha256, str) else ""
-    if len(expected) == 64 and all(c in "0123456789abcdef" for c in expected):
-        actual = hashlib.sha256(content).hexdigest()
-        if actual != expected:
-            raise SnapshotIntegrityError(
-                f"kept snapshot {path} does not match its manifest: sha256 {actual}, manifest says {expected}"
-            )
+    expected = _digest(expected_sha256)
+    named = _digest(Path(path).name.split(".", 1)[0])
+    if not expected and not named:
+        return content
+    actual = hashlib.sha256(content).hexdigest()
+    if expected and actual != expected:
+        raise SnapshotIntegrityError(
+            f"kept snapshot {path} does not match its manifest: sha256 {actual}, manifest says {expected}"
+        )
+    if named and actual != named:
+        raise SnapshotIntegrityError(f"kept snapshot {path} does not match its file name: sha256 {actual}")
     return content
 
 
