@@ -28,7 +28,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
 from giye.config import Config
-from giye.ledger.ledger import Ledger
+from giye.ledger.ledger import Ledger, hidden_ids
 from giye.ledger.schemas import split_pipe
 from giye.resolve.candidates import (
     decision_blocks,
@@ -249,8 +249,11 @@ def _apply(
     dry_run: bool,
 ) -> None:
     """Record the merge and, unless this is a dry run, write it and reload."""
-    drops = [drop for drop in drops if drop in state.by_id and drop != keep]
-    if keep not in state.by_id or not drops:
+    # A record hidden by request is never merged automatically: the merge
+    # would retire or republish it (Ledger._merge_rows refuses it as well).
+    hidden = hidden_ids(state.by_id.values())
+    drops = [drop for drop in drops if drop in state.by_id and drop != keep and drop not in hidden]
+    if keep not in state.by_id or keep in hidden or not drops:
         return
     rule = rule_of(evidence)
     for drop in drops:

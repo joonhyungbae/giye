@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from giye.config import Config
+from giye.config import Config, GiyeError
 from giye.ledger.ids import (
     activity_id_key,
     allocate_gy_id,
@@ -47,6 +47,37 @@ from giye.ledger.schemas import (
 
 # Rule ids a merge may store: an evidence rule, X1 with one, or a dated human judgement.
 _MERGE_RULE = re.compile(r"(?:X1\+)?E[1-4]|H")
+
+# The status a hide request sets (``giye hide``). Publish turns it into a
+# nameless tombstone, and no merge may touch a row that carries it.
+HIDDEN = "HIDDEN_BY_REQUEST"
+
+
+class HiddenRecordError(GiyeError):
+    """A merge named a record hidden by request.
+
+    Why a merge is refused rather than allowed with an inherited status: a
+    merge moves names, activities and CV rows between records, retires one
+    ``gy_id`` and redirects it. Either direction would put a hidden person's
+    data on a published page or remove their tombstone. The person can be
+    unhidden first (``giye unhide``) if they ask for the merge.
+    """
+
+
+def hidden_ids(rows: Iterable[Mapping[str, Any]]) -> set[str]:
+    """Ledger ids of the rows hidden by request."""
+    return {str(row.get("ledger_id") or "") for row in rows if row.get("status") == HIDDEN}
+
+
+def refuse_hidden(rows: Iterable[Mapping[str, Any]]) -> None:
+    """Raise :class:`HiddenRecordError` when any of ``rows`` is hidden by request."""
+    hidden = sorted(hidden_ids(rows))
+    if hidden:
+        raise HiddenRecordError(
+            f"merge refused: {', '.join(hidden)} is hidden by request; "
+            "a merge would undo its tombstone (run giye unhide first if the person asks for the merge)"
+        )
+
 
 _ARTIST_FILL = ("name_ko", "name_en", "affiliation", "active_since", "country", "region", "field", "category")
 
@@ -248,6 +279,8 @@ class Ledger:
             raise KeyError(missing[0])
         survivor = by_id[kept]
         dropped_rows = [by_id[item] for item in drop_ids]
+        # Every merge path ends here, so this one check covers them all.
+        refuse_hidden([survivor, *dropped_rows])
         _merge_artist_fields(survivor, dropped_rows, evidence=evidence.strip(), rule=rule.strip())
         self._retire(survivor, dropped_rows, task="merge")
         dropset = set(drop_ids)
@@ -1016,7 +1049,9 @@ def _merge_artist_fields(survivor: dict[str, str], dropped: list[dict[str, str]]
         )
         if other.get("cv_link_ok") == "yes":
             survivor["cv_link_ok"] = "yes"
-            survivor["status"] = "PUBLISHED"
+            # A hidden survivor stays hidden: only giye unhide clears that status.
+            if survivor.get("status") != HIDDEN:
+                survivor["status"] = "PUBLISHED"
         note = f"{survivor.get('reviewer_note') or ''}; merged {other['ledger_id']}".strip("; ")
         # Collectors pin some rows by an identity key kept in the note; the kept row inherits it.
         for part in (other.get("reviewer_note") or "").split(";"):

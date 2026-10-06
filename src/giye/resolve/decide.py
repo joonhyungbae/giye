@@ -30,7 +30,7 @@ import re
 from datetime import date, datetime, timezone
 
 from giye.config import GiyeError
-from giye.ledger.ledger import Ledger
+from giye.ledger.ledger import Ledger, refuse_hidden
 from giye.normalize.language import language_for
 from giye.resolve.candidates import (
     absorption_map,
@@ -126,6 +126,8 @@ def merge_people(
     dropped = _person(artists, drop)
     if kept["ledger_id"] == dropped["ledger_id"]:
         raise GiyeError("merge needs two different people")
+    # Before the evidence checks, so the reason given is the hide request.
+    refuse_hidden([kept, dropped])
     language = language_for(ledger.config)
     words = ledger.config.field_config.compiled_team_words()
     if team_person_mismatch(kept, dropped, words=words, language=language):
