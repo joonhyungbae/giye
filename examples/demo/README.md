@@ -48,7 +48,7 @@ giye extract --config examples/demo/giye.toml --replay-only
 Run `giye collect` first so the roster rows exist. `cvs/` holds five fictitious CVs (Korean,
 English, and mixed for the identity cases, and two short ones for co-presence ties). The Korean CV writes 서울시립미술관 with a qualifier, an exhibition
 title, and a gallery hall. The English CV lists Example Residency and Seoul Museum of Art,
-and repeats one Korean event. The Korean page has an education section. `cache/` holds
+and repeats one Korean event. Rule X2 puts that pair on the review queue (`cross_language_duplicate`); it does not fold it on its own. `decisions.csv` is the decision a person recorded on it (`same`, with `H` evidence), which `giye demo` enters through the `giye queue decide` code after resolve, so the walkthrough shows the fold. In a step-by-step run, decide it yourself: `giye queue list --config examples/demo/giye.toml --kind cross_language_duplicate`, then `giye queue decide QUEUE_ID --config examples/demo/giye.toml --decision same --evidence "H one show in both CVs, by me YYYY-MM-DD"`. The Korean page has an education section. `cache/` holds
 synthetic raw responses that stand in for model output. See `cache/README.md`.
 
 Co-presence ties (two people at one institution in one year) come from the CV rows:

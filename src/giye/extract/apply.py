@@ -27,10 +27,12 @@
 - Rule X2 runs after every file is applied (``giye.extract.crosslang``): the
   Korean and the English copy of one CV event in two CV documents, matched by
   year, type, and an institution the venue rules read as the same (V7, V9),
-  one to one, fold. The
-  copy not in the archive's first language gets ``publishable=no`` and
-  ``superseded_by=<kept id>; rule=X2``. Marks are cleared at the start of each
-  apply and recomputed, and every fold is listed in ``work/cv_folds.csv``.
+  one to one, become a ``cross_language_duplicate`` review item. Only a pair a
+  person decided ``same`` on that item folds: the copy not in the archive's
+  first language gets ``publishable=no`` and ``superseded_by=<kept id>;
+  rule=X2+H; x2_decided=<date>``. Marks are cleared at the start of each apply
+  and recomputed from the recorded decisions, and every fold is listed in
+  ``work/cv_folds.csv``.
 - Grounding (``giye.extract.grounding``, ``[extract] grounding``, on by default):
   a CV row whose year, or non-empty venue, does not occur in the text of the
   CV it cites gets ``ungrounded=<year|venue|year+venue>`` in its note and
@@ -53,8 +55,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from giye.extract import corrections as person_corrections
-from giye.extract.crosslang import RULE as CROSS_LANGUAGE_RULE
-from giye.extract.crosslang import Fold, clear_marks, fold_cross_language
+from giye.extract.crosslang import CrossLanguage, Fold, clear_marks, fold_cross_language
 from giye.extract.grounding import CvText, GroundingStats, failures, mark
 from giye.extract.paths import verified_cv_text
 from giye.ledger.ids import (
@@ -103,6 +104,9 @@ class ApplyStats:
     closed_reviews: int = 0
     id_changes: int = 0
     folds: list[Fold] = field(default_factory=list)
+    # X2 pairs opened on the review queue in this apply, and all still undecided.
+    cross_language_queued: int = 0
+    cross_language_pending: int = 0
     grounding: GroundingStats = field(default_factory=GroundingStats)
     corrected: int = 0
     corrections_unmatched: list[person_corrections.Correction] = field(default_factory=list)
@@ -207,7 +211,9 @@ def apply_extractions(ledger: Ledger, *, today: date | None = None) -> ApplyStat
 
     # X2 after every file: a merge has already put both CVs under one owner.
     keep_korean = bool(config.languages) and config.languages[0] == "ko"
-    stats.folds = fold_cross_language(activities, lang=language_for(config), keep_korean=keep_korean)
+    crossed = fold_cross_language(activities, lang=language_for(config), keep_korean=keep_korean, queue=queue)
+    stats.folds = crossed.folds
+    stats.cross_language_queued, stats.cross_language_pending = crossed.queued, crossed.pending
     _write_fold_log(ledger, stats.folds)
 
     stats.id_changes = len(id_changes)
@@ -472,7 +478,27 @@ FOLD_FIELDS = [
     "folded_activity_id",
     "folded_title",
     "folded_venue",
+    "decided_at",
 ]
+
+
+def refold_cross_language(ledger: Ledger) -> CrossLanguage:
+    """Run X2 again on the ledger as it stands, honouring every recorded decision.
+
+    ``giye queue decide`` calls this after a person decides an X2 item, so the
+    decision shows without re-applying every extraction. The marks are cleared
+    and decided again, as in :func:`apply_extractions`.
+    """
+    config = ledger.config
+    activities = ledger.read("activities")
+    queue = ledger.read("review_queue")
+    clear_marks(activities)
+    keep_korean = bool(config.languages) and config.languages[0] == "ko"
+    crossed = fold_cross_language(activities, lang=language_for(config), keep_korean=keep_korean, queue=queue)
+    _write_fold_log(ledger, crossed.folds)
+    ledger.write("activities", activities, task="x2-decide")
+    ledger.write("review_queue", queue, task="x2-decide")
+    return crossed
 
 
 def _write_fold_log(ledger: Ledger, folds: list[Fold]) -> None:
@@ -482,7 +508,8 @@ def _write_fold_log(ledger: Ledger, folds: list[Fold]) -> None:
         fields=FOLD_FIELDS,
         rows=[
             {
-                "rule": CROSS_LANGUAGE_RULE,
+                "rule": fold.rule,
+                "decided_at": fold.decided_at,
                 "ledger_id": fold.ledger_id,
                 "year": fold.year,
                 "activity_type": fold.activity_type,

@@ -140,6 +140,8 @@ def _extract(args: argparse.Namespace) -> int:
             f"superseded_files={applied.superseded_files} "
             f"self_reported_superseded={applied.superseded_rows} "
             f"cross_language_folded={len(applied.folds)} "
+            f"cross_language_queued={applied.cross_language_queued} "
+            f"cross_language_pending={applied.cross_language_pending} "
             f"self_report_corrected={applied.corrected} "
             f"self_report_unmatched={len(applied.corrections_unmatched)}"
         )
@@ -635,12 +637,12 @@ def _add_tool_parsers(sub: argparse._SubParsersAction) -> None:
     queue_list.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
     queue_list.add_argument("--kind", default=None, help="reason column, for example possible_same_person")
     queue_list.add_argument("--status", default="open", help="status to list; 'any' lists every status")
-    queue_decide = queue_sub.add_parser("decide", help="close one item: merge, distinct, or dismiss")
+    queue_decide = queue_sub.add_parser("decide", help="close one item: merge, distinct, dismiss; same or different for an X2 pair")
     queue_decide.add_argument("item_id")
     queue_decide.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
-    queue_decide.add_argument("--decision", required=True, choices=("merge", "distinct", "dismiss"))
+    queue_decide.add_argument("--decision", required=True, choices=("merge", "distinct", "dismiss", "same", "different"))
     queue_decide.add_argument(
-        "--evidence", default="", help="required for --decision merge: E1-E4 (or X1+E) with a citation, or H with a reason and date"
+        "--evidence", default="", help="required for merge (E1-E4 or X1+E with a citation, or H) and for same (H: reason, by whom, date)"
     )
     queue_decide.add_argument(
         "--override-distinct", action="store_true", help="allow a merge of a pair decided distinct (recorded)"

@@ -87,7 +87,9 @@ def test_two_runs_publish_the_same_snapshot(tmp_path: Path, monkeypatch: pytest.
     assert first_site == second_site
     assert _activity_rows(dest) == first_rows
     assert _SITE.findall(first_out) == _SITE.findall(second_out)
-    assert _SITE.findall(second_out) == [("21", "37")]
+    # 38, not the demo's 37: giye run records no person's decision, so the X2
+    # pair Signal / 신호 stays an open queue item and both lines are published.
+    assert _SITE.findall(second_out) == [("21", "38")]
     assert "replay_miss=0" in second_out
     assert "replay miss " not in second_out
     assert "activities_added=0" in second_out

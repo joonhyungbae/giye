@@ -45,6 +45,11 @@ from giye.resolve.service import resolve
 # the same counts. The golden test uses the same instant.
 DEMO_RUN_DATE = datetime(2026, 1, 15, tzinfo=timezone.utc)
 
+# A person's recorded decisions on X2 pairs, next to the demo config. X2 only
+# queues a cross-language pair; this file is the decision the demo's editor
+# made on it, so the walkthrough still shows a fold (examples/demo/EXPECTED.md).
+DECISIONS_FILE = "decisions.csv"
+
 # Modules that stamp rows with datetime.now. Patched for the demo's run date.
 _CLOCK_MODULES = (
     "giye.collect.base",
@@ -52,6 +57,8 @@ _CLOCK_MODULES = (
     "giye.ledger.io",
     "giye.ledger.ledger",
     "giye.extract.apply",
+    "giye.extract.crosslang",
+    "giye.resolve.decide",
     "giye.extract.pull",
     "giye.resolve.candidates",
     "giye.resolve.teams",
@@ -135,6 +142,9 @@ def run_demo(
         extract(cfg, replay_only=True)
         ledger_counts(cfg)
         resolve_result = resolve(cfg)
+        # After resolve: the two CVs of the pair belong to one person only once
+        # the X1+E2 merge has joined their owners.
+        record_decisions(cfg, path.parent / DECISIONS_FILE)
         norm = normalize(cfg)
         published = publish(cfg, now=now)
         rim_path = write_rim_order(build_rim_order(cfg, now=now), cfg.site)
@@ -276,6 +286,41 @@ def _frozen_clock(moment: datetime | None):
     finally:
         for module, original in patched:
             module.datetime = original
+
+
+def record_decisions(config: Config, path: Path) -> int:
+    """Record the decisions in ``path`` on the matching open X2 queue items. Returns how many.
+
+    Columns: ``korean_title``, ``latin_title``, ``year``, ``decision`` (``same``
+    or ``different``) and ``evidence`` (``H`` with the reason, who judged and
+    the date). An item matches when the two rows it names have those titles
+    and that year. The decision goes through ``giye queue decide``'s own code
+    (``giye.resolve.decide.decide_queue``), the path a person uses.
+    """
+    from giye.extract.crosslang import REASON
+    from giye.resolve.decide import decide_queue
+
+    if not path.is_file():
+        return 0
+    ledger = Ledger.open(config)
+    recorded = 0
+    for wanted in read_csv(path):
+        titles = {row["activity_id"]: row for row in ledger.read("activities")}
+        for item in ledger.read("review_queue"):
+            if item.get("reason") != REASON or item.get("status") != "open":
+                continue
+            parts = dict(
+                part.strip().split("=", 1) for part in (item.get("detail") or "").split(";") if "=" in part
+            )
+            korean, latin = titles.get(parts.get("korean", ""), {}), titles.get(parts.get("latin", ""), {})
+            if (
+                korean.get("title") == wanted.get("korean_title")
+                and latin.get("title") == wanted.get("latin_title")
+                and korean.get("year") == wanted.get("year")
+            ):
+                decide_queue(ledger, item["queue_id"], wanted["decision"], evidence=wanted.get("evidence") or "")
+                recorded += 1
+    return recorded
 
 
 def ledger_counts(config: Config) -> dict[str, int]:

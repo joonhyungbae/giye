@@ -31,6 +31,7 @@ import warnings
 from datetime import date, datetime, timezone
 
 from giye.config import GiyeError
+from giye.extract.crosslang import REASON as CROSS_LANGUAGE_REASON
 from giye.ledger.ledger import Ledger, refuse_hidden
 from giye.normalize.language import language_for
 from giye.resolve.candidates import (
@@ -79,12 +80,15 @@ def decide_queue(
     A merge needs evidence in the form :func:`check_merge_evidence` accepts.
     ``override_distinct`` is passed to :func:`merge_people`.
     """
-    if decision not in ("merge", "distinct", "dismiss"):
-        raise GiyeError("decision must be merge, distinct, or dismiss")
+    if decision not in ("merge", "distinct", "dismiss", "same", "different"):
+        raise GiyeError("decision must be merge, distinct, dismiss, same, or different")
     review = ledger.read("review_queue") if ledger.path("review_queue").exists() else []
     item = next((row for row in review if row.get("queue_id") == item_id), None)
     if item is None:
         raise GiyeError(f"no review item {item_id}")
+    if item.get("reason") == CROSS_LANGUAGE_REASON or decision in ("same", "different"):
+        _decide_cross_language(ledger, review, item, decision, evidence=evidence, note=note)
+        return item
     if decision == "merge":
         _decide_merge(ledger, item, evidence=evidence, note=note, override_distinct=override_distinct)
         return item
@@ -99,6 +103,61 @@ def decide_queue(
     _stamp_evidence(ledger, item)
     ledger.write("review_queue", review, task="decide")
     return item
+
+
+def _decide_cross_language(
+    ledger: Ledger,
+    review: list[dict[str, str]],
+    item: dict[str, str],
+    decision: str,
+    *,
+    evidence: str,
+    note: str,
+) -> None:
+    """Record a person's decision on an X2 pair (``same`` folds it, ``different`` keeps both).
+
+    ``same`` needs ``H`` evidence, checked as for a merge (a reason, who
+    judged, a date no later than today and not before the earlier of the two
+    rows was collected), because it hides a sourced row from the public page.
+    ``distinct`` is read as ``different``. The decision is honoured by every
+    later apply (``giye.extract.crosslang``); X2 runs again at once so the
+    ledger shows it without re-applying every extraction.
+    """
+    from giye.extract.apply import refold_cross_language
+
+    if item.get("reason") != CROSS_LANGUAGE_REASON:
+        raise GiyeError(f"{item.get('queue_id')} is {item.get('reason')}; same and different decide {CROSS_LANGUAGE_REASON}")
+    if decision == "distinct":
+        decision = "different"
+    if decision not in ("same", "different", "dismiss"):
+        raise GiyeError(f"a {CROSS_LANGUAGE_REASON} item is decided same, different, or dismiss")
+    if decision == "dismiss":
+        _mark(item, decision="", note=note, status="dismissed")
+        ledger.write("review_queue", review, task="decide")
+        return
+    text = (evidence or "").strip()
+    if decision == "same":
+        if check_merge_evidence(ledger, text) != "H":
+            raise GiyeError("decision same needs H evidence: the reason, 'by <name or role>' and the date")
+        _verify_h(text[1:].strip(), not_before=_earlier_row_collected(ledger, item))
+    _mark(item, decision=decision, note=note, status="done")
+    if text:
+        # A comma, not a semicolon: the detail is split on ";".
+        item["detail"] = f"{item['detail']}; evidence={text.replace(';', ',')}"
+    ledger.write("review_queue", review, task="decide")
+    refold_cross_language(ledger)
+
+
+def _earlier_row_collected(ledger: Ledger, item: dict[str, str]) -> str:
+    """The earlier ``collected_at`` date of the two activity rows an X2 item names, or ""."""
+    named = set(re.findall(r"(?:korean|latin)=([^;\s]+)", item.get("detail") or ""))
+    dates = []
+    for row in ledger.read("activities"):
+        if row.get("activity_id") in named:
+            matched = _ISO_DATE.match((row.get("collected_at") or "").strip())
+            if matched:
+                dates.append(matched.group(0))
+    return min(dates, default="")
 
 
 def merge_people(

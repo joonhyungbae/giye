@@ -307,9 +307,10 @@ def test_n3_x2_does_not_fold_through_an_ambiguous_reading() -> None:
             "origin": f"cv:{activity_id}",
         }
 
+    # X2 queues a pair for a person (it does not fold on its own); the guard decides whether there is a pair.
     rows = [cv("ko", "빛", "예시미술관", "p1"), cv("en", "Machines", "Yesi Museum of Art", "p1")]
     clear_marks(rows)
-    assert [fold.folded["activity_id"] for fold in fold_cross_language(rows, lang=LANG, keep_korean=True)] == ["en"]
+    assert fold_cross_language(rows, lang=LANG, keep_korean=True, queue=[]).pending == 1
     rows.append(cv("other", "물", "예시시립미술관", "p2"))
     clear_marks(rows)
-    assert fold_cross_language(rows, lang=LANG, keep_korean=True) == []
+    assert fold_cross_language(rows, lang=LANG, keep_korean=True, queue=[]).pending == 0
