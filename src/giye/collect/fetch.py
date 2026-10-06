@@ -20,6 +20,21 @@ refusal is the same whoever asked (docs/RULES.md, collection policy). The decisi
   ``RobotsRefused`` and is not sent. The ceiling is the session's ``max_redirects`` (30 when
   the session has none), the same ceiling ``requests`` already used. It is not the five-redirect
   limit that applies only to robots.txt itself.
+- A page body is streamed and capped at ``MAX_BYTES`` (40 MB; a larger
+  ``Content-Length`` is refused before the body is read), and one request may
+  take at most ``DEADLINE_FACTOR`` × ``timeout_s`` in total, so a trickling
+  server cannot hold the run. Both raise ``BodyRefused`` (a
+  ``requests.RequestException``). robots.txt read through the fetcher is
+  capped at the RFC 9309 parse limit.
+- The per-host delay is the larger of ``min_delay_s`` and the robots.txt
+  ``Crawl-delay`` of the selected group. A 429 or 503 answer with
+  ``Retry-After`` delays the next request to that host by that much; a wait
+  over ``MAX_RETRY_AFTER_S`` refuses further requests to that host for this
+  run (``HostBusy``, a ``requests.RequestException``) instead of sleeping.
+  A robots.txt 429 stays a 4xx (unavailable, allowed: RFC 9309 §2.3.1.3),
+  but its ``Retry-After`` is honoured the same way.
+- A robots.txt redirect onto a host whose terms forbid collection is not
+  followed or sent; the file is unavailable, as for any other 4xx.
 - A certificate failure is retried once with verification off. The page result carries
   ``tls_unverified``. When the robots.txt fetch needed that retry, ``robots_tls_unverified``
   is set as well. The path verdict does not depend on the flag.
@@ -69,7 +84,7 @@ from giye.collect.robots import (
     _product_token,
     decide,
 )
-from giye.collect.snapshot import SnapshotStore
+from giye.collect.snapshot import MAX_BYTES, SnapshotStore
 from giye.config import ConfigError
 
 __all__ = [
@@ -115,6 +130,21 @@ SOCIAL_HOSTS = (
 
 # Same verdict string the evidence status uses. It is not a robots.txt verdict.
 TERMS_VERDICT = "platform_excluded"
+
+# One request may take this many times ``timeout_s`` in total (connect, wait,
+# and every read). ``timeout_s`` alone bounds each read, not the whole body.
+DEADLINE_FACTOR = 10
+# A Retry-After longer than this is not slept through: the host is refused for
+# the rest of the run, and the next run tries again.
+MAX_RETRY_AFTER_S = 120.0
+
+
+class BodyRefused(requests.RequestException):
+    """A response body over ``MAX_BYTES``, or one that missed the total deadline. Not kept."""
+
+
+class HostBusy(requests.RequestException):
+    """The host asked for a pause (Retry-After) longer than this run waits. Not sent."""
 
 
 class TermsRefused(Exception):
@@ -369,6 +399,10 @@ class Fetcher:
         roots.sort(key=lambda item: len(item[0]), reverse=True)
         self.offline_roots = tuple(roots)
         self._last: dict[str, float] = {}
+        # Host → Crawl-delay from its robots.txt, and → monotonic time before
+        # which it asked not to be contacted (Retry-After).
+        self._crawl_delay: dict[str, float] = {}
+        self._not_before: dict[str, float] = {}
         # Replaced in tests to avoid sleeping on the wall clock.
         self._now = time.monotonic
         self._sleep = time.sleep
@@ -432,6 +466,8 @@ class Fetcher:
                 use_cache=True,
             )
             robots_tls = robots_tls or decision.tls_unverified
+            if decision.crawl_delay:
+                self._crawl_delay[urlparse(current).netloc] = float(decision.crawl_delay)
             if not decision.permits:
                 if decision.verdict == VERDICT_DISALLOWED:
                     raise RobotsDisallowed(current, decision.verdict)
@@ -510,10 +546,25 @@ class Fetcher:
         offline = self._offline_root(url)
         if offline is not None:
             return _offline_robots(offline[1], url)
+        if is_social(url):
+            # A robots.txt redirect onto a terms-blocked host is not sent: the
+            # file is unavailable, as for any other 4xx.
+            log.warning("robots.txt redirect onto a terms-blocked host not followed: %s", url)
+            return SimpleNamespace(status_code=404, headers={}, content=b"", text="", url=url, tls_unverified=False)
         response, unverified = self._raw_get(url, timeout)
-        # decide() reads this flag. A requests response accepts the attribute.
-        response.tls_unverified = unverified or bool(getattr(response, "tls_unverified", False))
-        return response
+        try:
+            content = self._read_body(response, limit=MAX_ROBOTS_BYTES, truncate=True)
+        finally:
+            _close(response)
+        return SimpleNamespace(
+            status_code=response.status_code,
+            headers=getattr(response, "headers", None) or {},
+            content=content,
+            text=content.decode("utf-8", errors="replace"),
+            url=getattr(response, "url", None) or url,
+            # decide() reads this flag.
+            tls_unverified=unverified or bool(getattr(response, "tls_unverified", False)),
+        )
 
     def _page_from_response(
         self,
@@ -529,9 +580,10 @@ class Fetcher:
         content_type = ""
         if hasattr(headers, "get"):
             content_type = headers.get("Content-Type") or headers.get("content-type") or ""
-        body = getattr(response, "content", b"") or b""
-        if isinstance(body, str):
-            body = body.encode("utf-8")
+        try:
+            body = self._read_body(response, limit=MAX_BYTES, truncate=False)
+        finally:
+            _close(response)
         final = getattr(response, "url", None) or current
         return Page(
             url=final,
@@ -587,6 +639,7 @@ class Fetcher:
         """
         check_contact_for(self.user_agent, url)
         netloc = urlparse(url).netloc
+        self._wait_for_host(netloc, url)
         self._throttle(netloc)
         headers = {
             "User-Agent": self.user_agent,
@@ -599,9 +652,13 @@ class Fetcher:
         if method == "POST":
             send = self.session.post
             extra["data"] = body
+        # The body is read by ``_read_body`` under the size cap and the deadline.
+        extra["stream"] = True
+        self._started = self._now()
         try:
             try:
                 response = send(url, timeout=timeout, headers=headers, allow_redirects=False, **extra)
+                self._note_retry_after(netloc, response)
                 return response, False
             except requests.exceptions.SSLError:
                 import urllib3
@@ -614,20 +671,84 @@ class Fetcher:
                 except requests.RequestException as exc:
                     exc.tls_unverified = True  # type: ignore[attr-defined]
                     raise
+                self._note_retry_after(netloc, response)
                 return response, True
         finally:
             self._last[netloc] = self._now()
 
     def _throttle(self, netloc: str) -> None:
-        """Wait so two requests to the same host start at least ``min_delay_s`` apart."""
-        if self.min_delay_s <= 0 or not netloc:
+        """Wait so two requests to one host start at least ``min_delay_s`` (or its Crawl-delay) apart."""
+        delay = max(self.min_delay_s, self._crawl_delay.get(netloc, 0.0))
+        if delay <= 0 or not netloc:
             return
         last = self._last.get(netloc)
         if last is None:
             return
-        wait = self.min_delay_s - (self._now() - last)
+        wait = delay - (self._now() - last)
         if wait > 0:
             self._sleep(wait)
+
+    def _wait_for_host(self, netloc: str, url: str) -> None:
+        """Honour an earlier Retry-After: wait for a short one, refuse when the host asked for long."""
+        until = self._not_before.get(netloc)
+        if until is None:
+            return
+        wait = until - self._now()
+        if wait > MAX_RETRY_AFTER_S:
+            raise HostBusy(f"{netloc} asked for a pause of {wait:.0f} s (Retry-After); not sent: {url}")
+        if wait > 0:
+            self._sleep(wait)
+
+    def _note_retry_after(self, netloc: str, response: object) -> None:
+        """Remember a 429/503 Retry-After (seconds or an HTTP date) for this host."""
+        if int(getattr(response, "status_code", 0) or 0) not in (429, 503):
+            return
+        headers = getattr(response, "headers", None) or {}
+        value = headers.get("Retry-After") if hasattr(headers, "get") else None
+        seconds = _retry_after_seconds(str(value or ""))
+        if seconds is not None:
+            self._not_before[netloc] = self._now() + seconds
+
+    def _read_body(self, response: object, *, limit: int, truncate: bool) -> bytes:
+        """The response body, at most ``limit`` bytes, within the total deadline.
+
+        ``truncate`` stops at the limit (robots.txt's parse limit); otherwise a
+        body over the limit raises ``BodyRefused``. A response that is not a
+        streamed ``requests`` response (a fake, a fixture) is read as it is.
+        """
+        headers = getattr(response, "headers", None) or {}
+        declared = headers.get("Content-Length") if hasattr(headers, "get") else None
+        if not truncate and declared and str(declared).isdigit() and int(declared) > limit:
+            raise BodyRefused(f"body of {declared} bytes is over the {limit}-byte limit: {getattr(response, 'url', '')}")
+        iterate = getattr(response, "iter_content", None)
+        if not callable(iterate):
+            body = getattr(response, "content", b"") or b""
+            body = body.encode("utf-8") if isinstance(body, str) else bytes(body)
+            if len(body) > limit:
+                if truncate:
+                    return body[:limit]
+                raise BodyRefused(f"body over the {limit}-byte limit: {getattr(response, 'url', '')}")
+            return body
+        deadline = getattr(self, "_started", self._now()) + DEADLINE_FACTOR * self.timeout_s
+        chunks: list[bytes] = []
+        total = 0
+        for chunk in _chunks(response, iterate):
+            if not chunk:
+                continue
+            if self._now() > deadline:
+                raise BodyRefused(
+                    f"response took longer than {DEADLINE_FACTOR * self.timeout_s:.0f} s in total: "
+                    f"{getattr(response, 'url', '')}"
+                )
+            room = limit - total
+            if len(chunk) > room:
+                if truncate:
+                    chunks.append(chunk[:room])
+                    break
+                raise BodyRefused(f"body over the {limit}-byte limit: {getattr(response, 'url', '')}")
+            chunks.append(chunk)
+            total += len(chunk)
+        return b"".join(chunks)
 
     def serves_offline(self, url: str) -> bool:
         """True when ``url`` is under one of ``offline_roots`` (read from disk, no socket)."""
@@ -656,6 +777,57 @@ class Fetcher:
             if html.is_file():
                 return html
         return exact
+
+
+def _chunks(response: object, iterate):
+    """Body chunks as they arrive.
+
+    A live ``requests`` response is read with urllib3's ``read1``, which returns
+    whatever bytes have arrived instead of waiting for a full chunk, so the
+    deadline is checked while a server trickles. urllib3 errors are raised as
+    the ``requests`` errors ``iter_content`` would raise.
+    """
+    raw = getattr(response, "raw", None)
+    read1 = getattr(raw, "read1", None)
+    if not (isinstance(response, requests.Response) and callable(read1)):
+        yield from iterate(64 * 1024)
+        return
+    import urllib3
+
+    while True:
+        try:
+            data = read1(64 * 1024, decode_content=True)
+        except urllib3.exceptions.ReadTimeoutError as exc:
+            raise requests.exceptions.ReadTimeout(exc) from exc
+        except urllib3.exceptions.DecodeError as exc:
+            raise requests.exceptions.ContentDecodingError(exc) from exc
+        except (urllib3.exceptions.HTTPError, OSError) as exc:
+            raise requests.exceptions.ConnectionError(exc) from exc
+        if not data:
+            return
+        yield data
+
+
+def _retry_after_seconds(value: str) -> float | None:
+    """Seconds from a Retry-After value (delta-seconds or an HTTP date), or None."""
+    text = value.strip()
+    if not text:
+        return None
+    if text.isdigit():
+        return float(text)
+    from email.utils import parsedate_to_datetime
+
+    try:
+        when = parsedate_to_datetime(text)
+    except (TypeError, ValueError):
+        return None
+    if when is None:
+        return None
+    from datetime import datetime, timezone
+
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return max(0.0, (when - datetime.now(timezone.utc)).total_seconds())
 
 
 def _not_kept(url: str) -> Page:

@@ -80,6 +80,7 @@ does not send a hop whose verdict does not permit it.
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
@@ -154,6 +155,9 @@ class Verdict:
     # True when robots.txt itself was fetched only after TLS verification was
     # turned off. The path verdict does not depend on this flag.
     tls_unverified: bool = False
+    # Crawl-delay of the selected group in seconds, 0 when none. Not part of
+    # RFC 9309; the fetcher honours it as a lower bound on its per-host delay.
+    crawl_delay: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -166,6 +170,7 @@ class _Rule:
 class _Group:
     tokens: tuple[str, ...]
     rules: tuple[_Rule, ...]
+    crawl_delay: float | None = None
 
 
 @dataclass
@@ -178,6 +183,7 @@ class OriginRules:
     robots_url: str
     error: str
     tls_unverified: bool = False
+    crawl_delay: float = 0.0
 
 
 def clear_cache() -> None:
@@ -229,7 +235,9 @@ def decide(
         )
     permitted = _allowed_by_rules(rules.rules or (), url)
     verdict = VERDICT_ALLOWED if permitted else VERDICT_DISALLOWED
-    return Verdict(verdict, permitted, rules.http_status, rules.robots_url, "", rules.tls_unverified)
+    return Verdict(
+        verdict, permitted, rules.http_status, rules.robots_url, "", rules.tls_unverified, rules.crawl_delay
+    )
 
 
 @dataclass(frozen=True)
@@ -495,9 +503,12 @@ def _fetch_rules(origin: str, user_agent: str, *, timeout: float, get, session) 
             current = nxt
             continue
         if 200 <= status < 300:
-            selected = tuple(_select_rules(_parse(_body(response)), user_agent))
+            groups = _parse(_body(response))
+            selected = tuple(_select_rules(groups, user_agent))
             final = getattr(response, "url", None) or current
-            return OriginRules("parsed", selected, status, final, "", tls_unverified)
+            return OriginRules(
+                "parsed", selected, status, final, "", tls_unverified, _select_crawl_delay(groups, user_agent)
+            )
         if 400 <= status < 500:
             return OriginRules("unavailable", None, status, current, "", tls_unverified)
         # 5xx, and anything else we do not know how to follow (1xx, 300, 304).
@@ -545,14 +556,18 @@ def _parse(text: str) -> list[_Group]:
     groups: list[_Group] = []
     tokens: list[str] = []
     rules: list[_Rule] = []
+    delay: float | None = None
+    started = False
 
     def flush() -> None:
         """Store the current user-agent group and start the next one."""
-        nonlocal tokens, rules
+        nonlocal tokens, rules, delay, started
         if tokens:
-            groups.append(_Group(tuple(tokens), tuple(rules)))
+            groups.append(_Group(tuple(tokens), tuple(rules), delay))
         tokens = []
         rules = []
+        delay = None
+        started = False
 
     for raw in text.splitlines():
         line = _strip_comment(raw)
@@ -562,7 +577,7 @@ def _parse(text: str) -> list[_Group]:
         key = key.strip().lower()
         value = value.strip()
         if key == "user-agent":
-            if rules:
+            if started:
                 flush()
             token = _product_token(value)
             if token:
@@ -571,10 +586,31 @@ def _parse(text: str) -> list[_Group]:
         if key in ("allow", "disallow"):
             if not tokens:
                 continue
+            started = True
             rules.append(_Rule(key == "allow", _normalize_pattern(value)))
+            continue
+        if key == "crawl-delay" and tokens:
+            # Not in RFC 9309, but widely written. A value that is not a
+            # non-negative number is ignored.
+            started = True
+            try:
+                seconds = float(value)
+            except ValueError:
+                continue
+            if math.isfinite(seconds) and seconds >= 0:
+                delay = seconds
             continue
     flush()
     return groups
+
+
+def _select_crawl_delay(groups: list[_Group], user_agent: str) -> float:
+    """Crawl-delay of the group ``_select_rules`` picks (the largest when merged), or 0."""
+    crawler = _product_token(user_agent).lower()
+    named = [g for g in groups if crawler and any(t != "*" and t.lower() == crawler for t in g.tokens)]
+    chosen = named or [g for g in groups if "*" in g.tokens]
+    delays = [g.crawl_delay for g in chosen if g.crawl_delay is not None]
+    return max(delays) if delays else 0.0
 
 
 def _select_rules(groups: list[_Group], user_agent: str) -> list[_Rule]:
