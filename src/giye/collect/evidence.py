@@ -50,7 +50,7 @@ from urllib.parse import urlencode
 import requests
 import yaml
 
-from giye.collect.fetch import Fetcher, Page, TermsRefused, fetcher_from_config
+from giye.collect.fetch import Fetcher, HostBusy, Page, TermsRefused, fetcher_from_config
 from giye.collect.robots import VERDICT_UNREACHABLE, RobotsRefused
 from giye.collect.snapshot import MAX_BYTES, SnapshotStore, servable_rows, utc_now
 
@@ -137,6 +137,9 @@ def settle_url(
             "direct_failure": "robots",
             "robots": exc.verdict,
         }
+    except HostBusy:
+        # The host asked for a long pause: it is not gone. Retried later.
+        return {"status": "unavailable", "at": now, "reason": "host busy (Retry-After)"}
     except requests.RequestException as exc:
         reason = type(exc).__name__
         page = None
@@ -268,7 +271,7 @@ def _existing_capture(url: str, fetcher: Fetcher) -> tuple[bytes, str, Page] | N
     except (UnicodeDecodeError, json.JSONDecodeError):
         return None
     closest = ((payload or {}).get("archived_snapshots") or {}).get("closest") or {}
-    if not closest.get("available"):
+    if not closest.get("available") or not _capture_ok(closest):
         return None
     timestamp = str(closest.get("timestamp") or "")
     if not _TIMESTAMP.fullmatch(timestamp):
@@ -280,8 +283,29 @@ def _existing_capture(url: str, fetcher: Fetcher) -> tuple[bytes, str, Page] | N
     except (RobotsRefused, requests.RequestException):
         return None
     if raw.ok and raw.content and len(raw.content) <= MAX_BYTES:
-        return raw.content, timestamp, raw
+        # Wayback may redirect the id_ URL to another capture time (a revisit
+        # or redirect capture); the bytes served are that capture's.
+        return raw.content, _served_timestamp(raw.url) or timestamp, raw
     return None
+
+
+_SERVED = re.compile(r"/web/(\d{14})id_/")
+
+
+def _served_timestamp(url: str) -> str:
+    """Capture timestamp in a Wayback ``id_`` URL, or empty."""
+    found = _SERVED.search(url or "")
+    return found.group(1) if found else ""
+
+
+def _capture_ok(closest: dict) -> bool:
+    """False when the availability API says the capture itself was an error page.
+
+    The capture of a 404 is the Archive's copy of the error, not of the page.
+    A missing ``status`` is accepted (the API does not always give one).
+    """
+    status = str(closest.get("status") or "").strip()
+    return not status or status.startswith(("2", "3"))
 
 
 def cited_urls(config: object) -> dict[str, set[str]]:

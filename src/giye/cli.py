@@ -416,10 +416,16 @@ def _evidence(args: argparse.Namespace) -> int:
 
     from giye.collect.evidence import archive_cited
 
-    status = archive_cited(_open_config(args.config))
+    status = archive_cited(_open_config(args.config), retry_unavailable=getattr(args, "retry_unavailable", False))
     counts = Counter(item.get("status") or "" for item in status.values())
     summary = " ".join(f"{key}={counts[key]}" for key in sorted(counts)) or "urls=0"
     print(f"evidence {len(status)} {summary}")
+    # Every cited URL ended without a copy or a settled verdict: the pass did not
+    # run (no network, every host down), so the command fails.
+    failed = {"unavailable", "robots_unreachable"}
+    if status and all((item.get("status") or "") in failed for item in status.values()):
+        print("giye evidence: no cited URL was kept or settled", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -597,6 +603,11 @@ def _add_tool_parsers(sub: argparse._SubParsersAction) -> None:
     unhide_cmd.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
     evidence_cmd = sub.add_parser("evidence", help="keep a copy of every URL the ledger cites")
     evidence_cmd.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
+    evidence_cmd.add_argument(
+        "--retry-unavailable",
+        action="store_true",
+        help="try URLs recorded as unavailable again (robots_unreachable is always retried)",
+    )
 
 
 def _one_line_config_warnings() -> None:
