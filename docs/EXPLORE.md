@@ -74,7 +74,7 @@ Stability and the metric interval each construct their own `numpy.random.Generat
 
 `pair_scores`, `coverage`, `adjusted_rand` and `bootstrap_stability` are the same pieces, separately.
 
-The optional extra `explore` (`scikit-learn`, `igraph`, `leidenalg`) is the stack the archive used to *build* candidate divisions. The scores do not import it. A caller who refits k-means or Leiden does that in `refit` and installs the extra themselves.
+The package ships no clustering stack. The archive once built candidate divisions with `scikit-learn`, `igraph` and `leidenalg`; the scores do not import them. A caller who refits k-means or Leiden does that in `refit` and installs those libraries themselves.
 
 ## How the dropped divisions were scored
 

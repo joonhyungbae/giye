@@ -4,6 +4,10 @@ Each section is one local model against the synthetic demo replay cache
 (`examples/demo/cache`, model id `claude-opus-5`). The cache is what `giye demo`
 replays. It is hand-written (`synthetic: true`), not a fresh hosted call.
 
+These runs cover the three CVs in the tables. The two `seoyeon` CVs were added to
+the demo later (for the co-presence cases), so the demo now has five CVs and the
+tables have not been rerun.
+
 A row matches when year, activity type, and title agree. The title is Unicode
 NFC, then casefold, then whitespace collapsed. Recall is matched/hosted.
 Precision is matched/local. Both are recomputed from the totals, not averaged

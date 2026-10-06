@@ -169,4 +169,5 @@ A frame membership is published only when that frame's decision is `included` or
 5. **No bulk export.** The website is for reading. It does not offer dataset downloads or an API,
    and ships a scrape guard. Person-level data are shared on request under a data-use agreement.
 6. **Equality.** Nothing ranks, recommends or features a person. Listing order is random or
-   alphabetical; clusters are offered for exploration, not as rankings.
+   alphabetical; the home rim groups people by entry generation, not by rank, and no clustering
+   is published (EXPLORE.md).

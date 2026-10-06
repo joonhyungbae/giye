@@ -10,8 +10,9 @@
 # What runs: the maintainer's pipeline script (private repository: it drives collectors that name
 # real programmes) runs the giye package with deploy/giye.production.toml: giye collect for programmes
 # still publishing, giye extract (CV pull + cache replay, no model call), giye resolve, and the site
-# rebuild giye normalize / publish / explore (docs/DEPLOY.md), plus the maintenance steps the package
-# has no command for yet (link check, evidence capture, self-report import).
+# rebuild giye normalize / publish / explore (docs/DEPLOY.md), plus private maintenance steps (link
+# check and self-report import, which the package has no command for, and evidence capture, which
+# still uses the older private script rather than `giye evidence`; docs/DEPLOY.md).
 #
 # Usage: deploy/scheduled.sh weekly     (crontab line in docs/DEPLOY.md)
 #        deploy/scheduled.sh --offline weekly   (no network, no push: a dry run on kept pages)

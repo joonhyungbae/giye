@@ -5,7 +5,8 @@
 # directories are passed explicitly instead of relying on the working directory.
 #
 # Usage: ./web.sh             serve the current data/site at http://localhost:8080
-#        ./web.sh --rebuild   rebuild data/site from the ledger first (scripts/, private checkout only)
+#        ./web.sh --rebuild   rebuild data/site from the ledger first with the package stages
+#                             (giye normalize, publish, explore; GIYE_CONFIG, default deploy/giye.production.toml)
 #        PORT=3001 HOST=127.0.0.1 ./web.sh
 
 set -euo pipefail
@@ -15,8 +16,11 @@ WEB="$ROOT/web"
 command -v bun >/dev/null 2>&1 || { echo "error: bun is required but not found in PATH" >&2; exit 1; }
 
 if [[ "${1:-}" == "--rebuild" ]]; then
-  [[ -f "$ROOT/scripts/build_site_dataset.py" ]] || { echo "error: --rebuild needs the private scripts/" >&2; exit 1; }
-  (cd "$ROOT" && python3 scripts/preprocess/run.py && python3 scripts/build_site_dataset.py)
+  CONFIG="${GIYE_CONFIG:-$ROOT/deploy/giye.production.toml}"
+  GIYE="${GIYE_BIN:-$ROOT/.venv/bin/giye}"
+  for stage in normalize publish explore; do
+    "$GIYE" "$stage" --config "$CONFIG" || { echo "error: giye $stage failed" >&2; exit 1; }
+  done
 fi
 [[ -f "$ROOT/data/site/artists.json" ]] || echo "warning: $ROOT/data/site/artists.json is missing; the site will be empty" >&2
 

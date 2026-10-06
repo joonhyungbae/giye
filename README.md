@@ -55,7 +55,7 @@ source.
 
 ## Pipeline
 
-collect → extract (LLM, optional) → ledger → resolve → normalize → explore → publish → website.
+collect → extract (LLM, optional) → ledger → resolve → normalize → publish → explore → website.
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the stages and guarantees,
 [docs/RULES.md](docs/RULES.md) for every rule, and [docs/SNAPSHOT.md](docs/SNAPSHOT.md) for the
 JSON the site reads.
@@ -110,10 +110,11 @@ not to the process. See `examples/demo/giye.toml`.
 - `[extract]` — `provider` (`anthropic` or `openai_compatible`), `model`, `base_url`, `api_key_env`, `chunk_chars`, `reasoning_effort`, replay cache, CV locations
 - `[resolve]` — local CV directory, extra event patterns for rule E2 (they replace a field-file key of the same code)
 - `[normalize]` — `language_module` (default `giye.normalize.lang.ko_en:KoEn`), glossary, gazetteer, GeoNames tree, which of V7–V9 to apply
-- `[publish]` — `site_url`, `dataset_version` (default `0.2`), `dataset_title`, `citation_author`
+- `[publish]` — `site_url` (required for `giye publish`), `dataset_version` (default `0.2`), `dataset_title`, `citation_author`, `data_license`
 
-The default citation author is `기예 Giye` and the default site origin is `https://giye.org`,
-matching the reference deployment. A demo or another field sets its own.
+The default citation author is `기예 Giye`, matching the reference deployment. There is no default
+site origin: `giye publish` stops when `[publish] site_url` is unset. A demo or another field sets its own
+(the demo uses `https://example.org`). See [docs/CONFIG.md](docs/CONFIG.md) for every key.
 
 ## Running extraction on a local model
 
@@ -142,17 +143,17 @@ The pipeline queues a pair it will not merge, and a page can be hidden. These co
 
 ```bash
 giye queue list --config giye.toml
-giye queue list --kind possible_same_person --status open
+giye queue list --config giye.toml --kind possible_same_person --status open
 giye queue decide QUEUE_ID --decision merge --evidence "E1 https://example.org/studio both rows list this site"
 giye queue decide QUEUE_ID --decision distinct
 giye queue decide QUEUE_ID --decision dismiss --note "not this edition"
-giye merge KEEP_ID DROP_ID --evidence "H same person in both catalogues, checked by the editor 2026-01-15"
+giye merge --config giye.toml KEEP_ID DROP_ID --evidence "H same person in both catalogues, checked by the editor 2026-01-15"
 giye hide GY-000010 --reason "asked to be removed"
 giye unhide GY-000010
 giye evidence --config giye.toml
 ```
 
-`KEEP_ID` and `DROP_ID` are a ledger id or a `gy_id`. A merge a person makes needs the same kind of evidence as an automatic one: an E-code (E1–E4, or X1+E1 … X1+E4) followed by a citation (an http(s) URL, a CV source id, or a roster edition code), or `H` (a person's judgement) followed by the reason (at least three words) and a date no later than today. Free text alone is refused, and the cited evidence must hold on the ledger: an E1 URL must be a website of both records, an E2 CV source must belong to one record and list a roster edition of the other, an E3 or E4 citation must name the shared work or team, and X1+ also needs the name keys to meet (docs/RULES.md). A pair decided `distinct` is not merged unless the library call passes `override_distinct=True`, and the evidence then records the decision it overrides. `merge` refuses a team paired with a person (T1) and retires the dropped `gy_id` with a redirect, the same way an automatic merge does. `hide` sets `HIDDEN_BY_REQUEST`; publish then writes a tombstone with no name. `evidence` keeps a copy of every URL the ledger cites.
+Every command reads `giye.toml` in the current directory when `--config` is omitted. `KEEP_ID` and `DROP_ID` are a ledger id or a `gy_id`. A merge a person makes needs the same kind of evidence as an automatic one: an E-code (E1–E4, or X1+E1 … X1+E4) followed by a citation (an http(s) URL, a CV source id, or a roster edition code), or `H` (a person's judgement) followed by the reason (at least three words) and a date no later than today. Free text alone is refused, and the cited evidence must hold on the ledger: an E1 URL must be a website of both records, an E2 CV source must belong to one record and list a roster edition of the other, an E3 or E4 citation must name the shared work or team, and X1+ also needs the name keys to meet (docs/RULES.md). A pair decided `distinct` is not merged unless the library call passes `override_distinct=True`, and the evidence then records the decision it overrides. `merge` refuses a team paired with a person (T1) and retires the dropped `gy_id` with a redirect, the same way an automatic merge does. `hide` sets `HIDDEN_BY_REQUEST`; publish then writes a tombstone with no name. `evidence` keeps a copy of every URL the ledger cites.
 
 ## Extending to another field
 
