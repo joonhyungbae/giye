@@ -242,6 +242,20 @@ def test_m3_full_width_latin_is_read_and_unclassified_is_not_empty() -> None:
     assert result.annotations["a001"]["venue_kind"] == "empty"
 
 
+def test_m4_a_venue_that_is_only_a_title_is_no_institution() -> None:
+    """m4: 《예시의 정원》 alone names no venue; with an institution the title is stripped (V7a)."""
+    rows = [_row(0, "《예시의 정원》"), _row(1, "<Light Garden>"), _row(2, "「도시」 예시미술관"), _row(3, "예시미술관")]
+    result = build(rows, write=False, lang=LANG)
+    assert [result.annotations[f"a00{index}"]["venue_kind"] for index in range(4)] == [
+        "title_only",
+        "title_only",
+        "institution",
+        "institution",
+    ]
+    assert result.annotations["a002"]["venue_id"] == result.annotations["a003"]["venue_id"]
+    assert [row["name"] for row in result.venues] == ["예시미술관"]
+
+
 def test_n3_x2_does_not_fold_through_an_ambiguous_reading() -> None:
     from giye.extract.crosslang import clear_marks, fold_cross_language
 

@@ -345,7 +345,11 @@ def classify_fragment(text: str, lang: LanguageModule) -> Fragment:
     V7e, V8 and V9 never see it. A longer name that merely contains a place
     word stays an institution.
     V8b: an administrative office is an institution even though it starts with a place.
+    A fragment that is only a work title in 《》〈〉<>「」『』 is a title, not an
+    institution (audit m4): ``《예시의 정원》`` names no venue.
     """
+    if venue_names.TITLE_RE.search(text) and len(LETTERS_RE.findall(venue_names.TITLE_RE.sub(" ", text))) < 2:
+        return Fragment(text, "title")
     spelled = institution_key(text, lang)
     if venue_names.is_admin_office(text, lang) or venue_names.is_admin_office(spelled, lang):
         return Fragment(text, "institution")
@@ -1384,6 +1388,8 @@ def _annotate_rows(
             venue_kind = "online"
         elif "place" in kinds:
             venue_kind = "place_only"
+        elif "title" in kinds:
+            venue_kind = "title_only"  # a work title and nothing that names a venue
         elif "unclassified" in kinds:
             venue_kind = "unclassified"  # text that names nothing V3 knows; not an empty venue
         else:

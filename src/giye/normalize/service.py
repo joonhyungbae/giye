@@ -536,7 +536,7 @@ def _report_text(
         "- venue_kind: "
         + " · ".join(
             f"{kind} {venue_result.stats['venue_kind'].get(kind, 0)}"
-            for kind in ("institution", "funder", "online", "place_only", "unclassified", "empty")
+            for kind in ("institution", "funder", "online", "place_only", "title_only", "unclassified", "empty")
         ),
         (
             f"- Alias merges: {venue_result.stats['alias_merges']}"
