@@ -198,7 +198,9 @@ GNU Affero General Public License v3.0 only (AGPL-3.0-only; see [LICENSE](LICENS
 the code, including to run their own archive; if you run a modified version as a network service, you must offer its users
 the source of that version under the same licence. The archive's data are not part of the software and are not released.
 Reference data used by some rules (e.g. GeoNames) keep their own
-licences and are downloaded separately.
+licences and are downloaded separately, except one derived table: the Korean administrative units in
+`src/giye/normalize/data/ko_en/kr_places.tsv` contain data from GeoNames (geonames.org), licensed CC BY 4.0
+(see `SOURCES.txt` beside it).
 
 ## Citation
 

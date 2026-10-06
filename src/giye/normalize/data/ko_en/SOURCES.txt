@@ -28,6 +28,15 @@ countries/*.json
     Upstream: https://github.com/michaelwittig/node-i18n-iso-countries
     Copied because they are country names, not people.
 
+kr_places.tsv
+    Every Korean first-level region (ADM1) and city, county and district
+    (ADM2): the GeoNames name, its ASCII name, and its Hangul alternate names.
+    Derived from GeoNames KR.txt by tools/build_kr_places.py. Read after
+    cities.tsv and only for names that table does not resolve.
+    Attribution: contains data from GeoNames (geonames.org), licensed under
+    Creative Commons Attribution 4.0 (CC BY 4.0). The rows were selected and
+    reformatted; names and populations are not otherwise changed.
+
 GeoNames (cities15000.txt, admin1CodesASCII.txt) is CC BY 4.0 and is not
 shipped. Point [normalize] reference at a directory that contains geonames/
 and countries/ to use the production place index. See docs/ARCHITECTURE.md.

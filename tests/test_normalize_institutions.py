@@ -171,6 +171,29 @@ def test_n5_a_title_before_the_venue_is_not_the_venue() -> None:
     assert _together(["XYZ, Example Gallery", "XYZ"], "XYZ, Example Gallery", "XYZ")
 
 
+def test_n7_the_packaged_gazetteer_reads_korean_units_as_places() -> None:
+    """N-7: without a GeoNames tree, Korean cities, counties, districts and nested places are places (V3c)."""
+    places = ["Cheongju", "청주", "Jeju", "종로구", "서울 종로구", "Seoul Korea", "Tokyo Japan", "New York City"]
+    rows = [_row(index, venue) for index, venue in enumerate(places)]
+    result = build(rows, write=False, lang=LANG)
+    assert {value["venue_kind"] for value in result.annotations.values()} == {"place_only"}
+    assert not result.venues
+    # All 17 first-level units resolve, in Hangul and in Latin.
+    regions = "서울 부산 대구 인천 광주 대전 울산 세종 경기도 강원도 충청북도 충청남도 전라남도 경상북도 경상남도 제주도 전북특별자치도"
+    for name in [*regions.split(), "Gyeonggi-do", "Chungcheongnam-do", "Jeollanam-do", "Sejong"]:
+        assert LANG.gazetteer.resolve_fragments([name])[0][1] == "KR", name
+    # Two place names that do not agree are not one place.
+    assert build([_row(0, "Busan Daegu")], write=False, lang=LANG).annotations["a000"]["venue_kind"] == "institution"
+
+
+def test_n7_rules_md_v8_example_holds_with_the_packaged_gazetteer() -> None:
+    """RULES.md V8: MMCA Seoul is a branch when MMCA Cheongju is written too; ZKM Karlsruhe joins ZKM."""
+    venues = ["MMCA", "MMCA Seoul", "MMCA Cheongju", "MMCA, Seoul"]
+    assert not _together(venues, "MMCA", "MMCA Seoul")
+    assert not _together(venues, "MMCA", "MMCA Cheongju")
+    assert _together(["ZKM", "ZKM Karlsruhe", "ZKM, Karlsruhe"], "ZKM", "ZKM Karlsruhe")
+
+
 def test_n3_x2_does_not_fold_through_an_ambiguous_reading() -> None:
     from giye.extract.crosslang import clear_marks, fold_cross_language
 

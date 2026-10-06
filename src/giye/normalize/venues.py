@@ -294,6 +294,33 @@ def _resolved_place(text: str, lang: LanguageModule) -> Place | None:
     return Place(*found[0])
 
 
+def _nested_place(text: str, lang: LanguageModule) -> Place | None:
+    """V3b: two place names without a comma that agree (``Seoul Korea``, ``서울 종로구``).
+
+    The words split into a head and a tail that both resolve as whole places
+    (a city, district, region or country), in one country and, inside Korea,
+    one first-level region. The head's place is the fragment's place, or the
+    tail's when the head names no city. Why: the city plus its own country
+    code was the only such form; ``Tokyo Japan`` and ``서울 종로구`` became
+    institutions (pre-release audit N-7).
+    """
+    words = text.split()
+    if not 2 <= len(words) <= 4:
+        return None
+    gazetteer = lang.gazetteer
+    for cut in range(1, len(words)):
+        head = gazetteer.resolve_fragments([" ".join(words[:cut])])[0]
+        tail = gazetteer.resolve_fragments([" ".join(words[cut:])])[0]
+        if not head or not tail or head[1] != tail[1]:
+            continue
+        if head[2] and tail[2] and head[2] != tail[2]:
+            continue
+        if head[0] and tail[0] and head[2] == tail[2] == "" and head[0] != tail[0]:
+            continue  # two cities abroad
+        return Place(*(head if head[0] or not tail[0] else tail))
+    return None
+
+
 def classify_fragment(text: str, lang: LanguageModule) -> Fragment:
     """V3 classification, first match: office, place, city+country-code, online, funder, institution.
 
@@ -323,6 +350,9 @@ def classify_fragment(text: str, lang: LanguageModule) -> Fragment:
         head = gazetteer.resolve_detail(city_code.group(1), words=False)
         if head and country and head[0][1] == country:
             return Fragment(text, "place", Place(*head[0]))
+    nested = _nested_place(text, lang)
+    if nested:
+        return Fragment(text, "place", nested)
     if ONLINE_RE.fullmatch(text):
         return Fragment(text, "online")
     if FUNDER_RE.search(text):

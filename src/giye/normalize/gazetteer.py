@@ -21,9 +21,11 @@ V1 calls this with ``words=False``: the whole fragment must be a place. A town
 inside an institution name (``Nam June Paik Art Center``) is not a place; the
 city is the fragment that is only the city (``…, Yongin``).
 
-The packaged table is a compact gazetteer. ``from_geonames`` reads a GeoNames
-tree (cities15000 + admin1, CC BY 4.0, not shipped) so a configured archive can
-resolve places the compact table omits.
+The packaged table is a compact gazetteer: a few cities, plus every Korean
+first- and second-level administrative unit (``kr_places.tsv``, derived from
+GeoNames KR.txt, CC BY 4.0, by ``tools/build_kr_places.py``). ``from_geonames``
+reads a GeoNames tree (cities15000 + admin1, not shipped) so a configured
+archive can resolve places the compact table omits.
 A country extract in the same directory (``KR.txt``, or ``allCountries.txt``)
 supplies the places cities15000 drops: administrative divisions and
 neighbourhoods. See ``OMITTED_PLACE_CODES``.
@@ -381,12 +383,15 @@ class Gazetteer:
         admin1: dict[str, tuple[str, str]],
         us_postal: set[str],
         sources: tuple[Path, ...] = (),
+        fill: list[tuple[str, int, str, str, str]] | None = None,
     ) -> Gazetteer:
         """Build an index from in-memory rows. Both city indexes receive every row.
 
         ``from_geonames`` keeps Latin alternate names out of the legacy index
         unless the city has at least a million people. A table built here has
-        no alternate-name column, so the two indexes match.
+        no alternate-name column, so the two indexes match. ``fill`` rows (the
+        packaged Korean administrative units) only add names ``cities`` did not
+        resolve, the way a GeoNames country extract fills cities15000.
         """
         enhanced: dict[str, City] = {}
         legacy: dict[str, City] = {}
@@ -394,6 +399,11 @@ class Gazetteer:
             record = (pop, country, admin, canonical)
             _add_city(enhanced, name, record)
             _add_city(legacy, name, record)
+        held = set(enhanced)
+        for name, pop, country, admin, canonical in fill or ():
+            record = (pop, country, admin, canonical)
+            _add_city(enhanced, name, record, protect=held)
+            _add_city(legacy, name, record, protect=held)
         return cls(
             Index(countries, set(country_codes), dict(alpha3), enhanced, legacy, dict(admin1), set(us_postal)),
             sources,
@@ -407,12 +417,17 @@ class Gazetteer:
         countries_dir: Path,
         admin1_path: Path,
         postal_path: Path,
+        places_path: Path | None = None,
     ) -> Gazetteer:
-        """Compact gazetteer: city TSV, country JSON, admin1 TSV, USPS codes."""
+        """Compact gazetteer: city TSV, country JSON, admin1 TSV, USPS codes.
+
+        ``places_path`` (the packaged ``kr_places.tsv``, same columns as the
+        city TSV) fills names the city TSV does not resolve.
+        """
         countries, country_codes, alpha3 = load_country_tables(countries_dir)
-        city_rows: list[tuple[str, int, str, str, str]] = []
-        for row in _read_tsv(cities_path):
-            city_rows.append(
+
+        def city_rows_of(path: Path) -> list[tuple[str, int, str, str, str]]:
+            return [
                 (
                     row["name"],
                     int(row.get("population") or 0),
@@ -420,7 +435,11 @@ class Gazetteer:
                     row.get("admin1") or "",
                     row["canonical"],
                 )
-            )
+                for row in _read_tsv(path)
+            ]
+
+        city_rows = city_rows_of(cities_path)
+        fill = city_rows_of(places_path) if places_path is not None else []
         admin1: dict[str, tuple[str, str]] = {}
         for row in _read_tsv(admin1_path):
             key = place_key(row["name"])
@@ -438,7 +457,14 @@ class Gazetteer:
             alpha3=alpha3,
             admin1=admin1,
             us_postal=postal,
-            sources=(cities_path, admin1_path, postal_path, *(countries_dir / name for name in ("codes.json", "en.json", "ko.json"))),
+            sources=(
+                cities_path,
+                *((places_path,) if places_path is not None else ()),
+                admin1_path,
+                postal_path,
+                *(countries_dir / name for name in ("codes.json", "en.json", "ko.json")),
+            ),
+            fill=fill,
         )
 
     @classmethod

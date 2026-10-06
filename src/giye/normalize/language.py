@@ -331,6 +331,7 @@ class KoreanEnglish:
                 countries_dir=data / "countries",
                 admin1_path=data / "admin1.tsv",
                 postal_path=data / "us_postal.txt",
+                places_path=data / "kr_places.tsv",
             )
         return cls(load_glossary(glossary_path), gazetteer, load_generic_titles(data / "generic_titles.txt"))
 
