@@ -48,6 +48,7 @@ from giye.extract.pull import pull_active
 from giye.extract.registry import register
 from giye.extract.schema import parse_extraction, without_unknown_sources
 from giye.extract.text import bundle_fingerprint, replay_key
+from giye.ledger.io import write_text_atomic
 from giye.ledger.ledger import Ledger
 from giye.normalize.language import language_for
 from giye.resolve.teams import team_like
@@ -264,7 +265,7 @@ def _extract_pending(ledger: Ledger, config: Config, result: ExtractResult, *, r
             "sources": [{"source_id": source["source_id"], "content_sha256": source["content_sha256"]} for source in sources],
             "activities": [row.model_dump() for row in activities],
         }
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        write_text_atomic(path, json.dumps(payload, ensure_ascii=False, indent=1) + "\n")
         result.extracted.append(ledger_id)
 
 

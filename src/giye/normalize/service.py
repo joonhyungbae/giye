@@ -32,7 +32,7 @@ from pathlib import Path
 from giye.config import Config
 from giye.extract.paths import verified_cv_text
 from giye.field import Field
-from giye.ledger.io import read_csv, write_csv
+from giye.ledger.io import read_csv, write_csv, write_text_atomic
 from giye.ledger.ledger import without_hidden
 from giye.normalize.language import LanguageModule, language_for, packaged_dir
 from giye.normalize.rules import (
@@ -672,7 +672,7 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
         activity_out=activity_out,
         venue_result=venue_result,
     )
-    (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_text_atomic(out / "manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
     medium_artists = len({row["ledger_id"] for row in attributes if row["field"] == "medium"})
     report = _report_text(
         manifest,

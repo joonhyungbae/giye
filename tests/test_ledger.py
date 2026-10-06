@@ -852,6 +852,31 @@ def test_write_csv_is_atomic_and_keeps_the_old_file_on_failure(tmp_path: Path):
     assert path.stat().st_mode & 0o777 == 0o640
 
 
+def test_write_text_atomic_replaces_whole_file_and_keeps_old_on_failure(tmp_path: Path, monkeypatch):
+    """The JSON writers (replay cache, extract files, site snapshot, rim order, manifest) share this helper."""
+    import os
+
+    from giye.ledger import io as ledger_io
+
+    path = tmp_path / "out.json"
+    ledger_io.write_text_atomic(path, '{"a": 1}\n')
+    assert path.read_text(encoding="utf-8") == '{"a": 1}\n'
+    path.chmod(0o640)
+
+    def broken(src, dst):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(os, "replace", broken)
+    with pytest.raises(OSError):
+        ledger_io.write_text_atomic(path, '{"a": 2}\n')
+    monkeypatch.undo()
+    assert path.read_text(encoding="utf-8") == '{"a": 1}\n'
+    assert [item.name for item in tmp_path.iterdir()] == ["out.json"]
+    ledger_io.write_text_atomic(path, "가\n")
+    assert path.read_text(encoding="utf-8") == "가\n"
+    assert path.stat().st_mode & 0o777 == 0o640
+
+
 def test_lock_file_holds_only_the_pid_and_is_empty_after_exit(tmp_path: Path):
     """Software review round 6, minor 11: every data directory kept the full command line."""
     import subprocess

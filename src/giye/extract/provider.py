@@ -23,6 +23,8 @@ import re
 from pathlib import Path
 from typing import Protocol
 
+from giye.ledger.io import write_text_atomic
+
 
 class CacheMiss(Exception):
     """No stored response for this content hash, prompt hash, and model."""
@@ -83,7 +85,7 @@ def write_cache(
     if synthetic:
         payload["synthetic"] = True
     path = cache_path(directory, content_sha256, prompt_sha256, model)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_text_atomic(path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
     return path
 
 

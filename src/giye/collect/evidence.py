@@ -41,7 +41,6 @@ from __future__ import annotations
 
 import csv
 import json
-import os
 import re
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -53,6 +52,7 @@ import yaml
 from giye.collect.fetch import Fetcher, HostBusy, Page, TermsRefused, fetcher_from_config
 from giye.collect.robots import VERDICT_UNREACHABLE, RobotsRefused
 from giye.collect.snapshot import MAX_BYTES, SnapshotStore, servable_rows, utc_now
+from giye.ledger.io import write_text_atomic
 
 # Availability API, then the raw capture. There is no Save Page Now URL in this module.
 WAYBACK_AVAILABLE = "https://archive.org/wayback/available"
@@ -454,10 +454,8 @@ CHECKPOINT_EVERY = 25
 
 
 def _write_status(path: Path, status: dict[str, dict]) -> None:
-    """Write status.json through a temporary file, so a crash leaves the old or the new file."""
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(status, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    """Write status.json atomically (``write_text_atomic``), so a crash leaves the old or the new file."""
+    write_text_atomic(path, json.dumps(status, ensure_ascii=False, indent=1) + "\n")
 
 
 def wayback_allowed(config: object) -> bool:

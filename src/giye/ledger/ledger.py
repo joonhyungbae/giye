@@ -34,7 +34,7 @@ from giye.ledger.ids import (
     norm_activity_title,
     take_activity_id,
 )
-from giye.ledger.io import backup_before_write, hold_ledger_lock, read_csv, write_csv
+from giye.ledger.io import backup_before_write, hold_ledger_lock, read_csv, write_csv, write_text_atomic
 from giye.ledger.schemas import (
     ACTIVITIES_FIELDS,
     ARTISTS_FIELDS,
@@ -544,7 +544,7 @@ class Ledger:
         data["sources"] = sources
         for activity in data.get("activities", []):
             activity["source_id"] = remap.get(activity.get("source_id"), activity.get("source_id"))
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+        write_text_atomic(path, json.dumps(data, ensure_ascii=False, indent=1))
 
 
 @dataclass

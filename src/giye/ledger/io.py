@@ -149,19 +149,46 @@ def write_csv(*, path: Path, fields: Sequence[str], rows: Iterable[Mapping[str, 
     table. A reader sees either the old file or the new one. The new file
     keeps the old file's permission bits.
     """
+    columns = list(fields)
+    ending = _lineterminator(path)
+
+    def fill(handle) -> None:
+        writer = csv.DictWriter(handle, fieldnames=columns, extrasaction="ignore", lineterminator=ending)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({key: "" if row.get(key) is None else row.get(key, "") for key in columns})
+
+    _replace_atomically(path, fill)
+
+
+def write_text_atomic(path: Path, text: str) -> None:
+    """Write ``text`` (UTF-8, line endings as given) to ``path`` the way ``write_csv`` writes a table.
+
+    Why: the replay cache, the extraction files, the site snapshot, the rim
+    order, the processed manifest and the evidence status are read back by a
+    later stage; a crash or a full disk during a plain ``write_text`` would
+    leave a truncated JSON file that the next run either rejects or, worse,
+    reads as empty. A reader sees the old file or the new one.
+    """
+    _replace_atomically(path, lambda handle: handle.write(text))
+
+
+def _replace_atomically(path: Path, fill) -> None:
+    """Write through a temporary file in the same directory, fsync it, and move it over ``path``.
+
+    ``fill(handle)`` writes the content to a text handle opened with UTF-8 and
+    ``newline=""``. The new file keeps the old file's permission bits (a new
+    file gets the umask default), and the directory is fsynced after the
+    rename so the rename itself survives a crash.
+    """
     import tempfile
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    columns = list(fields)
-    ending = _lineterminator(path)
     descriptor, temp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     temp = Path(temp_name)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=columns, extrasaction="ignore", lineterminator=ending)
-            writer.writeheader()
-            for row in rows:
-                writer.writerow({key: "" if row.get(key) is None else row.get(key, "") for key in columns})
+            fill(handle)
             handle.flush()
             os.fsync(handle.fileno())
         if path.exists():

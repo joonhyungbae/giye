@@ -77,7 +77,7 @@ import yaml
 
 from giye.config import Config
 from giye.field import Field, edition_alias, rim_family, rim_label
-from giye.ledger.io import read_csv
+from giye.ledger.io import read_csv, write_text_atomic
 
 # R1. Running or judging an edition is not entering it. The pattern is the staff test.
 STAFF_ROLE = re.compile(
@@ -202,7 +202,7 @@ def write_rim_order(document: Mapping[str, Any], site_dir: str | Path) -> Path:
     directory = Path(site_dir)
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / "rim_order.json"
-    path.write_text(json.dumps(document, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    write_text_atomic(path, json.dumps(document, ensure_ascii=False, separators=(",", ":")))
     return path
 
 

@@ -53,6 +53,7 @@ from giye.extract.apply import PRIVATE_TITLE
 from giye.extract.grounding import NOTE_KEY as GROUNDING_KEY
 from giye.field import Field, edition_alias
 from giye.ledger.ids import activity_id_for, activity_id_key, gy_number, mint_id
+from giye.ledger.io import write_text_atomic
 from giye.ledger.ledger import Ledger
 from giye.ledger.schemas import split_pipe
 from giye.normalize.rules import admitted_memberships, published_ids, roster_source_urls
@@ -633,7 +634,7 @@ def _clock(now: datetime | None) -> datetime:
 
 def _dump(path: Path, payload: object) -> None:
     """Write JSON the site reads: UTF-8, non-ASCII kept, two-space indent, trailing newline."""
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_text_atomic(path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
 
 
 def _frames_document(path: Path) -> dict:
