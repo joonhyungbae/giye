@@ -14,6 +14,7 @@ from giye import __version__
 from giye.config import GiyeError
 
 STAGES = ["collect", "extract", "ledger", "resolve", "normalize", "explore", "publish"]
+CONFIG_HELP = "the archive config (default: giye.toml in the current directory)"
 
 
 def _unknown_command(command: str) -> int:
@@ -405,7 +406,7 @@ def _add_stage_parsers(sub: argparse._SubParsersAction) -> None:
     """``collect`` through ``run``, including the flags only one stage reads."""
     for stage in STAGES + ["run"]:
         sp = sub.add_parser(stage, help=f"run the {stage} stage" if stage != "run" else "run every stage in order")
-        sp.add_argument("--config", default="giye.toml")
+        sp.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
         if stage in {"collect", "run"}:
             sp.add_argument(
                 "--from-snapshots",
@@ -494,15 +495,15 @@ def _add_tool_parsers(sub: argparse._SubParsersAction) -> None:
     demo.add_argument("--config", default=None, help="defaults to examples/demo/giye.toml")
     demo.add_argument("--output", default=None, help="data directory; default is a new temporary directory")
     render_cmd = sub.add_parser("render", help="write one plain HTML page per person from the site snapshot")
-    render_cmd.add_argument("--config", default="giye.toml")
+    render_cmd.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
     export = sub.add_parser("export", help="write the snapshot store as WARC, or the run as an RO-Crate")
     export_sub = export.add_subparsers(dest="export_cmd", required=True)
     warc = export_sub.add_parser("warc", help="WARC 1.1 of kept snapshot bodies (optional WACZ)")
-    warc.add_argument("--config", default="giye.toml")
+    warc.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
     warc.add_argument("--output", default=None, help="WARC path; default is <data>/work/export/snapshots.warc.gz")
     warc.add_argument("--wacz", action="store_true", help="also write a WACZ 1.1.1 package next to the WARC")
     crate = export_sub.add_parser("ro-crate", help="RO-Crate 1.1 metadata for this run")
-    crate.add_argument("--config", default="giye.toml")
+    crate.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
     crate.add_argument(
         "--output",
         default=None,
@@ -511,12 +512,12 @@ def _add_tool_parsers(sub: argparse._SubParsersAction) -> None:
     queue = sub.add_parser("queue", help="list or close a review-queue item")
     queue_sub = queue.add_subparsers(dest="queue_cmd", required=True)
     queue_list = queue_sub.add_parser("list", help="list review items")
-    queue_list.add_argument("--config", default="giye.toml")
+    queue_list.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
     queue_list.add_argument("--kind", default=None, help="reason column, for example possible_same_person")
     queue_list.add_argument("--status", default="open", help="status to list; 'any' lists every status")
     queue_decide = queue_sub.add_parser("decide", help="close one item: merge, distinct, or dismiss")
     queue_decide.add_argument("item_id")
-    queue_decide.add_argument("--config", default="giye.toml")
+    queue_decide.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
     queue_decide.add_argument("--decision", required=True, choices=("merge", "distinct", "dismiss"))
     queue_decide.add_argument(
         "--evidence", default="", help="required for --decision merge: E1-E4 (or X1+E) with a citation, or H with a reason and date"
@@ -528,7 +529,7 @@ def _add_tool_parsers(sub: argparse._SubParsersAction) -> None:
     merge_cmd = sub.add_parser("merge", help="merge two people and retire the dropped gy_id")
     merge_cmd.add_argument("keep_id", help="ledger id or gy_id to keep")
     merge_cmd.add_argument("drop_id", help="ledger id or gy_id to retire")
-    merge_cmd.add_argument("--config", default="giye.toml")
+    merge_cmd.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
     merge_cmd.add_argument(
         "--evidence", required=True, help="E1-E4 (or X1+E) with a citation, or H with a reason and date"
     )
@@ -537,13 +538,13 @@ def _add_tool_parsers(sub: argparse._SubParsersAction) -> None:
     )
     hide_cmd = sub.add_parser("hide", help="hide a page (HIDDEN_BY_REQUEST tombstone)")
     hide_cmd.add_argument("gy_id")
-    hide_cmd.add_argument("--config", default="giye.toml")
+    hide_cmd.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
     hide_cmd.add_argument("--reason", required=True)
     unhide_cmd = sub.add_parser("unhide", help="publish a hidden page again")
     unhide_cmd.add_argument("gy_id")
-    unhide_cmd.add_argument("--config", default="giye.toml")
+    unhide_cmd.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
     evidence_cmd = sub.add_parser("evidence", help="keep a copy of every URL the ledger cites")
-    evidence_cmd.add_argument("--config", default="giye.toml")
+    evidence_cmd.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
 
 
 def main(argv: list[str] | None = None) -> int:
