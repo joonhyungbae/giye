@@ -180,7 +180,7 @@ Still possible:
 - Other limits. V1 (`venue_country` in `activities.csv`) splits a venue differently from V2, so a row can have an entity with a city and an empty `venue_country` (audit m2). Rows with `publishable=no` (an ungrounded CV row, an X2 copy) take part in clustering and in an entity's artist count (m11); co-presence ties use publishable rows only. `VEN-` ids are numbered by row count and change when the ledger changes; they are not stable across runs (m10).
 - Audit status. The 70-case audit of V7e, V8 and V9 (paper Table 3) was drawn before these changes. The V4, V7a–d and X2 changes and the N-3 to N-5 guards have not been audited on a sample of their own.
 
-On the production copy of 2026-10-06 the guards give 34,530 entities after V7–V9 (36,795 before them) and 5,754 roster-independent co-presence pairs (6,595 before); per rule, V7a–d add 291 pairs, V7e 246 (713 merges), V8 66 (80) and V9 377 (251).
+On the final ledger of 2026-10-06 (`giye explore ties --layers`, 541 people with CV rows) the guards give 34,524 entities after V7–V9 (36,404 before them) and 5,725 roster-independent co-presence pairs (4,753 before); per rule, V7a–d add 291 pairs, V7e 244 (713 merges), V8 66 (80) and V9 371 (251).
 
 ## Publication (stage 7)
 
