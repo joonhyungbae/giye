@@ -2,10 +2,9 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.1.0] - unreleased
+## [0.1.0] - 2026-10-06
 
-First version of the package: a data-free toolkit that builds a provenance-first person register of a creative field from public programme rosters and CVs, and the website that serves it. No tag or release exists yet; the date is set when the version is released.
-
+First version of the package: a data-free toolkit that builds a provenance-first person register of a creative field from public programme rosters and CVs, and the website that serves it.
 
 - Collects programme rosters through a fetcher that checks robots.txt before every request and every redirect, and stores original bytes in a content-addressed snapshot.
 - Extracts public CVs into a validated activity schema, with a replay cache so a run can be repeated without calling a model.
