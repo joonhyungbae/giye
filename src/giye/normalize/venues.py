@@ -44,7 +44,13 @@ VENUE_FIELDS = [
 MERGE_FIELDS = ["rule", "venue_id", "kept_key", "joined_key"]
 # Order of the rule ids in ``venue_rule`` and ``rules``.
 RULE_ORDER = ("V4", "V7", "V5a", "V5d", "V5f", "V7e", "V8", "V9")
-SPLIT_CHARS = {",", "/", "|", "·", ";", "\x1f"}
+# V2 separators. The full-width and ideographic commas and semicolon split like
+# their ASCII forms (예시미술관，서울); before 2026-10-06 they did not (audit m1).
+SPLIT_CHARS = {",", "/", "|", "·", ";", "，", "、", "；", "\x1f"}
+# Brackets that open and close a V2 parenthetical: round, square, curly, and
+# their full-width or lenticular forms.
+OPEN_BRACKETS = "(（[［{｛【"
+CLOSE_BRACKETS = ")）]］}｝】"
 ONLINE_RE = re.compile(
     r"(?:online|web|website|youtube|vimeo|zoom|instagram|virtual|metaverse|온라인|웹사이트|유튜브)",
     re.IGNORECASE,
@@ -141,8 +147,8 @@ class UnionFind:
 
 
 def _plain_fragments(text: str) -> tuple[list[str], list[tuple[str, str]]]:
-    """V2 separators and round parentheses, preserving the fragments' source order."""
-    text = re.sub(r"\s+-\s+", "\x1f", text)
+    """V2 separators and brackets, preserving the fragments' source order."""
+    text = re.sub(r"\s+[-–—]\s+", "\x1f", text)  # a spaced hyphen, en dash or em dash
     fragments: list[str] = []
     parent_pairs: list[tuple[str, str]] = []
     stack: list[tuple[str, int]] = []
@@ -157,10 +163,10 @@ def _plain_fragments(text: str) -> tuple[list[str], list[tuple[str, str]]]:
     for char in text:
         if char in SPLIT_CHARS:
             flush()
-        elif char in "(（":
+        elif char in OPEN_BRACKETS:
             flush()
             stack.append((fragments[-1] if fragments else "", len(fragments)))
-        elif char in ")）":
+        elif char in CLOSE_BRACKETS:
             flush()
             if stack:
                 before, start = stack.pop()

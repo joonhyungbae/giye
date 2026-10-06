@@ -218,6 +218,21 @@ def test_n8_venue_rule_names_the_path_to_the_entity(tmp_path: Path) -> None:
     assert {row["venue_id"] for row in merges} == {museum["venue_id"]}
 
 
+def test_m1_more_separator_forms_split_the_city_off() -> None:
+    """m1: dashes, full-width and ideographic commas, and square or curly brackets split like V2's ASCII forms."""
+    spellings = [
+        "예시미술관, 서울",
+        "예시미술관 – 서울",
+        "예시미술관 — 서울",
+        "예시미술관，서울",
+        "예시미술관、서울",
+        "예시미술관 [서울]",
+        "예시미술관 {서울}",
+        "예시미술관【서울】",
+    ]
+    assert len(_groups(spellings)) == 1
+
+
 def test_n3_x2_does_not_fold_through_an_ambiguous_reading() -> None:
     from giye.extract.crosslang import clear_marks, fold_cross_language
 
