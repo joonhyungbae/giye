@@ -2,7 +2,7 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.1.0] - 2026-10-06
+## [0.1.0] - 2026-10-07
 
 First version of the package: a data-free toolkit that builds a provenance-first person register of a creative field from public programme rosters and CVs, and the website that serves it.
 
