@@ -5,7 +5,7 @@ import { ACTIVITY_TYPE_LABEL, LINK_TYPE_LABEL, useLang, VERIFICATION_LABEL } fro
 import { CiteDialog } from "@/components/CiteDialog";
 import { absoluteUrl, pageTitle, site } from "@/config/site";
 import { Button } from "@/components/ui/button";
-import type { Bi, PageBackground, PageSource, PageYear } from "@/lib/artist-page";
+import type { Bi, PageBackground, PagePerson, PageSource, PageYear } from "@/lib/artist-page";
 
 export const Route = createFileRoute("/artist/$id")({
   loader: async ({ params }) => {
@@ -62,6 +62,20 @@ export const Route = createFileRoute("/artist/$id")({
                 description: a.bio_short ?? undefined,
                 url,
                 sameAs: a.wikidata ? [`https://www.wikidata.org/wiki/${a.wikidata}`] : undefined,
+                member: loaderData.members.length
+                  ? loaderData.members.map((m) => ({
+                      "@type": "Person",
+                      name: m.name_ko,
+                      url: absoluteUrl(`/artist/${m.id}`),
+                    }))
+                  : undefined,
+                memberOf: loaderData.memberOf.length
+                  ? loaderData.memberOf.map((m) => ({
+                      "@type": "Organization",
+                      name: m.name_ko,
+                      url: absoluteUrl(`/artist/${m.id}`),
+                    }))
+                  : undefined,
               }),
             },
           ],
@@ -192,9 +206,41 @@ function BackgroundList({ rows, sources }: { rows: PageBackground[]; sources: Pa
   );
 }
 
+/** A labelled line of linked people: a team's members, or the teams a member belongs to. */
+function PeopleLine({ label, people }: { label: string; people: PagePerson[] }) {
+  const { lang } = useLang();
+  return (
+    <p className="mt-1 text-sm text-muted-foreground">
+      {label}:{" "}
+      {people.map((p, i) => (
+        <span key={p.id}>
+          {i > 0 && ", "}
+          <Link
+            to="/artist/$id"
+            params={{ id: p.id }}
+            className="text-accent underline-offset-4 hover:underline"
+          >
+            {lang === "en" ? p.name_en || p.name_ko : p.name_ko}
+          </Link>
+        </span>
+      ))}
+    </p>
+  );
+}
+
 function ArtistPage() {
-  const { artist, citation, sources, years, collaborations, links, background, sameName } =
-    Route.useLoaderData();
+  const {
+    artist,
+    citation,
+    sources,
+    years,
+    collaborations,
+    links,
+    background,
+    sameName,
+    members,
+    memberOf,
+  } = Route.useLoaderData();
   const { lang, t } = useLang();
   const bi = (v: Bi) => (lang === "en" ? v.en : v.ko);
   const tags = (vs: Bi[]) => vs.map(bi).join(", ");
@@ -276,6 +322,11 @@ function ArtistPage() {
                 {t("별칭", "Also known as")}: {artist.aliases.join(", ")}
               </p>
             )}
+            {/* Team membership from the snapshot (members / member_of), linked both ways. */}
+            {members.length > 0 && (
+              <PeopleLine label={t("구성원", "Members")} people={members} />
+            )}
+            {memberOf.length > 0 && <PeopleLine label={t("팀", "Team")} people={memberOf} />}
           </div>
           <div className="space-y-4 lg:border-l lg:border-border lg:pl-6">
             <p className="flex flex-wrap items-center gap-3 text-sm">
