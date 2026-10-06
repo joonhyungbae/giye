@@ -285,6 +285,12 @@ def test_m9_a_long_generic_hangul_name_is_read_in_bounded_time() -> None:
     assert time.monotonic() - started < 5
 
 
+def test_m7_a_public_square_is_not_a_part_of_its_landmark() -> None:
+    """m7: 예시문광장 is not 예시문; the forecourt of a site still is (V8)."""
+    assert not _together(["예시문광장", "예시문"], "예시문광장", "예시문")
+    assert _together(["예시미술관 앞광장", "예시미술관"], "예시미술관 앞광장", "예시미술관")
+
+
 def test_n3_x2_does_not_fold_through_an_ambiguous_reading() -> None:
     from giye.extract.crosslang import clear_marks, fold_cross_language
 

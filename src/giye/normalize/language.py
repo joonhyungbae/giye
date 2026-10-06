@@ -153,9 +153,12 @@ KO_EN_VENUE_WORDS = VenueWords(
     # site, not a second city. A branch is the entity plus a place and 관
     # (서울관, 과천관, 덕수궁관, 청주관) and is not listed here. 본관, 신관, 구관
     # are the main, new, and old buildings of one site, the same class as 별관.
+    # 앞광장 and 야외광장 are the forecourt of a site. A bare 광장 is not listed:
+    # a public square is named after a place or landmark (예시문광장 is not
+    # 예시문), so it is not a part of an institution (audit m7).
     building_parts=(
         "본관", "별관", "신관", "구관", "창고동", "전시동", "전시관",
-        "전시장", r"제?\d*전시실\d*", "멀티프로젝트홀", "대극장", "소극장", "로비", "앞광장", "야외광장", "광장",
+        "전시장", r"제?\d*전시실\d*", "멀티프로젝트홀", "대극장", "소극장", "로비", "앞광장", "야외광장",
         "라운지", r"지하\d*층?", r"\d+층",
     ),
     latin_building_parts=(
