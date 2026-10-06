@@ -45,6 +45,9 @@ from giye.ledger.schemas import (
     split_pipe,
 )
 
+# Rule ids a merge may store: an evidence rule, X1 with one, or a dated human judgement.
+_MERGE_RULE = re.compile(r"(?:X1\+)?E[1-4]|H")
+
 _ARTIST_FILL = ("name_ko", "name_en", "affiliation", "active_since", "country", "region", "field", "category")
 
 
@@ -224,6 +227,12 @@ class Ledger:
             raise ValueError("merge refused without an evidence string")
         if not isinstance(rule, str) or not rule.strip():
             raise ValueError("merge refused without a rule id")
+        # Even the internal path stores only a known rule id (software review,
+        # round 6): rule "zz" was accepted when this method was called directly.
+        # What the evidence says is checked by the callers that decide a merge.
+        code = rule.strip()
+        if not _MERGE_RULE.fullmatch(code):
+            raise ValueError(f"merge refused: {code!r} is not a merge rule (E1-E4, X1+E1..E4, or H)")
         drop_ids = _drop_ids(dropped)
         if not drop_ids:
             raise ValueError("merge needs at least one dropped ledger id")

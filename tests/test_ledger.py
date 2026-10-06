@@ -278,6 +278,9 @@ def test_merge_refuses_without_evidence_and_retires_a_chain(tmp_path: Path):
         ledger.merge("LED-a", "LED-b", evidence="   ", rule="E1")
     with pytest.raises(ValueError, match="rule"):
         ledger._merge_rows("LED-a", "LED-b", evidence="same website https://example.org/haneul", rule="")
+    # Review round 6, minor 9: the internal path accepted any rule id.
+    with pytest.raises(ValueError, match="not a merge rule"):
+        ledger._merge_rows("LED-a", "LED-b", evidence="x", rule="zz")
     assert list(ledger.directory.glob("*.csv")) == []
 
     ledger.write(
