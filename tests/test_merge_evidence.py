@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import pytest
 
+from giye.audit.sample import parse_markers
 from giye.cli import main
 from giye.config import GiyeError
 from giye.ledger.ledger import Ledger
 from giye.ledger.schemas import CV_SOURCES_FIELDS, empty_row
+from giye.resolve.candidates import absorption_map, merged_drop_ids
 from giye.resolve.decide import merge_people, verify_merge_evidence
 from tests.test_decisions import _artists, _copy, _named
 from tests.test_resolve import _act, _artist, _cv, _ledger, _link, _mem, _seed
@@ -276,3 +278,30 @@ def test_h_merge_of_two_members_of_one_team_warns_and_is_recorded(tmp_path):
         merge_people(ledger, "LED-a", "LED-b", evidence="H same face in both catalogues, checked by the author 2026-01-15")
     [kept] = ledger.read("artists")
     assert "both members of team Example Duo" in kept["reviewer_note"]
+
+
+def test_a_chain_keeps_every_merge_marker_and_its_evidence(tmp_path):
+    # A absorbs B on E1, then C absorbs A on H. C must still say B was merged,
+    # on which evidence and rule, or the B merge is no longer traceable.
+    links = [_link("LED-a", "https://haru.example.org/"), _link("LED-b", "https://www.haru.example.org/about")]
+    ledger = _pair(tmp_path, links=links, names=(("이하루", "Lee Haru"), ("이하루", "")))
+    artists = ledger.read("artists")
+    artists.append(_artist("LED-c", "GY-000003", "정다온", "Daon Jeong"))
+    ledger.write("artists", artists, task="test")
+    merge_people(ledger, "LED-a", "LED-b", evidence="E1 https://haru.example.org/cv")
+    h = "H the artist confirmed both spellings by letter 2026-01-15"
+    merge_people(ledger, "LED-c", "LED-a", evidence=h)
+
+    rows = ledger.read("artists")
+    assert _live(ledger) == {"LED-c"}
+    note = rows[0]["reviewer_note"]
+    assert parse_markers(note) == [
+        ("LED-b", "E1 https://haru.example.org/cv", "E1"),
+        ("LED-a", h, "H"),
+    ]
+    # Each marker appears once.
+    assert note.count("merged LED-b") == 1 and note.count("merged LED-a") == 1
+    assert merged_drop_ids(rows) == {"LED-c": {"LED-a", "LED-b"}}
+    assert absorption_map(rows) == {"LED-a": "LED-c", "LED-b": "LED-c"}
+    # Both retired ids redirect in one step to the final survivor.
+    assert ledger.redirects() == {"GY-000001": "GY-000003", "GY-000002": "GY-000003"}

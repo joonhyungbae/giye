@@ -1088,7 +1088,25 @@ def _drop_ids(dropped: str | Iterable[str]) -> list[str]:
 
 
 def _merge_artist_fields(survivor: dict[str, str], dropped: list[dict[str, str]], *, evidence: str, rule: str) -> None:
-    """Fill empty survivor fields from the dropped rows and record the evidence."""
+    """Fill empty survivor fields from the dropped rows and record the evidence.
+
+    A dropped row that had absorbed others carries ``merged <id>;
+    merge_evidence=…; rule=…`` groups in its note. They move to the survivor
+    first, in their order and without a marker the survivor already has, so a
+    chain of merges still names the evidence of every merge it holds. They go
+    before this merge's ``merged`` markers because a reader pairs each
+    ``merged`` run with the next ``merge_evidence`` and ``rule``.
+    """
+    history: list[str] = []
+    for other in dropped:
+        have = set(_merge_ids(survivor.get("reviewer_note") or "")) | set(_merge_ids("; ".join(history)))
+        for ids, tail in _merge_groups(other.get("reviewer_note") or ""):
+            fresh = [item for item in ids if item not in have]
+            if fresh:
+                history.extend([*(f"merged {item}" for item in fresh), *tail])
+                have.update(fresh)
+    if history:
+        survivor["reviewer_note"] = "; ".join([survivor.get("reviewer_note") or "", *history]).strip("; ")
     for other in dropped:
         for field in _ARTIST_FILL:
             if not survivor.get(field) and other.get(field):
@@ -1113,6 +1131,42 @@ def _merge_artist_fields(survivor: dict[str, str], dropped: list[dict[str, str]]
         survivor["reviewer_note"] = note
     note = f"{survivor.get('reviewer_note') or ''}; merge_evidence={evidence}; rule={rule}"
     survivor["reviewer_note"] = note.strip("; ")
+
+
+_MERGED_PART = re.compile(r"^merged\s+(\S+)$")
+
+
+def _merge_ids(note: str) -> list[str]:
+    """Ledger ids named by ``merged <id>`` parts of a note."""
+    found = (_MERGED_PART.match(part.strip()) for part in note.split(";"))
+    return [match.group(1) for match in found if match]
+
+
+def _merge_groups(note: str) -> list[tuple[list[str], list[str]]]:
+    """``(merged ids, [merge_evidence=…, rule=…])`` groups of a note, in order.
+
+    The grouping is the one ``giye.audit.sample.parse_markers`` reads: a run of
+    ``merged`` parts closed by its ``merge_evidence`` and ``rule``. Other parts
+    (an ``identity=`` pin, free text) are not part of a group.
+    """
+    groups: list[tuple[list[str], list[str]]] = []
+    ids: list[str] = []
+    tail: list[str] = []
+    for part in (piece.strip() for piece in note.split(";")):
+        match = _MERGED_PART.match(part)
+        if match:
+            if tail:
+                groups.append((ids, tail))
+                ids, tail = [], []
+            ids.append(match.group(1))
+        elif ids and part.startswith(("merge_evidence=", "rule=")):
+            tail.append(part)
+            if part.startswith("rule="):
+                groups.append((ids, tail))
+                ids, tail = [], []
+    if ids:
+        groups.append((ids, tail))
+    return groups
 
 
 def _stamp_roster_person(artist: dict[str, str], row: Mapping[str, Any], *, created: bool) -> None:
