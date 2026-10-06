@@ -1531,3 +1531,18 @@ def test_grounding_matches_whole_words_only():
     # A Hangul name may not start inside a word, but a particle may follow it.
     assert failures({"year": "2021", "venue": "바다미술관"}, text) == ["venue"]
     assert failures({"year": "2022", "venue": "예시미술관"}, text) == []
+
+
+def test_grounding_an_empty_venue_row_needs_its_title_in_the_cv():
+    from giye.extract.grounding import CvText, failures
+
+    text = CvText.of("2020  개인전 〈푸른 신호〉, 예시 공간\n2021 Open Studio / Night Garden\n")
+    # An empty venue claims nothing, so the title is the claim (rule G-T).
+    assert failures({"year": "2020", "venue": "", "title": "완전히 지어낸 개인전"}, text) == ["title"]
+    assert failures({"year": "2020", "venue": "", "title": "푸른 신호"}, text) == []
+    assert failures({"year": "2021", "venue": "", "title": "Open Studio / Night Garden"}, text) == []
+    # One part of a recomposed title is enough: "Open Studio | Example" keeps the CV's part.
+    assert failures({"year": "2021", "venue": "", "title": "Open Studio | Example Webinar"}, text) == []
+    assert failures({"year": "2019", "venue": "", "title": "Invented"}, text) == ["year", "title"]
+    # A row with a venue is not read for its title.
+    assert failures({"year": "2020", "venue": "예시 공간", "title": "Fabricated Show"}, text) == []

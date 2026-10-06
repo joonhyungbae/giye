@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-"""Grounding check: a CV row's year and venue must occur in the CV text it cites.
+"""Grounding check: a CV row's year and venue (or, with no venue, its title) must occur in the CV text it cites.
 
 Why: the schema check (``giye.extract.schema``) validates the shape of a model
 reading, not its content. A schema-valid row with an invented venue would be
@@ -47,8 +47,9 @@ to an institution that occurs (``Example Culture Center (Imaginary Hall)``),
 because a same-script bracket is not a second form of the name (rule 4) and
 the institution part is the claim; an invented city next to an institution
 that occurs (``Example Art Space, Daegu``), because the city is not checked;
-and an empty venue, which claims nothing. These are properties of the
-institution-part rule, not oversights.
+and an invented title at a venue and year that occur (G-T reads the title of
+an empty-venue row only). These are properties of the institution-part rule,
+not oversights.
 
 Why the institution part: a model reading "Venue (City, Country)" or a CV
 line that puts the city on another line writes "Venue, City, Country". Those
@@ -60,12 +61,19 @@ CV that writes only one of them grounds it. A bracketed place ("Hall (Seoul)")
 a same-script bracket (an acronym, a branch) and a second script other than
 Latin (Hanja) are not a second form of the name and are not used.
 
-The title is not part of this rule; it is the field a model most often
-rewrites (brackets, line breaks, a second language), and whether a title test
-can be added without hiding correct rows has not been measured.
+G-T, the title of an empty-venue row: an empty venue claims nothing, so a
+wholly invented row with no venue was published. Such a row holds only when
+some part of its title (split at `` / ``, `` | ``, `` - ``, and brackets)
+occurs in the text with punctuation and spaces removed (:func:`title_in`).
+Why only empty-venue rows: the title is the field a model most often
+rewrites. On the production copy of 2026-10-06 (57,529 publishable CV rows
+with a text on disk) the part test fails 636 rows; the sampled failures are
+correct entries the model recomposed (a programme and its host joined, a
+translation added), so a title test on every row would hide correct rows.
+Of the 4,472 empty-venue rows it fails 51 (1.1%).
 
 A row that fails is never deleted. It gets ``ungrounded=year``,
-``ungrounded=venue`` or ``ungrounded=year+venue`` in its note and
+``ungrounded=venue``, ``ungrounded=title`` or a ``+`` combination in its note and
 ``publishable=no``, and the apply summary counts it. A row whose CV text is not
 on disk cannot be checked and is left as it is (counted as ``unchecked``). Only
 ``cv:`` rows pass through here; roster rows are not model output.
@@ -270,13 +278,38 @@ def venue_in(venue: str, text: CvText) -> bool:
     return bool(alias) and _part_in(alias, text)
 
 
+# Title parts for G-T: " / ", " | ", " - " (and dashes) between parts, and
+# brackets of every kind around one.
+_TITLE_SPLIT = re.compile(r"\s[/|│–—-]\s|[|│()\[\]{}〈〉《》<>「」『』【】“”\"]")
+
+
+def title_in(title: str, text: CvText) -> bool:
+    """G-T: some part of ``title`` occurs in the text, punctuation and spaces removed on both sides.
+
+    Parts are split at ``_TITLE_SPLIT``; a part shorter than two characters is
+    not read. One part is enough, because a model often joins a show and a work,
+    or a programme and its host, into one title (the extraction prompt asks for
+    ``show / work``).
+    """
+    parts = [strip_punct(part).replace(" ", "") for part in _TITLE_SPLIT.split(title or "")]
+    return any(len(part) >= 2 and part in text.nospace for part in parts)
+
+
 def failures(row: dict[str, str], text: CvText) -> list[str]:
-    """``["year"]``, ``["venue"]``, both, or ``[]`` for a grounded row."""
+    """``["year"]``, ``["venue"]``, ``["title"]``, a combination, or ``[]`` for a grounded row.
+
+    The title is read only when the venue is empty (G-T): an empty venue
+    claims nothing, so a wholly invented row with no venue was published.
+    """
     missing = []
     if not year_in(row.get("year") or "", text):
         missing.append("year")
-    if not venue_in(row.get("venue") or "", text):
+    venue = row.get("venue") or ""
+    if not venue_in(venue, text):
         missing.append("venue")
+    title = (row.get("title") or "").strip()
+    if not venue.strip() and title and not title_in(title, text):
+        missing.append("title")
     return missing
 
 
@@ -287,18 +320,22 @@ class GroundingStats:
     year: int = 0
     venue: int = 0
     both: int = 0
+    # An empty-venue row whose title is not in the CV (G-T), with or without the year.
+    title: int = 0
     unchecked: int = 0
     marked_ids: list[str] = field(default_factory=list)
 
     @property
     def marked(self) -> int:
-        return self.year + self.venue + self.both
+        return self.year + self.venue + self.both + self.title
 
 
 def mark(row: dict[str, str], missing: list[str], stats: GroundingStats) -> None:
     """Hide the row and record why. The row stays in the ledger."""
     reason = "+".join(missing)
-    if reason == "year":
+    if "title" in missing:
+        stats.title += 1
+    elif reason == "year":
         stats.year += 1
     elif reason == "venue":
         stats.venue += 1

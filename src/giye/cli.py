@@ -129,7 +129,7 @@ def _extract(args: argparse.Namespace) -> int:
             ground = applied.grounding
             print(
                 f"ungrounded={ground.marked} (year={ground.year} venue={ground.venue} "
-                f"year+venue={ground.both}) unchecked_no_text={ground.unchecked}"
+                f"year+venue={ground.both} title={ground.title}) unchecked_no_text={ground.unchecked}"
             )
     # Every model call failed (an unreachable server, a bad key): the stage did not
     # run, so the command fails. Some failures beside real extractions are reported
