@@ -5,7 +5,7 @@ import { ACTIVITY_TYPE_LABEL, LINK_TYPE_LABEL, useLang, VERIFICATION_LABEL } fro
 import { CiteDialog } from "@/components/CiteDialog";
 import { absoluteUrl, pageTitle, site } from "@/config/site";
 import { Button } from "@/components/ui/button";
-import type { Bi, PageBackground, PageSource } from "@/lib/artist-page";
+import type { Bi, PageBackground, PageSource, PageYear } from "@/lib/artist-page";
 
 export const Route = createFileRoute("/artist/$id")({
   loader: async ({ params }) => {
@@ -70,24 +70,99 @@ export const Route = createFileRoute("/artist/$id")({
   component: ArtistPage,
 });
 
-function SourceDisclosure({ source }: { source: PageSource }) {
+/**
+ * A record's source as a numbered reference: "[n]" links straight to the cited page, and the
+ * section's source list below gives the full URL and collection dates once per distinct page.
+ * Numbers are page-wide (the order the page first cites each page), so the same page keeps its
+ * number in every section.
+ */
+function SourceRef({ index, url }: { index: number; url: string }) {
   const { t } = useLang();
   return (
-    <details className="mt-2 text-xs text-muted-foreground">
-      <summary className="cursor-pointer font-mono text-[10px] transition-colors hover:text-primary">
-        {t("출처 보기", "View source")}
-      </summary>
-      <div className="mt-2 space-y-1 border-l border-primary pl-3">
-        <p>
-          <a href={source.url} className="break-all text-accent" target="_blank" rel="noreferrer">
-            {source.url}
-          </a>
-        </p>
-        <p>
-          {t("수집일", "Collected")} {source.collected.join(", ")}
-        </p>
-      </div>
-    </details>
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={t(`출처 ${index + 1} (새 창)`, `Source ${index + 1} (opens in a new tab)`)}
+      className="ml-1.5 whitespace-nowrap font-mono text-[11px] text-accent no-underline hover:underline"
+    >
+      [{index + 1}]
+    </a>
+  );
+}
+
+/** The distinct pages a section cites, each once, with its number. */
+function SourceList({ sources, used }: { sources: PageSource[]; used: number[] }) {
+  const { t } = useLang();
+  if (used.length === 0) return null;
+  return (
+    <div className="mt-8 max-w-3xl border-t border-border pt-4 text-xs text-muted-foreground">
+      <h3 className="font-mono text-[11px] uppercase">{t("출처", "Sources")}</h3>
+      <ol className="mt-2 space-y-1.5">
+        {used.map((i) => (
+          <li key={i} id={`source-${i + 1}`} className="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-1">
+            <span className="font-mono">[{i + 1}]</span>
+            <span>
+              <a
+                href={sources[i].url}
+                className="break-all text-accent"
+                target="_blank"
+                rel="noreferrer"
+              >
+                {sources[i].url}
+              </a>
+              <span>
+                {" "}
+                · {t("수집일", "Collected")} {sources[i].collected.join(", ")}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+/** Source numbers in first-use order. */
+function usedSources(indexes: number[]): number[] {
+  return [...new Set(indexes)];
+}
+
+/** One year of activities: one line per record (title — venue · type · role [n]). */
+function ActivityYear({ year, sources }: { year: PageYear; sources: PageSource[] }) {
+  const { lang, t } = useLang();
+  return (
+    <div
+      id={`y${year.year}`}
+      className="grid scroll-mt-24 gap-2 border-t border-border py-5 first:border-t-0 first:pt-0 sm:grid-cols-[5rem_minmax(0,1fr)]"
+    >
+      <h3 className="font-mono text-xs leading-6 text-primary">{year.year}</h3>
+      <ul className="space-y-1.5">
+        {year.rows.map(([title, venue, type, role, roleEn, src, uncertain], i) => (
+          <li key={i} data-record className="max-w-3xl text-sm leading-6">
+            <span className="font-medium">{title}</span>
+            {venue && <span className="text-muted-foreground"> — {venue}</span>}
+            <span className="text-muted-foreground">
+              {" · "}
+              {t(ACTIVITY_TYPE_LABEL[type]?.[0] ?? type, ACTIVITY_TYPE_LABEL[type]?.[1] ?? type)}
+              {role ? ` · ${lang === "en" ? (roleEn ?? role) : role}` : ""}
+            </span>
+            {uncertain === 1 && (
+              <span
+                className="ml-1 text-xs text-muted-foreground"
+                title={t(
+                  "연도가 제목 속 시기(예: after 1945)와 같아, 기록의 날짜가 아닐 수 있습니다.",
+                  "The year equals a period the title names (e.g. after 1945); it may not be the date of this entry.",
+                )}
+              >
+                {t("· 연도 확인 필요", "· year uncertain")}
+              </span>
+            )}
+            <SourceRef index={src} url={sources[src].url} />
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -99,42 +174,21 @@ const BACKGROUND_SECTION_LABEL: Record<string, [string, string]> = {
 };
 const BACKGROUND_PREVIEW = 8;
 
-function BackgroundList({ rows }: { rows: PageBackground[] }) {
+function BackgroundList({ rows, sources }: { rows: PageBackground[]; sources: PageSource[] }) {
   return (
-    <ul className="mt-3 space-y-2">
-      {rows.map(([title, venue, year, role], i) => (
-        <li key={i} className="grid max-w-3xl grid-cols-[3.5rem_minmax(0,1fr)] gap-3 text-sm">
-          <span className="font-mono text-xs text-primary">{year}</span>
+    <ul className="mt-3 space-y-1.5">
+      {rows.map(([title, venue, year, role, src], i) => (
+        <li key={i} data-record className="grid max-w-3xl grid-cols-[3.5rem_minmax(0,1fr)] gap-3 text-sm">
+          <span className="font-mono text-xs leading-5 text-primary">{year}</span>
           <span>
             {title}
             {venue && <span className="text-muted-foreground"> — {venue}</span>}
             {role && <span className="text-muted-foreground"> · {role}</span>}
+            <SourceRef index={src} url={sources[src].url} />
           </span>
         </li>
       ))}
     </ul>
-  );
-}
-
-/** Background lines come from the artist's CV pages; list each distinct page once. */
-function BackgroundSources({ sources }: { sources: PageSource[] }) {
-  const { t } = useLang();
-  return (
-    <details className="text-xs text-muted-foreground">
-      <summary className="cursor-pointer font-mono text-[10px] transition-colors hover:text-primary">
-        {t("출처 보기", "View source")}
-      </summary>
-      <div className="mt-2 space-y-1 border-l border-primary pl-3">
-        {sources.map((s) => (
-          <p key={s.url}>
-            <a href={s.url} className="break-all text-accent" target="_blank" rel="noreferrer">
-              {s.url}
-            </a>{" "}
-            · {t("수집일", "Collected")} {s.collected.join(", ")}
-          </p>
-        ))}
-      </div>
-    </details>
   );
 }
 
@@ -189,9 +243,14 @@ function ArtistPage() {
   const linksNo = links.length > 0 ? nextNo() : "";
   const cvFound = artist.cv_status === "found";
   const askNo = !cvFound || sameName.length > 0 ? nextNo() : "";
-  const backgroundSources = [
-    ...new Set(background.flatMap((s) => s.rows.map((r) => r[4]))),
-  ].map((i) => sources[i]);
+  // The person row and birth year cite their pages in the header and profile; each later section
+  // lists the pages its own lines cite.
+  const profileSources = usedSources(
+    [artist.source, artist.birth_source ?? -1].filter((i) => i >= 0),
+  );
+  const activitySources = usedSources(years.flatMap((y) => y.rows.map((r) => r[5])));
+  const backgroundSources = usedSources(background.flatMap((s) => s.rows.map((r) => r[4])));
+  const collaborationSources = usedSources(collaborations.map((c) => c.source));
 
   return (
     <div className="wrap py-12 pb-32 lg:py-20">
@@ -249,7 +308,14 @@ function ArtistPage() {
                 year={citation.year}
               />
             </p>
-            {artist.source >= 0 && <SourceDisclosure source={sources[artist.source]} />}
+            {artist.source >= 0 && (
+              <p className="text-xs text-muted-foreground">
+                {t("기록 출처", "Record source")}
+                <SourceRef
+                  index={artist.source}
+                  url={sources[artist.source].url} />
+              </p>
+            )}
           </div>
         </div>
       </header>
@@ -268,7 +334,9 @@ function ArtistPage() {
                 <dd>
                   {artist.birth_year}
                   {artist.birth_source != null && (
-                    <SourceDisclosure source={sources[artist.birth_source]} />
+                    <SourceRef
+                      index={artist.birth_source}
+                      url={sources[artist.birth_source].url} />
                   )}
                 </dd>
               </div>
@@ -375,6 +443,7 @@ function ArtistPage() {
               </dd>
             </div>
           </dl>
+          <SourceList sources={sources} used={profileSources} />
         </div>
       </div>
 
@@ -388,43 +457,10 @@ function ArtistPage() {
               {t("기록된 활동이 없습니다.", "No activities recorded.")}
             </p>
           )}
-          {years.map(({ year, rows }) => (
-            <div
-              key={year}
-              className="grid gap-3 border-t border-border py-7 first:border-t-0 first:pt-0 sm:grid-cols-[5rem_1fr]"
-            >
-              <h3 className="font-mono text-xs text-primary">{year}</h3>
-              <ul className="space-y-7">
-                {rows.map(([title, venue, type, role, roleEn, src, uncertain], i) => (
-                  <li key={i} className="max-w-3xl">
-                    <p className="font-medium">
-                      {title}
-                      {venue && <span className="text-muted-foreground"> — {venue}</span>}
-                      {uncertain === 1 && (
-                        <span
-                          className="ml-2 text-xs text-muted-foreground"
-                          title={t(
-                            "연도가 제목 속 시기(예: after 1945)와 같아, 기록의 날짜가 아닐 수 있습니다.",
-                            "The year equals a period the title names (e.g. after 1945); it may not be the date of this entry.",
-                          )}
-                        >
-                          {t("· 연도 확인 필요", "· year uncertain")}
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {t(
-                        ACTIVITY_TYPE_LABEL[type]?.[0] ?? type,
-                        ACTIVITY_TYPE_LABEL[type]?.[1] ?? type,
-                      )}
-                      {role ? ` · ${lang === "en" ? (roleEn ?? role) : role}` : ""}
-                    </p>
-                    <SourceDisclosure source={sources[src]} />
-                  </li>
-                ))}
-              </ul>
-            </div>
+          {years.map((y) => (
+            <ActivityYear key={y.year} year={y} sources={sources} />
           ))}
+          <SourceList sources={sources} used={activitySources} />
         </div>
       </section>
 
@@ -439,7 +475,7 @@ function ArtistPage() {
               return (
                 <div key={section}>
                   <h3 className="label-caps">{t(ko, en)}</h3>
-                  <BackgroundList rows={rows.slice(0, BACKGROUND_PREVIEW)} />
+                  <BackgroundList rows={rows.slice(0, BACKGROUND_PREVIEW)} sources={sources} />
                   {rows.length > BACKGROUND_PREVIEW && (
                     <details className="mt-2">
                       <summary className="cursor-pointer font-mono text-[10px] text-muted-foreground transition-colors hover:text-primary">
@@ -448,13 +484,13 @@ function ArtistPage() {
                           `Show ${rows.length - BACKGROUND_PREVIEW} more`,
                         )}
                       </summary>
-                      <BackgroundList rows={rows.slice(BACKGROUND_PREVIEW)} />
+                      <BackgroundList rows={rows.slice(BACKGROUND_PREVIEW)} sources={sources} />
                     </details>
                   )}
                 </div>
               );
             })}
-            <BackgroundSources sources={backgroundSources} />
+            <SourceList sources={sources} used={backgroundSources} />
           </div>
         </section>
       )}
@@ -464,20 +500,20 @@ function ArtistPage() {
           <h2 className="font-mono text-[10px] uppercase text-muted-foreground">
             {collaborationsNo} / {t("협업 과학자·공학자", "Science & engineering collaborators")}
           </h2>
-          <ul className="space-y-5">
-            {collaborations.map((c, i) => (
-              <li key={i} className="max-w-3xl">
-                <p className="font-medium">
-                  {bi(c.name)}
+          <div>
+            <ul className="space-y-1.5">
+              {collaborations.map((c, i) => (
+                <li key={i} data-record className="max-w-3xl text-sm leading-6">
+                  {c.year && <span className="mr-3 font-mono text-xs text-primary">{c.year}</span>}
+                  <span className="font-medium">{bi(c.name)}</span>
                   {c.where && <span className="text-muted-foreground"> — {c.where}</span>}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {[c.year, c.topic].filter(Boolean).join(" · ")}
-                </p>
-                <SourceDisclosure source={sources[c.source]} />
-              </li>
-            ))}
-          </ul>
+                  {c.topic && <span className="text-muted-foreground"> · {c.topic}</span>}
+                  <SourceRef index={c.source} url={sources[c.source].url} />
+                </li>
+              ))}
+            </ul>
+            <SourceList sources={sources} used={collaborationSources} />
+          </div>
         </section>
       )}
 
