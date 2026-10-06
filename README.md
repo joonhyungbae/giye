@@ -147,7 +147,7 @@ The replay cache key is the CV hash, the prompt hash, and that model string as g
 
 ## Decisions a person makes
 
-The pipeline queues a pair it will not merge, and a page can be hidden. These commands record that decision. Each ledger write copies the file into `data/work/backups/` first.
+The pipeline queues a pair it will not merge, and a page can be hidden. These commands record that decision. A queue merge keeps the record with the lower `gy_id` and retires the other; `giye merge` keeps the record named first. Each ledger write copies the file into `data/work/backups/` first.
 
 ```bash
 giye queue list --config giye.toml

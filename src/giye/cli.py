@@ -658,7 +658,11 @@ def _add_tool_parsers(sub: argparse._SubParsersAction) -> None:
     queue_list.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
     queue_list.add_argument("--kind", default=None, help="reason column, for example possible_same_person")
     queue_list.add_argument("--status", default="open", help="status to list; 'any' lists every status")
-    queue_decide = queue_sub.add_parser("decide", help="close one item: merge, distinct, dismiss; same or different for an X2 pair")
+    queue_decide = queue_sub.add_parser(
+        "decide",
+        help="close one item: merge (keeps the lower gy_id), distinct, dismiss; same or different for an X2 pair",
+        description="Close one review item. A merge keeps the record with the lower gy_id and retires the other.",
+    )
     queue_decide.add_argument("item_id")
     queue_decide.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
     queue_decide.add_argument("--decision", required=True, choices=("merge", "distinct", "dismiss", "same", "different"))

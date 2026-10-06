@@ -66,7 +66,8 @@ def decide_queue(
 ) -> dict[str, str]:
     """Close one queue item.
 
-    ``merge`` joins the two ledger ids the item names (the caller folds the CV
+    ``merge`` joins the two ledger ids the item names, keeping the one with the
+    lower ``gy_id`` (:func:`queue_survivor`; the caller folds the CV
     extractions afterwards, see :func:`merge_people`). Evidence is required,
     because ``Ledger.merge`` refuses an empty string. ``distinct`` records
     ``decided=different`` and does not merge. ``dismiss`` records
@@ -714,16 +715,19 @@ def unhide_person(ledger: Ledger, gy_id: str) -> None:
 def _decide_merge(
     ledger: Ledger, item: dict[str, str], *, evidence: str, note: str, override_distinct: bool = False
 ) -> None:
-    """Merge the pair a queue item names, then record ``decided=same`` on that item."""
+    """Merge the pair a queue item names, then record ``decided=same`` on that item.
+
+    The record with the lower ``gy_id`` is kept and the other retired, whichever
+    side the item names (:func:`queue_survivor`).
+    """
     if item.get("reason") != "possible_same_person":
         raise GiyeError(f"{item.get('queue_id')} is {item.get('reason')}, not possible_same_person")
     check_merge_evidence(ledger, evidence)
     others = _other_ids(item)
     if len(others) != 1:
         raise GiyeError(f"{item.get('queue_id')} does not name exactly one other person")
-    merge_people(
-        ledger, item.get("ledger_id") or "", others[0], evidence=evidence, override_distinct=override_distinct
-    )
+    keep, drop = queue_survivor(ledger.read("artists"), item.get("ledger_id") or "", others[0])
+    merge_people(ledger, keep, drop, evidence=evidence, override_distinct=override_distinct)
     # merge rewrote the queue. Read it again and record the person's decision
     # so a later resolve does not treat the close as accidental.
     review = ledger.read("review_queue")
@@ -733,6 +737,29 @@ def _decide_merge(
     _mark(current, decision="same", note=note, status="done")
     ledger.write("review_queue", review, task="decide")
     item.update(current)
+
+
+def _gy_number(gy_id: str) -> int | None:
+    digits = "".join(char for char in gy_id or "" if char.isdigit())
+    return int(digits) if digits else None
+
+
+def queue_survivor(artists: list[dict[str, str]], left: str, right: str) -> tuple[str, str]:
+    """``(keep, drop)`` ledger ids for a queue merge: the lower ``gy_id`` is kept.
+
+    Why: the older id is the one most likely to have been cited, its page keeps
+    its primary name, and the author's judgement scripts keep the lowest
+    ``gy_id`` as well. Before 2026-10-07 the item's own record was kept, which
+    is usually the newer one, so a queue decision retired the older id and the
+    published name could change script (final software review, MINOR-5). A
+    record without a ``gy_id`` comes after one with it; with neither, the
+    item's own record (``left``) is kept.
+    """
+    by_lid = {row.get("ledger_id"): row for row in artists}
+    numbers = [_gy_number((by_lid.get(lid) or {}).get("gy_id") or "") for lid in (left, right)]
+    if numbers[1] is not None and (numbers[0] is None or numbers[1] < numbers[0]):
+        return right, left
+    return left, right
 
 
 def _stamp_evidence(ledger: Ledger, item: dict[str, str]) -> None:

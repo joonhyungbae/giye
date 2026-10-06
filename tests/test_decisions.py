@@ -292,6 +292,38 @@ def test_public_ledger_merge_honours_a_distinct_decision(tmp_path: Path):
     assert "overrides distinct decision of " in after["detail"] and "decided=same" in after["detail"]
 
 
+def test_queue_decide_merge_keeps_the_lower_gy_id(tmp_path: Path):
+    """The survivor of a queue merge is the record with the lower gy_id, whichever side the item names.
+
+    Why: the older id is the one most likely cited, and the author's judgement
+    scripts keep it too (final software review, MINOR-5).
+    """
+    from giye.resolve.candidates import review_id_set
+    from giye.resolve.decide import decide_queue
+
+    dest = _copy(tmp_path)
+    ledger = Ledger.open(load(dest / "giye.toml"))
+    by_lid = {row["ledger_id"]: row for row in ledger.read("artists")}
+    item = None
+    for row in ledger.read("review_queue"):
+        own = row.get("ledger_id") or ""
+        others = review_id_set(row) - {own}
+        if row.get("reason") != "possible_same_person" or row.get("status") != "open" or len(others) != 1:
+            continue
+        other = next(iter(others))
+        if own in by_lid and other in by_lid and by_lid[own]["gy_id"] > by_lid[other]["gy_id"]:
+            item, newer, older = row, by_lid[own], by_lid[other]
+            break
+    assert item is not None, "the demo queue names a pair whose item is the newer record"
+    evidence = f"H one person on both rosters, judged by the author {_today()}"
+    decide_queue(ledger, item["queue_id"], "merge", evidence=evidence)
+    live = {row["gy_id"]: row for row in ledger.read("artists")}
+    assert older["gy_id"] in live and newer["gy_id"] not in live
+    assert live[older["gy_id"]]["name_ko"] == older["name_ko"]
+    retired = {row["gy_id"]: row for row in ledger.read("gy_retired")}
+    assert retired[newer["gy_id"]]["merged_into_ledger_id"] == older["ledger_id"]
+
+
 def _today() -> str:
     """The date ``decided_at`` records (UTC), so an H judgement is not dated before it."""
     from datetime import datetime, timezone
