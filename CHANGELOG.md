@@ -18,3 +18,8 @@ First version of the package: a data-free toolkit that builds a provenance-first
 - Exports the snapshot store as WARC (optional WACZ) and writes an RO-Crate description of a run.
 - Reproduces the pipeline on a synthetic field with `giye demo`, without fetching the network.
 - Runs on Linux and macOS with Python 3.10 to 3.13. Windows is not supported.
+- Decides identity only on written rules or a named person: a manual merge's H evidence names who judged and may not predate the records it joins, and E3/E4 compare a bracketed title or team with the shared one.
+- Queues a Korean and an English copy of one CV event (X2) for a person instead of folding it; `giye queue decide` records the decision, which every apply honours.
+- Hides and queues every CV row whose year or venue is not in its CV text (grounding), including rows of stale readings.
+- Re-applies a person's own correction of a CV line after every extraction (rule S1, renamed from C1 so that C1 stays the planned cluster rule).
+- Adds `giye extract --strict`, a stratum-weighted estimate and refusal of unknown labels in the audit score, an opt-in TLS fallback, atomic JSON writes, and an RO-Crate author typed as a person or an organization.
