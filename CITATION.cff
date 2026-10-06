@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use Giye, please cite it as below."
-title: "Giye: evidence-gated, provenance-first archiving of a creative field from public rosters and CVs"
+title: "Giye: A provenance-preserving pipeline for building a person register of the Korean media art field"
 authors:
   - family-names: Bae
     given-names: Joonhyung
@@ -8,3 +8,5 @@ authors:
 version: 0.1.0
 license: AGPL-3.0-only
 type: software
+repository-code: "https://github.com/joonhyungbae/giye"
+url: "https://giye.org"
