@@ -58,7 +58,10 @@ def _collect(args: argparse.Namespace) -> int:
 
     config = _open_config(args.config)
     refusals: list = []
-    results = run_configured(config, from_snapshots=getattr(args, "from_snapshots", False), refusals=refusals)
+    failures: list = []
+    results = run_configured(
+        config, from_snapshots=getattr(args, "from_snapshots", False), refusals=refusals, failures=failures
+    )
     if not results:
         print(
             "giye collect: no collectors configured (set collect.collector_modules in the config)",
@@ -71,12 +74,16 @@ def _collect(args: argparse.Namespace) -> int:
     # recorded, not fatal; the run fails only when no collector got anything.
     refused_frames = {item.frame for item in refusals}
     failed = [frame for frame, rows, _path in results if frame in refused_frames and not rows]
+    failed_frames = sorted({item.frame for item in failures})
     print(
         f"collect: {len(results)} collectors, {sum(len(rows) for _f, rows, _p in results)} rows, "
-        f"{len(refusals)} refused fetches, {len(failed)} collectors with no rows after a refusal",
+        f"{len(refusals)} refused fetches, {len(failed)} collectors with no rows after a refusal, "
+        f"{len(failures)} failures in {len(failed_frames)} collectors",
         file=sys.stderr,
     )
-    return 1 if len(failed) == len(results) else 0
+    # A failure (network error, error page, row without source or date) is not a
+    # rule working: the other collectors ran, and the command reports it.
+    return 1 if failures or len(failed) == len(results) else 0
 
 
 def _extract(args: argparse.Namespace) -> int:

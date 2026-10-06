@@ -29,8 +29,10 @@ import re
 import sys
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
+
+import requests
 
 from giye.collect.fetch import Fetcher, Page, TermsRefused, fetcher_from_config
 from giye.collect.robots import RobotsRefused
@@ -215,6 +217,10 @@ class RosterCollector:
         # Fetches refused in the last ``run`` (robots.txt, a terms block, or a
         # page replay does not have).
         self.refusals: list[Refusal] = []
+        # Failures in the last ``run``: a network error, an error page, or a
+        # roster row without a source or with a date that is not one. Each is
+        # printed as one line, and ``giye collect`` exits non-zero.
+        self.failures: list[Refusal] = []
         # Roster rows the last ``run`` did not write because nothing dated them.
         self.undated = 0
 
@@ -233,8 +239,16 @@ class RosterCollector:
         """
         return edition_code(self.frame, edition.year)
 
-    def fetch(self, url: str, *, data: object = None, method: str | None = None) -> Page:
+    def fetch(
+        self, url: str, *, data: object = None, method: str | None = None, expect_error: bool = False
+    ) -> Page:
         """Fetch ``url`` and snapshot a successful body. A snapshot error does not stop the run.
+
+        A live page whose status is not OK (HTTP 4xx or 5xx) is returned but
+        recorded in ``failures`` (verdict ``http_<status>``) and printed, so a
+        roster that answered an error page is not a silent zero-row success.
+        ``expect_error`` is for a collector that probes (pages until a 404):
+        that page is not a failure.
 
         ``data`` is a request body and makes the request a POST unless
         ``method`` says otherwise (see ``Fetcher.request``). A POST's manifest
@@ -265,6 +279,8 @@ class RosterCollector:
                 if page.requested_url:
                     self._kept_dates[page.requested_url] = when
             return page
+        if not page.ok and not expect_error:
+            self.failures.append(_failed(self.frame, page.requested_url or url, f"http_{page.status}"))
         if page.ok and page.content and len(page.content) <= MAX_BYTES:
             try:
                 extra: dict[str, object] = {}
@@ -330,6 +346,17 @@ class RosterCollector:
         not a crash, and one refused page must not discard the rest of the
         roster or stop the other collectors. A collector that can skip just the
         refused edition catches the exception inside ``editions``.
+
+        A network error (``requests.RequestException``: timeout, reset, DNS)
+        ends the editions the same way, but it is a failure, not a rule:
+        it goes to ``self.failures`` (verdict ``network_error``) and the
+        command exits non-zero after the other collectors ran. When a run
+        failed and read no row, the previous collection report CSV is left as
+        it was instead of being overwritten with a header only.
+
+        A row without an http(s) ``source_url``, or whose stated
+        ``collected_at`` is not an ISO date (``YYYY-MM-DD``), is not written:
+        every fact row carries both. Each such row is a failure.
         """
         from giye.collect.frames import is_admitted
         from giye.config import checked_frames
@@ -345,11 +372,14 @@ class RosterCollector:
         rows: list[dict[str, str]] = []
         batches: dict[str, list[dict[str, str]]] = {}
         self.refusals = []
+        self.failures = []
         self.undated = 0
         try:
             self._read_editions(rows, batches, live_stamp)
         except (RobotsRefused, TermsRefused) as exc:
             self.refusals.append(_refused(self.frame, exc))
+        except requests.RequestException as exc:
+            self.failures.append(_network_failure(self.frame, exc))
         if self.undated:
             print(
                 f"skipped {self.frame}: {self.undated} roster row(s) without a collection date "
@@ -366,7 +396,13 @@ class RosterCollector:
 
             # Only this run's editions: a collector must not touch other frames' teams.
             expand_teams(ledger, frames=set(batches))
-        self.write_csv(rows)
+        if rows or not self.failures:
+            self.write_csv(rows)
+        else:
+            print(
+                f"kept {self.csv_path()}: {self.frame} failed and read no row; the previous report stays",
+                file=sys.stderr,
+            )
         return rows
 
     def _read_editions(
@@ -403,6 +439,16 @@ class RosterCollector:
                 row.update({key: value for key, value in optional.items() if value})
                 if person.activity is False:
                     row["activity"] = False
+                if not str(row["source_url"]).startswith(("http://", "https://")):
+                    self.failures.append(
+                        _failed(self.frame, str(row["source_url"]), "row_without_source", name=person.name)
+                    )
+                    continue
+                if row["collected_at"] and not _iso_date(row["collected_at"]):
+                    self.failures.append(
+                        _failed(self.frame, str(row["source_url"]), "row_bad_date", name=person.name)
+                    )
+                    continue
                 if not row["collected_at"]:
                     # A row without a collection date is never written: every
                     # fact row has ``source_url`` and ``collected_at``. In replay
@@ -416,7 +462,8 @@ class RosterCollector:
         """``collected_at`` for one roster row (see ``run``)."""
         stated = (person.collected_at or edition.collected_at or "").strip()
         if stated:
-            return stated[:10]
+            # A timestamp keeps its date part; anything else is checked by the caller.
+            return stated[:10] if _iso_date(stated[:10]) else stated
         if not self.from_snapshots:
             return live_stamp
         for url in (person.source_url, edition.fetched_from, edition.source_url):
@@ -448,7 +495,9 @@ def load_collectors(config: object) -> list[type[RosterCollector]]:
             path = Path(config.root) / path  # type: ignore[attr-defined]
         path = path.resolve()
         if not path.is_file():
-            raise FileNotFoundError(f"collector module not found: {path}")
+            from giye.config import ConfigError
+
+            raise ConfigError(f"collector module not found: {path}")
         mod_name = "giye_collectors_" + hashlib.sha256(str(path).encode()).hexdigest()[:12]
         spec = importlib.util.spec_from_file_location(mod_name, path)
         if spec is None or spec.loader is None:
@@ -477,6 +526,40 @@ class Refusal:
     verdict: str
 
 
+def _iso_date(text: str) -> bool:
+    """True for a calendar date written ``YYYY-MM-DD``."""
+    if len(text) != 10:
+        return False
+    try:
+        date.fromisoformat(text)
+    except ValueError:
+        return False
+    return True
+
+
+def _failed(frame: str, url: str, verdict: str, *, name: str = "") -> Refusal:
+    """Record one failure and print it as one line."""
+    what = {
+        "row_without_source": "roster row without an http(s) source_url was not written",
+        "row_bad_date": "roster row whose collected_at is not YYYY-MM-DD was not written",
+    }.get(verdict, f"page answered {verdict.replace('_', ' ')}")
+    subject = f"{name} " if name else ""
+    print(f"failed {frame}: {subject}{url or '(no url)'}: {what}", file=sys.stderr)
+    return Refusal(frame=frame, url=url, verdict=verdict)
+
+
+def _network_failure(frame: str, exc: requests.RequestException) -> Refusal:
+    """A network error ends this collector's editions; the ones read before it are written."""
+    request = getattr(exc, "request", None)
+    url = str(getattr(request, "url", "") or "")
+    print(
+        f"failed {frame}: network error {type(exc).__name__} on {url or 'a fetch'}; "
+        "editions read before it are kept",
+        file=sys.stderr,
+    )
+    return Refusal(frame=frame, url=url, verdict="network_error")
+
+
 def _not_kept(frame: str, url: str) -> Refusal:
     """Record a replayed fetch that has no kept page and print it as one line."""
     print(f"refused {frame}: {url} was not kept (replay reads kept pages only)", file=sys.stderr)
@@ -497,6 +580,7 @@ def run_configured(
     run_id: str | None = None,
     from_snapshots: bool = False,
     refusals: list[Refusal] | None = None,
+    failures: list[Refusal] | None = None,
 ) -> list[tuple[str, list[dict[str, str]], Path]]:
     """Run every configured collector. One fetcher and one snapshot store are shared.
 
@@ -512,6 +596,8 @@ def run_configured(
 
     A refused fetch does not stop the run: each collector's refusals are
     appended to ``refusals`` (when given) and the next collector runs.
+    A network error or an error page does not stop it either; those go to
+    ``failures``.
     """
     from giye.collect.frames import is_admitted
     from giye.config import ConfigError, checked_frames
@@ -543,8 +629,13 @@ def run_configured(
             # Raised outside the editions loop (a subclass's own run, say).
             collector.refusals.append(_refused(cls.frame, exc))
             rows = []
+        except requests.RequestException as exc:
+            collector.failures.append(_network_failure(cls.frame, exc))
+            rows = []
         if refusals is not None:
             refusals.extend(collector.refusals)
+        if failures is not None:
+            failures.extend(collector.failures)
         results.append((cls.frame, rows, collector.csv_path()))
     return results
 
