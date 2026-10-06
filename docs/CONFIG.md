@@ -149,7 +149,7 @@ Backups themselves are not configurable: each run copies a ledger file once per 
 
 ### `[publish.cadence]`
 
-Optional table. Key: a label. Value: a string saying what runs. `giye.publish.snapshot` writes it to `coverage.json` only when the table is non-empty. The package does not schedule anything.
+Optional table. Key: a label. Value: a string saying what runs. `giye.publish.snapshot` writes it to `coverage.json` only when the table is non-empty. The package does not schedule anything, and the string is a statement the archive makes, not a list of package commands. In the reference archive the weekly link check is a private maintenance step of the maintainer's pipeline script; the package has no link-check command (docs/DEPLOY.md, scheduled runs).
 
 ```toml
 [publish.cadence]
