@@ -273,6 +273,18 @@ def test_m8_institution_key_is_a_fixed_point() -> None:
     assert institution_key("The The Example Space", LANG) == "example space"
 
 
+def test_m9_a_long_generic_hangul_name_is_read_in_bounded_time() -> None:
+    """m9: 2^n reading combinations of generic words are not all enumerated."""
+    import time
+
+    from giye.normalize.venue_names import hangul_bags
+
+    started = time.monotonic()
+    assert hangul_bags("현대문화" * 12, LANG) == ()
+    build([_row(0, "현대 문화 연구소 " * 9)], write=False, lang=LANG)
+    assert time.monotonic() - started < 5
+
+
 def test_n3_x2_does_not_fold_through_an_ambiguous_reading() -> None:
     from giye.extract.crosslang import clear_marks, fold_cross_language
 

@@ -128,6 +128,9 @@ VENUE_NOUNS = GENERIC - {
 }
 DATE_RE = re.compile(r"\d+\s?(?:월|일|년)")
 ACRONYM_SPELLING_RE = re.compile(r"(?=.{2,8}$)(?=.*[A-Z])[A-Z0-9.&]+")
+# V9: the most reading combinations hangul_bags tries for one name (glossary
+# order, so the primary readings come first).
+MAX_READINGS_TRIED = 4096
 # N-1: an entity key whose name is generic venue words only carries the row's
 # place after this separator (``museum of art<sep>busan``). It is a control
 # character, so no normalised venue string contains it (P2 removes them).
@@ -355,11 +358,14 @@ def hangul_bags(key: str, lang: LanguageModule) -> tuple[tuple[str, ...], ...]:
     if not pieces:
         return ()
     out: list[tuple[str, ...]] = []
-    for combo in product(*pieces):
+    for tried, combo in enumerate(product(*pieces), 1):
         bag = _canon([token for part in combo for token in part], lang, cross_script=True)
         if bag and bag not in out:
             out.append(bag)
-        if len(out) > 16:
+        # At most 17 readings, and at most MAX_READINGS_TRIED combinations: a long
+        # name of generic words with two readings each has 2^n combinations and
+        # none gives a bag, so the first bound alone never stopped (audit m9).
+        if len(out) > 16 or tried >= MAX_READINGS_TRIED:
             break
     return tuple(out)
 
