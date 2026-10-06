@@ -156,6 +156,36 @@ def _all_latin(text: str) -> bool:
     return bool(letters) and all(latin_letter(char) for char in letters)
 
 
+# A trailing bracketed qualifier on a Latin name: "Ann Lee (KR)", "Ann Lee [b. 1990]".
+# Only a bracket with no letter of another script, so a Hangul spelling in
+# brackets ("Ann Lee (안리)") stays a Hangul name.
+_TRAILING_QUALIFIER = re.compile(r"\s*[\(\[（［]([^\(\)\[\]（）［］]*)[\)\]）］]\s*$")
+
+
+def latin_personal_form(text: str) -> str:
+    """``text`` as the Latin-only guard reads it: a trailing qualifier dropped, ``Surname, Given`` turned round.
+
+    Why: an English roster prints ``LEE, Ann`` (a catalogue spelling) or
+    ``Ann Lee (KR)`` (a country or a birth year), and before 2026-10-07 the
+    comma or the bracket made the name fail the personal shape, so A2 joined
+    two such rows across programmes on the Latin string alone (final software
+    review, MINOR-2). A bracket that holds a letter of another script is kept,
+    and only a single comma is read as the inversion. Used for the shape test
+    only: name keys and stored names are unchanged.
+    """
+    value = (text or "").strip()
+    match = _TRAILING_QUALIFIER.search(value)
+    if match and match.start() > 0 and _all_latin(value[: match.start()]):
+        inside = match.group(1)
+        if not any(char.isalpha() and not latin_letter(char) for char in inside):
+            value = value[: match.start()].strip()
+    if value.count(",") == 1:
+        surname, given = (part.strip() for part in value.split(","))
+        if surname and given:
+            value = f"{given} {surname}"
+    return value
+
+
 def _latin_only_personal(
     name_ko: str,
     name_en: str,
@@ -166,14 +196,15 @@ def _latin_only_personal(
     """A Latin-only personal name: the language module's shape, and not a group.
 
     Every letter on both fields must be Latin, accents included (``José
-    García``). Hangul on either field is not this case (a Hangul row with an
+    García``), after :func:`latin_personal_form` (``Lee, Ann`` and ``Ann Lee
+    (KR)`` read as ``Ann Lee``). Hangul on either field is not this case (a Hangul row with an
     agreeing English name stays on A2), and neither is any other script. The
     field file's team words, a ``members=`` / ``rep=`` note, or person-shaped
     aliases make a group (``team_like``), which keeps A2 and A3. Group words
     are the archive's list, so they are not compiled into the language module.
     """
-    ko = (name_ko or "").strip()
-    en = (name_en or "").strip()
+    ko = latin_personal_form(name_ko)
+    en = latin_personal_form(name_en)
     if not _all_latin(f"{ko} {en}"):
         return False
     primary = en or ko

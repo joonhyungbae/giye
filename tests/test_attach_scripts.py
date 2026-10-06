@@ -76,6 +76,39 @@ def test_accented_latin_names_are_not_joined_across_programmes(tmp_path: Path) -
         assert item["detail"].endswith("(latin name only)")
 
 
+def test_comma_inverted_and_annotated_latin_names_are_latin_only_personal_names(tmp_path: Path) -> None:
+    # "Surname, Given" (a catalogue spelling) and a trailing bracketed
+    # qualifier ("(KR)") are still a Latin-only personal name: A2 does not
+    # join them across programmes on the Latin string alone.
+    for name in ("Lee, Ann", "LEE, Ann", "Ann Lee (KR)", "Ann Lee [b. 1990]", "García, José"):
+        ledger = _two_programmes(tmp_path / name.replace(" ", "_"), _row(name, name), _row(name, name))
+        assert len(ledger.read("artists")) == 2, name
+        assert _rules(ledger) == ["first", "first"], name
+        [item] = ledger.read("review_queue")
+        assert item["detail"].endswith("(latin name only)"), name
+
+
+def test_comma_inverted_latin_name_still_joins_within_a_series(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    ledger.apply_roster("NORTH-2019", [_row("", "Ann Lee")], task="collect")
+    ledger.apply_roster("NORTH-2021", [_row("", "Lee, Ann")], task="collect")
+    assert len(ledger.read("artists")) == 1
+    assert _rules(ledger) == ["first", "A1"]
+
+
+def test_a_comma_or_bracket_does_not_make_a_group_personal(tmp_path: Path) -> None:
+    from giye.resolve.attach import name_class
+
+    language = default_language()
+    from giye.field import shipped_field
+
+    words = shipped_field().compiled_team_words()
+    assert name_class("Lumen Lab, Seoul", "", "", "", language, words) == "group"
+    assert name_class("Lumen Lab (KR)", "", "", "", language, words) == "group"
+    assert name_class("Lee, Ann", "", "", "", language, words) == "personal"
+    assert name_class("Ann Lee (KR)", "", "", "", language, words) == "personal"
+
+
 def test_name_keys_keep_accented_letters_apart() -> None:
     assert latin_tokens("José García") == ["jose", "garcia"]
     assert name_keys("", "José García", "") != name_keys("", "José Garcés", "")

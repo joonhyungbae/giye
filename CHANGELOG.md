@@ -24,3 +24,4 @@ First version of the package: a data-free toolkit that builds a provenance-first
 - Re-applies a person's own correction of a CV line after every extraction (rule S1, renamed from C1 so that C1 stays the planned cluster rule).
 - Adds `giye extract --strict`, a stratum-weighted estimate and refusal of unknown labels in the audit score, an opt-in TLS fallback, atomic JSON writes, and an RO-Crate author typed as a person or an organization.
 - Reads every name in Unicode NFC wherever identity reads names (attachment A1–A6, X1, the E-rule name checks), so Hangul written in decomposed form neither gets around the differing-Hangul rule nor splits one name into two records.
+- Reads a comma-inverted Latin name (`LEE, Ann`) and one with a trailing bracketed qualifier (`Ann Lee (KR)`) as a Latin-only personal name, so A2 no longer joins such rows across programmes on the Latin string alone.
