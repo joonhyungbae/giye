@@ -38,6 +38,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from giye.resolve.names import nfc
 from giye.resolve.teams import person_like, team_person_mismatch
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -105,7 +106,8 @@ def primary_name(row: dict) -> str:
 
 def script_of(value: str) -> str:
     """``hangul``, ``latin``, or empty when the string has neither."""
-    if _HANGUL.search(value or ""):
+    value = nfc(value)
+    if _HANGUL.search(value):
         return "hangul"
     if _LATIN.search(value or ""):
         return "latin"
@@ -153,13 +155,14 @@ def x1_candidates(artists: list[dict], language: LanguageModule | None = None) -
     en_keys: dict[str, set[str]] = {}
     ko_rows = []
     for row in artists:
-        ko = row.get("name_ko") or ""
-        en = row.get("name_en") or ""
+        # NFC: decomposed Hangul is the same name as composed Hangul.
+        ko = nfc(row.get("name_ko"))
+        en = nfc(row.get("name_en"))
         lid = row["ledger_id"]
         # personal_name is also true for a Latin personal name. That row is the
         # English side of X1, not the Hangul side. Hangul is what makes a row Korean.
         if _HANGUL.search(ko) and person_like(ko, language):
-            ko_rows.append(row)
+            ko_rows.append((row, ko))
         elif not _HANGUL.search(ko):
             # The English side is a name written in Latin letters. A name with
             # none has no Latin keys; checking first keeps a Hangul-only
@@ -173,8 +176,7 @@ def x1_candidates(artists: list[dict], language: LanguageModule | None = None) -
             for key in keys:
                 index[key].append(lid)
     pairs: dict[tuple[str, str], tuple[str, str]] = {}
-    for row in ko_rows:
-        ko = row["name_ko"]
+    for row, ko in ko_rows:
         # Keys come from the language module (``name_keys``). For the Korean-English
         # module a bare Hangul personal name gives its Hangul keys, and a name
         # with Latin letters gives its Latin keys, as X1 compares them.

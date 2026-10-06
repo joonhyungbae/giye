@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 import yaml
 
 from giye.normalize.gazetteer import Gazetteer
-from giye.resolve.names import hangul_name_keys, latin_letter, latin_name_keys, syllable_rr
+from giye.resolve.names import hangul_name_keys, latin_letter, latin_name_keys, nfc, syllable_rr
 
 if TYPE_CHECKING:  # pragma: no cover
     from giye.config import Config
@@ -76,7 +76,7 @@ def korean_personal_shape(text: str) -> bool:
     (``team_like``) reads a non-personal name's aliases and English name for
     group evidence, and a short group name without a team word would lose it.
     """
-    words = (text or "").split()
+    words = nfc(text).split()
     if not words or not all(_HANGUL_SYLLABLES.fullmatch(word) for word in words):
         return False
     compact = "".join(words)
@@ -284,7 +284,7 @@ class KoreanEnglish:
         applied here; attachment treats a team-word hit as a group, not as
         this name.
         """
-        text = (name or "").strip()
+        text = nfc(name).strip()
         if korean_personal_shape(text):
             return True
         if not text or _HANGUL.search(text):

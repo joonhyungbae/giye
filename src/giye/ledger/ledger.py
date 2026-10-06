@@ -657,10 +657,13 @@ def _attach_one_roster_row(
 ) -> tuple[str, str, bool, bool]:
     """One roster row: attach or insert, then website and same-name queue."""
     # Runs of whitespace are one space: "Jonas  Berg" on one page and
-    # "Jonas Berg" on the next are one spelling, not a second alias.
-    raw_ko = " ".join(str(row.get("name_ko") or "").split())
-    raw_en = " ".join(str(row.get("name_en") or "").split())
-    aliases = str(row.get("aliases") or "")
+    # "Jonas Berg" on the next are one spelling, not a second alias. Names are
+    # stored in NFC: decomposed Hangul (NFD, from macOS text and some PDF
+    # exports) is the same name as composed Hangul, and the identity rules
+    # read precomposed syllables.
+    raw_ko = " ".join(unicodedata.normalize("NFC", str(row.get("name_ko") or "")).split())
+    raw_en = " ".join(unicodedata.normalize("NFC", str(row.get("name_en") or "")).split())
+    aliases = unicodedata.normalize("NFC", str(row.get("aliases") or ""))
     identity = str(row.get("identity") or "").strip()
     websites = _roster_websites(row)
     source_url = str(row.get("source_url") or "").strip()

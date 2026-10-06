@@ -28,6 +28,7 @@ distinct personal names, no ``members=`` list) names them too; see
 from __future__ import annotations
 
 import re
+import unicodedata
 import uuid
 from collections.abc import Iterable, Mapping
 from datetime import datetime, timezone
@@ -121,8 +122,8 @@ def team_person_mismatch(
 
 
 def _name_key(value: str) -> str:
-    """Case-folded name with spaces and punctuation removed, for comparing a recorded team name."""
-    return "".join(ch for ch in (value or "").casefold() if ch.isalnum())
+    """Case-folded name (NFC) with spaces and punctuation removed, for comparing a recorded team name."""
+    return "".join(ch for ch in unicodedata.normalize("NFC", value or "").casefold() if ch.isalnum())
 
 
 def member_of_team(member: Mapping[str, str], team: Mapping[str, str]) -> bool:

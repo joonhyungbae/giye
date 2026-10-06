@@ -54,6 +54,7 @@ from giye.resolve.evidence import (
     url_key,
     website_keys,
 )
+from giye.resolve.names import nfc
 from giye.resolve.teams import expand_teams, team_like, team_person_mismatch
 
 
@@ -279,6 +280,7 @@ def _names(artist: dict) -> set[str]:
     for value in values:
         if not value:
             continue
+        value = nfc(value)
         hangul = "".join(ch for ch in value if "가" <= ch <= "힣")
         found.add(hangul or value.lower())
     return found

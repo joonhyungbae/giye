@@ -7,6 +7,7 @@ fresh ledger and reads the membership rules and the review queue.
 
 from __future__ import annotations
 
+import unicodedata
 from pathlib import Path
 
 from giye.config import load
@@ -271,3 +272,53 @@ def test_latin_team_words_still_match_glued_capitals() -> None:
     words = shipped_field().compiled_team_words()
     for name in ("NoeulCollectiveB", "BADACOLLECTIVE", "NOEULLABS", "BD_collective"):
         assert team_like({"name_ko": name}, words=words) == "team_name", name
+
+
+# --- Hangul in decomposed form (NFD) is the same text as composed Hangul -----
+
+
+def _nfd(text: str) -> str:
+    return unicodedata.normalize("NFD", text)
+
+
+def test_decomposed_hangul_does_not_get_around_the_differing_hangul_guard(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    ledger.apply_roster("NORTH-2019", [_row("윤서정", "Seojung Yoon")], task="collect")
+    ledger.apply_roster("NORTH-2021", [_row(_nfd("윤서중"), "Seojung Yoon")], task="collect")
+    artists = ledger.read("artists")
+    assert sorted(row["name_ko"] for row in artists) == ["윤서정", "윤서중"]
+    assert _rules(ledger) == ["first", "first"]
+    [item] = ledger.read("review_queue")
+    assert item["detail"].endswith("(hangul names differ)")
+
+
+def test_decomposed_hangul_joins_its_composed_spelling_in_a_series(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    ledger.apply_roster("NORTH-2019", [_row("김하늘")], task="collect")
+    ledger.apply_roster("NORTH-2021", [_row(_nfd("김하늘"))], task="collect")
+    [artist] = ledger.read("artists")
+    assert artist["name_ko"] == "김하늘"
+    assert _rules(ledger) == ["first", "A1"]
+    assert not ledger.read("review_queue")
+
+
+def test_identity_reads_decomposed_hangul_as_composed() -> None:
+    from giye.resolve.attach import hangul_contradicts, names_meet
+    from giye.resolve.candidates import script_of, x1_candidates
+    from giye.resolve.service import _names
+
+    language = default_language()
+    assert name_keys(_nfd("김하늘"), "", "") == name_keys("김하늘", "", "")
+    assert language.personal_name(_nfd("김하늘"))
+    assert language.name_keys(_nfd("서지우")) == language.name_keys("서지우") != set()
+    stored = {"ledger_id": "GY-000001", "name_ko": _nfd("윤서정"), "name_en": "Seojung Yoon", "aliases": ""}
+    assert hangul_contradicts("윤서중", "Seojung Yoon", "", stored)
+    assert not names_meet("윤서중", "Seojung Yoon", "", stored, language)
+    assert names_meet("윤서정", "", "", stored, language)
+    assert _names(stored) == _names({"name_ko": "윤서정", "name_en": "Seojung Yoon"})
+    assert script_of(_nfd("서지우")) == "hangul"
+    rows = [
+        {"ledger_id": "GY-000001", "name_ko": _nfd("서지우"), "name_en": ""},
+        {"ledger_id": "GY-000002", "name_ko": "Jiwoo Seo", "name_en": "Jiwoo Seo"},
+    ]
+    assert x1_candidates(rows, language) == [("GY-000001", "GY-000002")]

@@ -65,7 +65,7 @@ from typing import TYPE_CHECKING
 from giye.field import Field, frame_family
 from giye.ledger.schemas import split_pipe
 from giye.resolve.evidence import url_key
-from giye.resolve.names import fold_latin, latin_letter, latin_words
+from giye.resolve.names import fold_latin, latin_letter, latin_words, nfc
 from giye.resolve.teams import person_like, team_like
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -90,8 +90,8 @@ class Attachment:
 
 
 def hangul_compact(text: str) -> str:
-    """Hangul syllables of ``text``, concatenated."""
-    return "".join(_HANGUL.findall(text or ""))
+    """Hangul syllables of ``text`` (read in NFC, so decomposed Hangul counts), concatenated."""
+    return "".join(_HANGUL.findall(nfc(text)))
 
 
 def latin_tokens(text: str) -> list[str]:

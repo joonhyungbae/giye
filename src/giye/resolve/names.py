@@ -30,6 +30,18 @@ _MIDDLE = re.compile(r"^\s*middle\s*name\s*[:：]\s*(.+?)\s*$", re.IGNORECASE)
 _LATIN_FOLD = str.maketrans({"ø": "o", "ł": "l", "đ": "d", "ð": "d", "þ": "th", "æ": "ae", "œ": "oe", "ı": "i", "ħ": "h"})
 
 
+def nfc(text: str | None) -> str:
+    """``text`` in Unicode composed form (NFC); ``None`` is the empty string.
+
+    Why: Hangul can be written as precomposed syllables or as decomposed jamo
+    (NFD, from macOS file names and some PDF exports). Both are one name, but
+    the Hangul tests read precomposed syllables (``[가-힣]``), so decomposed
+    Hangul had no Hangul key and a differing Hangul name could join on a
+    shared Latin key. Every identity rule that reads a name reads it in NFC.
+    """
+    return unicodedata.normalize("NFC", text or "")
+
+
 def latin_letter(char: str) -> bool:
     """A letter of the Latin script, accented or not (Unicode name ``LATIN …``)."""
     return char.isalpha() and unicodedata.name(char, "").startswith("LATIN ")
@@ -369,7 +381,7 @@ def hangul_name_keys(name_ko: str) -> set[str]:
     """
     # As documented above: spaces and hyphens are not part of the name, so
     # ``김 하늘`` has the keys of ``김하늘`` (before 2026-10-06 it had none).
-    name = re.sub(r"[\s\-]+", "", name_ko or "")
+    name = re.sub(r"[\s\-]+", "", nfc(name_ko))
     if len(name) < 2 or any(not _hangul_syllable(ch) for ch in name):
         return set()
     keys, count = korean_keys_v2(name)
