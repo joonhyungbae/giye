@@ -256,6 +256,23 @@ def test_m4_a_venue_that_is_only_a_title_is_no_institution() -> None:
     assert [row["name"] for row in result.venues] == ["예시미술관"]
 
 
+def test_m8_institution_key_is_a_fixed_point() -> None:
+    """m8: the key of a key is the key."""
+    for text in [
+        "The The Space",
+        "The Gallery the",
+        "2019 The Example Space",
+        "Example Gallery 2020 2021",
+        "제12회 2019 예시비엔날레 외",
+        "《a》《b》 예시미술관 외",
+        "Example Space etc etc",
+        "the 1st 2nd example museum",
+    ]:
+        key = institution_key(text, LANG)
+        assert institution_key(key, LANG) == key, (text, key)
+    assert institution_key("The The Example Space", LANG) == "example space"
+
+
 def test_n3_x2_does_not_fold_through_an_ambiguous_reading() -> None:
     from giye.extract.crosslang import clear_marks, fold_cross_language
 

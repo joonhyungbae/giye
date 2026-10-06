@@ -412,12 +412,18 @@ def institution_key(text: str, lang: LanguageModule | None = None) -> str:
         if char in QUOTE_CHARS or char in ".,，．" or category in {"Ps", "Pe", "Pi", "Pf"}:
             continue
         kept.append(char)
-    key = re.sub(r"\s+", " ", "".join(kept)).strip()
-    key = re.sub(r"^the\s+", "", key)
-    key = re.sub(r"\s+the$", "", key)
+    key = _strip_the(re.sub(r"\s+", " ", "".join(kept)).strip())
     if _V7_SPELLING.get():
-        return venue_names.normalize_key(key.strip(), lang)  # V7b–d
-    return key.strip()
+        # V7b–c can leave a new leading or trailing "the" ("2019 The Space"); the
+        # second pass keeps the key a fixed point, so a key of a key is the key (audit m8).
+        return _strip_the(venue_names.normalize_key(key, lang))
+    return key
+
+
+def _strip_the(key: str) -> str:
+    """V4: every leading and trailing "the" ("The The Space" is "space")."""
+    key = re.sub(r"^(?:the\s+)+", "", key)
+    return re.sub(r"(?:\s+the)+$", "", key).strip()
 
 
 # Full-width ASCII forms (U+FF01–U+FF5E) and the ideographic space, read as ASCII.
