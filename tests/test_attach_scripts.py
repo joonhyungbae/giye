@@ -248,3 +248,26 @@ def test_a_later_edition_still_joins_by_a1(tmp_path: Path) -> None:
     ledger.apply_roster("NORTH-2021", roster, task="collect")
     assert len(ledger.read("artists")) == 2
     assert _rules(ledger) == ["first", "first", "A1", "A1"]
+
+
+# --- Team words match whole Latin words ---------------------------------------
+
+
+def test_latin_team_words_match_whole_words_only() -> None:
+    from giye.field import shipped_field
+    from giye.resolve.teams import team_like
+
+    words = shipped_field().compiled_team_words()
+    for name in ("Mina Groupe", "Sora Crewes", "Seo Projectionist", "Ari Movementova", "Jun Studiola"):
+        assert team_like({"name_ko": name}, words=words) == "", name
+    for name in ("Lumen Lab", "Noeul Studios", "Night Project", "Blue Crew", "Sea Collective", "Wave Ensemble"):
+        assert team_like({"name_ko": name}, words=words) == "team_name", name
+
+
+def test_latin_team_words_still_match_glued_capitals() -> None:
+    from giye.field import shipped_field
+    from giye.resolve.teams import team_like
+
+    words = shipped_field().compiled_team_words()
+    for name in ("NoeulCollectiveB", "BADACOLLECTIVE", "NOEULLABS", "BD_collective"):
+        assert team_like({"name_ko": name}, words=words) == "team_name", name

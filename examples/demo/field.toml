@@ -6,7 +6,7 @@ inherit = true
 
 [resolve]
 team_prefix = '팀:'
-team_words = '(스튜디오|콜렉티브|컬렉티브|랩\b|크루|company|studio|collective|project|group|crew|\blab\b|labs|ensemble)'
+team_words = '(스튜디오|콜렉티브|컬렉티브|랩\b|크루|(?:company|companies|studios?|collectives?|projects?|groups?|crews?|\blab|labs|ensembles?)(?-i:(?![a-z])))'
 
 [resolve.events]
 EXAMPLE-RESIDENCY = '예시 ?레지던시|example residency'

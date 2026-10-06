@@ -13,7 +13,7 @@ Unknown keys on a table are ignored. A value of the wrong type is an error.
 | Key | Type | Default | Required | Read by |
 |---|---|---|---|---|
 | `team_prefix` | string | `"팀:"` | no | Rule E4 and the ring (`giye.resolve.evidence`, `giye.resolve.service`, `giye.resolve.teams`, `giye.explore.rim`). A team credit is written `<prefix> <name>`. |
-| `team_words` | string (one regex) | `""` | no | Rule T1 (`giye.resolve.teams.team_like`). Case-insensitive. A name that matches is a group. A false positive only skips a merge. Empty inherits the shipped list when `[tags] inherit` is true; with inheritance off, an empty pattern matches nothing. |
+| `team_words` | string (one regex) | `""` | no | Rule T1 (`giye.resolve.teams.team_like`). Case-insensitive. A name that matches is a group. A false positive only skips a merge (and lets A3 join the name across programmes). Bound Latin words: the shipped list lets no lower-case letter follow a Latin word (`(?-i:(?![a-z]))`), so `Mina Groupe` and `Seo Projectionist` are not groups while a name glued in capitals (`NOEULLABS`) still is; on the production ledger of 2026-10-06 this changes no record. Empty inherits the shipped list when `[tags] inherit` is true; with inheritance off, an empty pattern matches nothing. |
 
 ### `[resolve.events]`
 

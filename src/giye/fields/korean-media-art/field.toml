@@ -82,7 +82,9 @@ pattern = '\bVR\b|\bAR\b|\bXR\b|\bMR\b|virtual reality|augmented reality|mixed r
 # E4 and the ring read a team credit written with this prefix. Production stores `팀: <name>`.
 team_prefix = '팀:'
 # T1. A name containing one of these words is a group. A false positive only skips a merge.
-team_words = '(컴퍼니|프로젝트|스튜디오|콜렉티브|컬렉티브|무브먼트|프로덕션|그룹|팀|랩\b|연구소|공작소|크루|company|studio|collective|project|production|movement|group|crew|\blab\b|labs|ensemble)'
+# A Latin word may not be followed by a lower-case letter, so "Mina Groupe" or "Seo Projectionist"
+# is not a group, while names written glued in capitals ("NoeulCollectiveB", "NOEULLABS") still are.
+team_words = '(컴퍼니|프로젝트|스튜디오|콜렉티브|컬렉티브|무브먼트|프로덕션|그룹|팀|랩\b|연구소|공작소|크루|(?:company|companies|studios?|collectives?|projects?|productions?|movements?|groups?|crews?|\blab|labs|ensembles?)(?-i:(?![a-z])))'
 
 # E2. Frame-code prefix → regex. First matching prefix wins. A code's trailing -YYYY is removed first.
 # The institution's name alone is not used where it would not distinguish the programme.
