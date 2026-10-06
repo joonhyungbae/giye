@@ -4,7 +4,7 @@
 Used by E3 (a CV line lists a roster work, ``giye.resolve.evidence``) and by
 the CV grounding check (``giye.extract.grounding``). Both compared plain
 substrings before 2026-10-06, so 〈Sea〉 was found in "Research" and 〈Light〉
-in "Lighthouse" (software review, round 6, MAJOR-4).
+in "Lighthouse".
 
 Both strings are expected in one normal form already (case-folded,
 punctuation replaced by a space, whitespace collapsed); this module only adds

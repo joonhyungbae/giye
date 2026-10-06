@@ -7,7 +7,7 @@ name is the record the CV was read for, not its owner. A line belongs to the
 owner of its CV source in the ledger (``cv_sources.ledger_id``), followed
 through merges (``merged <ledger id>`` on the kept row). A line with no
 registered source belongs to the file's ``ledger_id`` (or its name), followed
-the same way. Why (software review, round 6, MAJOR-3): indexing by file name
+the same way. Why: indexing by file name
 dropped the absorbed record's CV after a merge whenever the survivor had a
 file of its own, and after the ledger was restored from its backups a renamed
 file still gave one person's CV to the other. A merge therefore no longer

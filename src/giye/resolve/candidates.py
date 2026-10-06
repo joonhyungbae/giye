@@ -9,7 +9,7 @@ the pair is queued (``possible_same_person``), never merged on the spelling.
 
 A Korean row that already has a Latin name is paired whether or not that
 Latin spelling meets the other row's. When it meets, the queue detail says
-``rule=x1_own_en``. Why (software review, round 6, MAJOR-2): the pair was
+``rule=x1_own_en``. Why: the pair was
 skipped on the assumption that A2 had joined it, but A2 needs the same Latin
 tokens (``Do-yun Lee`` is not ``Doyun Lee``) and does not join a Latin-only
 personal name across programmes, so the most likely duplicates were neither

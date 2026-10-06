@@ -115,7 +115,7 @@ def run_demo(
     out = Path(output) if output is not None else Path(tempfile.mkdtemp(prefix="giye-demo-"))
     out.mkdir(parents=True, exist_ok=True)
     if (out / "ledger" / "artists.csv").is_file():
-        # A one-line error, not a traceback: this is a usage mistake (software review, round 6).
+        # A one-line error, not a traceback: this is a usage mistake.
         raise GiyeError(f"{out} already holds a ledger; giye demo needs an empty directory")
     try:
         loaded = load(path)

@@ -269,8 +269,8 @@ class Ledger:
             raise ValueError("merge refused without an evidence string")
         if not isinstance(rule, str) or not rule.strip():
             raise ValueError("merge refused without a rule id")
-        # Even the internal path stores only a known rule id (software review,
-        # round 6): rule "zz" was accepted when this method was called directly.
+        # Even the internal path stores only a known rule id: rule "zz" was
+        # accepted when this method was called directly.
         # What the evidence says is checked by the callers that decide a merge.
         code = rule.strip()
         if not _MERGE_RULE.fullmatch(code):
@@ -772,7 +772,7 @@ def _keep_printed_names(artist: dict[str, str], raw_ko: str, raw_en: str) -> Non
     Why: attachment can join a different spelling (A2 across scripts, A3, A6,
     a stored alias). Without this the roster's own spelling of the person was
     in no table, and the membership could no longer be checked against the
-    kept page by name (software review, round 6). A name already present as
+    kept page by name. A name already present as
     ``name_ko``, ``name_en`` or an alias, after whitespace and case folding, is
     not added again, so a re-run leaves the row byte-identical.
     """

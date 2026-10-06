@@ -310,8 +310,8 @@ def _a2_ledger_id(
     string agrees (author decision 2026-10-05). The same holds when only one
     side is Latin-only: a Hangul record's English spelling agreeing with a
     Latin-only row is still the Latin string alone, so ``Doyun Lee`` on another
-    programme is not joined to ``이도윤 / Doyun Lee`` (software review, round
-    6). Within a series A1 joins them; elsewhere the pair is queued. A stored
+    programme is not joined to ``이도윤 / Doyun Lee``. Within a series A1
+    joins them; elsewhere the pair is queued. A stored
     Latin-only row keeps that string in ``name_ko`` as well, so ``name_ko`` is
     one of the spellings.
     """

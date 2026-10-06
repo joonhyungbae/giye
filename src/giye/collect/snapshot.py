@@ -131,7 +131,7 @@ def verified_bytes(path: Path, expected_sha256: object) -> bytes:
     manifest value that is not a 64-character hex digest (a legacy line) is not
     compared. A content-addressed file name (``<sha256><ext>``) is compared
     with the bytes too, so editing the body and the manifest line together,
-    without renaming the file, is also caught (software review, round 6).
+    without renaming the file, is also caught.
     What this does not catch: a rewrite of the body, its manifest line and its
     file name together. The store checks itself; only a copy kept elsewhere
     (the private repository, the VPS backup, or the digests in an earlier

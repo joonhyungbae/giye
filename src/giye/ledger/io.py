@@ -66,8 +66,7 @@ def hold_ledger_lock(ledger_dir: Path) -> None:
     handle.seek(0)
     handle.truncate()
     # Only the pid: the full command line could carry paths or arguments the
-    # data directory should not keep, and it outlived the run (software
-    # review, round 6).
+    # data directory should not keep, and it outlived the run.
     handle.write(f"pid {os.getpid()}")
     handle.flush()
     _LOCKS[key] = handle

@@ -291,7 +291,7 @@ def cv_lists_work(cv_rows: list[dict], works: set[tuple[str, int]]) -> str | Non
     """E3 hit: a CV title names a roster work, as whole words, in the same year ± ``YEAR_WINDOW``.
 
     Whole words, not a substring: 〈Sea〉 is not in "Research Residency" and
-    〈Light〉 is not in "Lighthouse Festival" (software review, round 6).
+    〈Light〉 is not in "Lighthouse Festival".
     """
     if not works or not cv_rows:
         return None
@@ -342,7 +342,7 @@ def evidence_e2_e4(
     evidence = None
     for this, other in ((left, right), (right, left)):
         # An edition both records are on does not tie them: the CV's owner
-        # lists their own appearance (software review, round 6).
+        # lists their own appearance.
         for frame_code in sorted(frames.get(other, set()) - frames.get(this, set())):
             years = edition_years(frame_code, rows_of.get(other, []))
             hit = cv_mentions(cvs.get(this, []), frame_code, years, patterns)

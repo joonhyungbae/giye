@@ -243,7 +243,7 @@ def verify_merge_evidence(ledger: Ledger, keep: str, drop: str, evidence: str) -
     - ``H``: every ISO date in the string is a real date no later than today,
       and the reason has at least three words.
 
-    Why the candidate conditions (software review, round 6, MAJOR-1): the cited
+    Why the candidate conditions: the cited
     fact alone does not tie two people. Two members of one team share the
     team credit (E4), two residents of one edition both appear in one CV's
     listing of it (E2), and a duo site lists both members (E1). The resolver
@@ -352,7 +352,7 @@ def _verify_h(rest: str) -> None:
 def _h_not_before(evidence: str, distinct: list[dict[str, str]]) -> None:
     """An ``H`` that overrides a distinct decision is dated on or after that decision.
 
-    Why (software review, round 6): a judgement dated before the decision it
+    Why: a judgement dated before the decision it
     overrides was made without knowing that decision, so it cannot be the
     reason to reverse it. An undated older decision cannot be compared and is
     not checked.

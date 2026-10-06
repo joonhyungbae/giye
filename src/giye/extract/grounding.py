@@ -11,7 +11,7 @@ can verify against the document:
 - a non-empty venue (rule G-V, docs/RULES.md), first match wins. Every
   occurrence below is on word boundaries (``giye.normalize.match``): a Latin
   name may not start or end inside a word, a Hangul name may not start inside
-  one. Before 2026-10-06 these were substring tests (software review, round 6).
+  one. Before 2026-10-06 these were substring tests.
   1. the whole venue occurs in the text, both sides normalised the same way
      (NFC, case-folded, whitespace collapsed; failing that, punctuation and
      brackets replaced by a space in both);
@@ -221,7 +221,7 @@ def names_something(part: str, lang: LanguageModule | None) -> bool:
 
     ``Museum of Art``, ``Art`` and ``Residency`` name no particular place, so
     finding them in a CV that writes ``Seoul Museum of Art`` or ``Example
-    Residency`` does not ground a reading (software review, round 6).
+    Residency`` does not ground a reading.
     """
     if not part.strip():
         return False
