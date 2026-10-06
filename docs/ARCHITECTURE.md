@@ -47,7 +47,7 @@ network, so the whole chain after collection is deterministic and can be re-run 
 | `giye.export` | — | WARC 1.1 of the snapshot store (optional WACZ) and an RO-Crate 1.1 description of a run |
 | `giye.extract` | 2 | CV source registry, fetch through `Fetcher` (snapshot only when the content hash changes), LLM extraction to a pydantic schema, validation, replay cache keyed by content hash, prompt hash, and model |
 | `giye.ledger` | 3 | table schemas, CSV I/O with locking and backups, permanent `gy_id` allocation, content-derived activity ids, merge and retirement, CV-row ownership |
-| `giye.resolve` | 4 | same-person evidence (E1–E4), cross-script candidates (X1, `names.py`), team guard (T1) and member expansion, review queue, merge through `giye.ledger` |
+| `giye.resolve` | 4 | same-person evidence (E1–E4), cross-script candidates (X1, `names.py`), team guard (T1) and member expansion, review queue, merge through `giye.ledger`, split of a wrongly attached membership (`split.py`) |
 | `giye.normalize` | 5 | text normalisation, place gazetteer, institution entities and their audit, derived artist attributes. Glossary and gazetteer are a language module |
 | `giye.explore` | 6 | `giye.explore.rim` (entry-generation ring, R1–R7) and `giye.explore.evaluate` (coverage, bootstrap adjusted Rand, lift, AUC). See [EXPLORE.md](EXPLORE.md) |
 | `giye.publish` | 7 | site snapshot (`<data>/site/*.json`), ID redirects and stubs, coverage per frame, dataset versions, APA/Chicago/BibTeX citations, plain HTML pages (`giye render`) |
