@@ -58,10 +58,10 @@ HANGUL_RE = re.compile(r"[가-힣]")
 LATIN_RE = re.compile(r"[A-Za-z]")
 MARK_RE = re.compile(rf"(?:^|;\s*)superseded_by=[^;]*;\s*rule={RULE}(?=;|$)")
 # Same-script titles must share at least half their word bag (Jaccard). Why
-# 0.5: the production folds of one show differ by an edition mark ("ISIMD '05'
-# Digital Art Exhibition" against "ISIMD Digital Art Exhibition", Jaccard 1.0
-# once the number is dropped), while two different shows share at most a
-# generic word or two ("exhibition"), which stays under half of the bag.
+# 0.5: the one production fold with two Latin titles differs only by an
+# edition mark ("Example '05' Digital Art Exhibition" against "Example Digital
+# Art Exhibition", Jaccard 1.0 once the number is dropped), and half the bag
+# means one shared generic word such as "exhibition" is not enough on its own.
 TITLE_JACCARD = 0.5
 TITLE_TOKEN_RE = re.compile(r"[^\W\d_]+")
 
