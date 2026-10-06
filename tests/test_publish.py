@@ -253,6 +253,35 @@ def test_published_page_keeps_source_year_and_coverage(tmp_path: Path):
     assert "included_count" not in (tmp_path / "frames.yml").read_text(encoding="utf-8")
 
 
+def test_field_keywords_are_published_in_order_as_written(tmp_path: Path):
+    field = "Sound Studies,  Digital Humanities, Development (e.g., Web, Game), Artistic Research,"
+    artists = [
+        _artist("LED-haneul", "김하늘", gy_id="GY-000001", field=field),
+        _artist("LED-park", "박서연", gy_id="GY-000002"),
+    ]
+    membership = [
+        empty_row(
+            MEMBERSHIP_FIELDS,
+            ledger_id=lid,
+            frame_code="EXAMPLE-RESIDENCY",
+            source_url="https://example.org/residency/alumni",
+            collected_at="2026-01-15",
+        )
+        for lid in ("LED-haneul", "LED-park")
+    ]
+    site = _publish(tmp_path, artists, [], membership)
+    people = {row["id"]: row for row in site["artists.json"]}
+    assert people["GY-000001"]["field_keywords"] == [
+        "Sound Studies",
+        "Digital Humanities",
+        "Development (e.g., Web, Game)",
+        "Artistic Research",
+    ]
+    # The medium guess is unchanged by the list: whole words only, "Artistic" is not XR.
+    assert people["GY-000001"]["medium_tags"] == ["사운드"]
+    assert people["GY-000002"]["field_keywords"] == []
+
+
 def test_hidden_record_is_a_tombstone_and_retired_id_redirects(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     artists = [
         _artist("LED-live", "김하늘", gy_id="GY-000001"),

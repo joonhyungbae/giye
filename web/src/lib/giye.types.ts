@@ -11,6 +11,8 @@ export type Artist = {
   active_since: number | null;
   regions: string[];
   medium_tags: string[];
+  /** The ledger's field keywords in the order written (fields of research or practice, not media). */
+  field_keywords?: string[];
   technique_tags: string[];
   theme_tags: string[];
   frame_status: string;

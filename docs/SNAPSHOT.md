@@ -69,6 +69,7 @@ One object per published person, in name order (`name_ko`, then `name_en`).
 | `birth_year`, `birth_year_source_url` | From `artist_attributes.csv` when normalize has run |
 | `active_since` | Ledger value, else the derived one |
 | `regions`, `countries`, `medium_tags` | Ledger text, else derived rows. Region tags and the field/category medium guess come from the field file |
+| `field_keywords` | The ledger's `field` cell as a list, in the order written: split on commas outside brackets, whitespace collapsed, empty parts dropped. Empty when the cell is empty. The person page shows them as written, joined with ", ", in place of `medium_tags`, because they name fields of research or practice and the medium is then only a guess from them (P5 derives no medium for a person whose `field` or `category` is set). `medium_tags` keeps what the guess produces, for the lists and filters |
 | `derived` | `{field: {rule, url?}}` for each derived value |
 | `technique_tags`, `theme_tags` | Always empty lists |
 | `frame_status`, `frame_codes` | Membership |

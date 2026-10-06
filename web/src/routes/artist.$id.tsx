@@ -395,8 +395,8 @@ function ArtistPage() {
   const activitySources = usedSources(years.flatMap((y) => y.rows.map((r) => r[5])));
   const backgroundSources = usedSources(background.flatMap((s) => s.rows.map((r) => r[4])));
   const collaborationSources = usedSources(collaborations.map((c) => c.source));
-  // One summary line in place of the profile table: active since · type · regions · medium,
-  // then technique and theme when present. A derived value says so in its tooltip.
+  // One summary line in place of the profile table: active since · type · regions · field
+  // keywords or medium, then technique and theme when present. A derived value says so in its tooltip.
   const summary: { text: string; note?: string }[] = [
     ...(artist.active_since
       ? [
@@ -410,7 +410,12 @@ function ArtistPage() {
       : []),
     { text: artist.type === "collective" ? t("집단", "Collective") : t("개인", "Individual") },
     ...(artist.regions.length ? [{ text: tags(artist.regions) }] : []),
-    ...(artist.medium.length
+    // Field keywords, when the ledger has them, are shown as written in place of the medium:
+    // the medium is then only a guess from those keywords (P5 derives no medium for that
+    // person), and a field of research or practice is not a medium.
+    ...(artist.field_keywords.length
+      ? [{ text: artist.field_keywords.join(", ") }]
+      : artist.medium.length
       ? [
           {
             text: tags(artist.medium),

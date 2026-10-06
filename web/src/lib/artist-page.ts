@@ -62,6 +62,7 @@ export type ArtistPageData = {
     regions: Bi[];
     medium: Bi[];
     medium_derived: boolean;
+    field_keywords: string[];
     technique: Bi[];
     theme: Bi[];
     /** Roster editions, newest first (the reason the person is in the register). */
@@ -329,6 +330,7 @@ export function shapeArtistPage(input: {
       regions: tag(artist.regions),
       medium: tag(artist.medium_tags),
       medium_derived: Boolean(artist.derived?.medium),
+      field_keywords: artist.field_keywords ?? [],
       technique: tag(artist.technique_tags),
       theme: tag(artist.theme_tags),
       editions,

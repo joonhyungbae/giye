@@ -585,6 +585,31 @@ def guess_medium(field_name: str, category: str, *, field: Field | None = None) 
     return tags
 
 
+def field_keywords(text: str) -> list[str]:
+    """The ledger's ``field`` cell as a list of keywords, in the order written.
+
+    Split on commas outside brackets ("Development (e.g., Web, Game), XR" is two
+    keywords), whitespace collapsed, empty parts dropped. The keywords are shown as
+    written: they name fields of research or practice, which the medium vocabulary
+    does not cover, so they are not mapped onto it.
+    """
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for char in text or "":
+        if char in "([{（［":
+            depth += 1
+        elif char in ")]}）］":
+            depth = max(depth - 1, 0)
+        if char in ",，" and depth == 0:
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(char)
+    parts.append("".join(current))
+    return [" ".join(part.split()) for part in parts if part.strip()]
+
+
 def parse_year(value: object) -> int | None:
     """First 19xx or 20xx in ``value``, or None.
 
@@ -781,6 +806,7 @@ def _artist_record(
         "countries": split_pipe(derived.get("country", {}).get("value")),
         "medium_tags": guess_medium(artist.get("field") or "", artist.get("category") or "", field=tags)
         or derived.get("medium", {}).get("values", []),
+        "field_keywords": field_keywords(artist.get("field") or ""),
         "derived": {
             name: {"rule": row["rule"], **({"url": row["evidence_url"]} if row.get("evidence_url") else {})}
             for name, row in derived.items()

@@ -498,6 +498,7 @@
         "regions": [],
         "countries": [],
         "medium_tags": [],
+        "field_keywords": [],
         "derived": {},
         "technique_tags": [],
         "theme_tags": [],
@@ -541,6 +542,7 @@
         "regions": [],
         "countries": [],
         "medium_tags": [],
+        "field_keywords": [],
         "derived": {},
         "technique_tags": [],
         "theme_tags": [],
@@ -584,6 +586,7 @@
         "regions": [],
         "countries": [],
         "medium_tags": [],
+        "field_keywords": [],
         "derived": {
           "active_since": {
             "rule": "A1 earliest public practice row"
@@ -631,6 +634,7 @@
         "regions": [],
         "countries": [],
         "medium_tags": [],
+        "field_keywords": [],
         "derived": {},
         "technique_tags": [],
         "theme_tags": [],
@@ -677,6 +681,7 @@
         "regions": [],
         "countries": [],
         "medium_tags": [],
+        "field_keywords": [],
         "derived": {},
         "technique_tags": [],
         "theme_tags": [],
@@ -721,6 +726,7 @@
         "regions": [],
         "countries": [],
         "medium_tags": [],
+        "field_keywords": [],
         "derived": {},
         "technique_tags": [],
         "theme_tags": [],
@@ -765,6 +771,7 @@
         "regions": [],
         "countries": [],
         "medium_tags": [],
+        "field_keywords": [],
         "derived": {
           "active_since": {
             "rule": "A1 earliest public practice row"
@@ -817,6 +824,7 @@
         "regions": [],
         "countries": [],
         "medium_tags": [],
+        "field_keywords": [],
         "derived": {},
         "technique_tags": [],
         "theme_tags": [],
@@ -861,6 +869,7 @@
         "regions": [],
         "countries": [],
         "medium_tags": [],
+        "field_keywords": [],
         "derived": {},
         "technique_tags": [],
         "theme_tags": [],
@@ -909,6 +918,7 @@
         "regions": [],
         "countries": [],
         "medium_tags": [],
+        "field_keywords": [],
         "derived": {},
         "technique_tags": [],
         "theme_tags": [],
@@ -953,6 +963,7 @@
         "regions": [],
         "countries": [],
         "medium_tags": [],
+        "field_keywords": [],
         "derived": {
           "active_since": {
             "rule": "A1 earliest public practice row"
@@ -998,6 +1009,7 @@
         "regions": [],
         "countries": [],
         "medium_tags": [],
+        "field_keywords": [],
         "derived": {},
         "technique_tags": [],
         "theme_tags": [],
@@ -1042,6 +1054,7 @@
         "regions": [],
         "countries": [],
         "medium_tags": [],
+        "field_keywords": [],
         "derived": {},
         "technique_tags": [],
         "theme_tags": [],
@@ -1085,6 +1098,7 @@
         "regions": [],
         "countries": [],
         "medium_tags": [],
+        "field_keywords": [],
         "derived": {},
         "technique_tags": [],
         "theme_tags": [],
@@ -1131,6 +1145,7 @@
         "regions": [],
         "countries": [],
         "medium_tags": [],
+        "field_keywords": [],
         "derived": {},
         "technique_tags": [],
         "theme_tags": [],
@@ -1174,6 +1189,7 @@
         "regions": [],
         "countries": [],
         "medium_tags": [],
+        "field_keywords": [],
         "derived": {},
         "technique_tags": [],
         "theme_tags": [],
@@ -1215,6 +1231,7 @@
         "regions": [],
         "countries": [],
         "medium_tags": [],
+        "field_keywords": [],
         "derived": {},
         "technique_tags": [],
         "theme_tags": [],
@@ -1261,6 +1278,7 @@
         "regions": [],
         "countries": [],
         "medium_tags": [],
+        "field_keywords": [],
         "derived": {},
         "technique_tags": [],
         "theme_tags": [],
@@ -1304,6 +1322,7 @@
         "regions": [],
         "countries": [],
         "medium_tags": [],
+        "field_keywords": [],
         "derived": {},
         "technique_tags": [],
         "theme_tags": [],
@@ -1347,6 +1366,7 @@
         "regions": [],
         "countries": [],
         "medium_tags": [],
+        "field_keywords": [],
         "derived": {},
         "technique_tags": [],
         "theme_tags": [],
@@ -1393,6 +1413,7 @@
         "regions": [],
         "countries": [],
         "medium_tags": [],
+        "field_keywords": [],
         "derived": {},
         "technique_tags": [],
         "theme_tags": [],
@@ -1731,13 +1752,13 @@
     },
     "dataset_versions.json": [
       {
-        "id": "c3b1e399-5f49-5226-944e-a14939e9ccd8",
+        "id": "48b5fd8d-9770-51fc-a567-c68c62329895",
         "version": "0.2",
         "released_at": "DATE",
         "doi": null,
         "notes": "Ledger snapshot · frames active=0 · published=21 · generated TIMESTAMP",
         "artist_count": 21,
-        "content_digest": "8d1a87d80d7bff58d17712cd5f2822c4e0627c670318a347336b76e0d72df3b3"
+        "content_digest": "844663a514a0519a6fa58a608908555788832db2d367419d7d30eecfd78196ff"
       }
     ],
     "frames.json": [
