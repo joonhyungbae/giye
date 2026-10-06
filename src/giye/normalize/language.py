@@ -195,6 +195,17 @@ def load_glossary(path: Path) -> dict[str, tuple[tuple[str, ...], ...]]:
     return glossary
 
 
+def load_generic_titles(path: Path) -> frozenset[str]:
+    """Title bases of a generic-title file, in the E3 normal form. A missing file is empty."""
+    if not path.is_file():
+        return frozenset()
+    # Imported here: giye.resolve's package imports this module.
+    from giye.resolve.evidence import norm_title, title_base
+
+    lines = (line.split("#", 1)[0].strip() for line in path.read_text(encoding="utf-8").splitlines())
+    return frozenset(base for base in (title_base(norm_title(line)) for line in lines if line) if base)
+
+
 @runtime_checkable
 class LanguageModule(Protocol):
     """What the language-dependent rules ask of one script pair."""
@@ -231,10 +242,25 @@ class KoreanEnglish:
     name = "ko-en"
     venue_words = KO_EN_VENUE_WORDS
 
-    def __init__(self, glossary: dict[str, tuple[tuple[str, ...], ...]], gazetteer: Gazetteer) -> None:
-        """Glossary readings and the place index this module serves."""
+    def __init__(
+        self,
+        glossary: dict[str, tuple[tuple[str, ...], ...]],
+        gazetteer: Gazetteer,
+        generic_titles: frozenset[str] = frozenset(),
+    ) -> None:
+        """Glossary readings, the place index, and the generic work titles this module serves."""
         self._glossary = glossary
         self._gazetteer = gazetteer
+        self._generic_titles = generic_titles
+
+    @property
+    def generic_titles(self) -> frozenset[str]:
+        """Work-title bases that name no particular work (E3), from ``generic_titles.txt``.
+
+        Optional for other language modules: the resolver reads this attribute
+        when a module has it.
+        """
+        return self._generic_titles
 
     @property
     def glossary(self) -> dict[str, tuple[tuple[str, ...], ...]]:
@@ -306,7 +332,7 @@ class KoreanEnglish:
                 admin1_path=data / "admin1.tsv",
                 postal_path=data / "us_postal.txt",
             )
-        return cls(load_glossary(glossary_path), gazetteer)
+        return cls(load_glossary(glossary_path), gazetteer, load_generic_titles(data / "generic_titles.txt"))
 
 
 @cache

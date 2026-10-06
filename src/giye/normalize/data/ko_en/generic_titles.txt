@@ -1,0 +1,23 @@
+# Work titles that name no particular work (rule E3). One per line; '#' starts a comment.
+# Each entry is compared after the E3 normalisation (lower case, punctuation and spaces
+# removed, a trailing number dropped), so "Untitled #3" and "무제 (2019)" are covered.
+# Why a list beside the record count ([resolve] generic_title_records): on a new or small
+# register an "untitled" title is used by fewer records than the count needs, and it was
+# merge evidence until four records used it.
+# Only "no title" in the scripts and languages rosters of this field use. Form words
+# (performance, installation) are left to the record count.
+untitled
+no title
+without title
+sans titre
+ohne titel
+senza titolo
+sin título
+sem título
+zonder titel
+bez tytułu
+무제
+제목 없음
+무제 작품
+無題
+无题

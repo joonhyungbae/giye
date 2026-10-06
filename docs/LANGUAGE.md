@@ -68,6 +68,10 @@ One token, read in the other script. V9 uses it for the part of a Hangul name th
 
 The call site only romanises a character that matches `[가-힣]`. A non-Hangul script never reaches `romanise` on the V9 path, because `hangul_bags` returns nothing unless the string is mostly Hangul.
 
+### `generic_titles` (optional, not in the protocol)
+
+A frozenset of work-title bases that name no particular work, in the E3 normal form (`giye.resolve.evidence.norm_title` then `title_base`). The resolver reads it with `getattr`, so a module without it has none. E3 never takes a listed title as evidence. `KoreanEnglish`: `giye/normalize/data/ko_en/generic_titles.txt` (`untitled`, `무제`, `제목 없음`, `sans titre`, `無題` and other forms of "no title"). `Toy`: none.
+
 ## `tests/toy_language.py`
 
 `Toy` implements every protocol member and `load`. `load` drops `glossary`, `cities`, and `reference`. It is enough for the language-module tests. It does not exercise X1, roster attachment keys, or a non-Hangul V9.

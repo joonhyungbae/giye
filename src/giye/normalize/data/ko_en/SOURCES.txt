@@ -31,3 +31,8 @@ countries/*.json
 GeoNames (cities15000.txt, admin1CodesASCII.txt) is CC BY 4.0 and is not
 shipped. Point [normalize] reference at a directory that contains geonames/
 and countries/ to use the production place index. See docs/ARCHITECTURE.md.
+
+generic_titles.txt
+    Work titles that name no particular work ("untitled" and its forms in the
+    languages of this field's rosters). Rule E3 never takes them as evidence.
+    Written for the package; not copied from another list.

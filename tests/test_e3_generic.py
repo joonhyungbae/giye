@@ -37,8 +37,12 @@ def _ledger(tmp_path: Path, threshold: int | None = None) -> Ledger:
     return Ledger.open(config)
 
 
-def _untitled_pair(ledger: Ledger, *, others: int) -> None:
-    """Two 한별 records crediting 〈Untitled #3〉, and ``others`` unrelated records whose CVs list Untitled."""
+def _untitled_pair(ledger: Ledger, *, others: int, title: str = "Blue Hour") -> None:
+    """Two 한별 records crediting 〈<title> #3〉, and ``others`` unrelated records whose CVs list the title.
+
+    The default title is on no generic-title list, so only the record count
+    makes it generic.
+    """
     _seed(
         ledger,
         [
@@ -48,8 +52,8 @@ def _untitled_pair(ledger: Ledger, *, others: int) -> None:
             _artist("LED-d", "GY-000004", "정다운", "Daun Jeong"),
         ],
         [
-            _act("LED-a", "EXAMPLE-RESIDENCY", 2019, role="〈Untitled #3〉"),
-            _act("LED-b", "EXAMPLE-RESIDENCY", 2019, role="〈Untitled #3〉"),
+            _act("LED-a", "EXAMPLE-RESIDENCY", 2019, role=f"〈{title} #3〉"),
+            _act("LED-b", "EXAMPLE-RESIDENCY", 2019, role=f"〈{title} #3〉"),
             _act("LED-c", "EXAMPLE-WORKSHOP", 2015),
             _act("LED-d", "EXAMPLE-WORKSHOP", 2016),
         ],
@@ -60,9 +64,9 @@ def _untitled_pair(ledger: Ledger, *, others: int) -> None:
             _mem("LED-d", "EXAMPLE-WORKSHOP"),
         ],
     )
-    # A plain CV line counts its whole title: "Untitled (2012)" has the base "untitled".
+    # A plain CV line counts its whole title: "Blue Hour (2012)" has the base "bluehour".
     for lid in ("LED-c", "LED-d")[:others]:
-        _cv(ledger, lid, [{"title": "Untitled (2012)", "venue": "", "year": 2012}])
+        _cv(ledger, lid, [{"title": f"{title} (2012)", "venue": "", "year": 2012}])
 
 
 def test_title_base_and_short_titles():
@@ -116,12 +120,12 @@ def test_resolver_skips_a_title_four_records_use(tmp_path: Path):
 def test_manual_merge_check_refuses_a_generic_title(tmp_path: Path):
     ledger = _ledger(tmp_path / "pair")
     _untitled_pair(ledger, others=0)
-    assert verify_merge_evidence(ledger, "LED-a", "LED-b", "E3 〈Untitled #3〉 https://example.org/roster") == "E3"
+    assert verify_merge_evidence(ledger, "LED-a", "LED-b", "E3 〈Blue Hour #3〉 https://example.org/roster") == "E3"
 
     ledger = _ledger(tmp_path / "four")
     _untitled_pair(ledger, others=2)
     with pytest.raises(GiyeError, match="E3 does not hold"):
-        verify_merge_evidence(ledger, "LED-a", "LED-b", "E3 〈Untitled #3〉 https://example.org/roster")
+        verify_merge_evidence(ledger, "LED-a", "LED-b", "E3 〈Blue Hour #3〉 https://example.org/roster")
 
 
 def test_config_key(tmp_path: Path):
@@ -133,3 +137,17 @@ def test_config_key(tmp_path: Path):
     path.write_text(text.replace("= 5", "= -1"), encoding="utf-8")
     with pytest.raises(TypeError, match="generic_title_records"):
         load(path)
+
+
+def test_a_listed_generic_title_is_never_e3_evidence(tmp_path: Path):
+    """On a small register 〈Untitled〉 or 〈무제 #3〉 is used by few records, but it names no one work."""
+    from giye.normalize.language import default_language
+
+    words = default_language().generic_titles
+    assert {"untitled", "무제"} <= words
+    for title in ("Untitled", "무제", "Sans titre"):
+        ledger = _ledger(tmp_path / title.replace(" ", "_"))
+        _untitled_pair(ledger, others=0, title=title)
+        assert not any(item.rule == "E3" for item in resolve_ledger(ledger).merges), title
+        with pytest.raises(GiyeError, match="E3 does not hold"):
+            verify_merge_evidence(ledger, "LED-a", "LED-b", f"E3 〈{title} #3〉 https://example.org/roster")

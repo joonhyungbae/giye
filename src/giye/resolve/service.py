@@ -164,7 +164,9 @@ class _State:
         self.links = self.ledger.read("links") if self.ledger.path("links").exists() else []
         self.sites = website_keys(self.links)
         # E3: titles too many records use to identify one work, over the whole ledger.
-        self.generic = generic_titles(self.rows_of, self.cvs, self.ledger.config.generic_title_records)
+        # A language module may also list titles that name no work whatever their count.
+        listed = getattr(self.language, "generic_titles", frozenset())
+        self.generic = generic_titles(self.rows_of, self.cvs, self.ledger.config.generic_title_records) | listed
 
     def transfer_cv(self, keep: str, drop: str) -> None:
         """Keep both activity lists on the survivor for the rest of this run.
