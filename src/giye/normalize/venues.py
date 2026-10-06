@@ -701,6 +701,13 @@ def _v8_sites(
     return key_cities, acronym_sites, branch_sites, acronyms
 
 
+def _unique_top(counts: Counter) -> str | None:
+    """The single most frequent value, or None when two or more share the top count."""
+    top = max(counts.values())
+    leaders = [value for value, count in counts.items() if count == top]
+    return leaders[0] if len(leaders) == 1 else None
+
+
 def _join_v8_key(
     key: str,
     keys: set[str],
@@ -733,8 +740,12 @@ def _join_v8_key(
         # (so the acronym is that site, not a word such as City or Digital
         # that happens to precede a place), and no spelling names a second
         # site of it (so it has no branches).
+        # Tie rule: the city must be the unique most frequent one. When two
+        # cities tie, no city is the acronym's own and nothing joins. Why:
+        # Counter.most_common breaks ties by insertion order, so the ledger's
+        # row order decided the join (the result must not depend on it).
         seen = key_cities.get(acronym)
-        own_city = bool(seen) and seen.most_common(1)[0][0] == city.lower()
+        own_city = bool(seen) and _unique_top(seen) == city.lower()
         if own_city and sites and all(other == city for other in sites):
             _join_unless_office(union_find, lang, merges, "V8", acronym, key)
 

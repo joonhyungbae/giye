@@ -8,6 +8,7 @@ public places (서울시립미술관, ZKM) or invented labels (ACC, 하얀집). 
 from __future__ import annotations
 
 import csv
+import random
 from collections import defaultdict
 from pathlib import Path
 
@@ -340,6 +341,30 @@ def test_v8_acronym_city_joins_only_without_a_second_site(tmp_path: Path) -> Non
     )
     assert both.annotations["sf"]["venue_id"] != both.annotations["bare"]["venue_id"]
     assert both.annotations["paris"]["venue_id"] != both.annotations["bare"]["venue_id"]
+
+
+def test_institutions_do_not_depend_on_row_order() -> None:
+    """Shuffling the input rows gives the same entities, ids, names and merges.
+
+    XYZ has one bare row in Seoul and one in Busan, so neither city is its own
+    and XYZ Seoul stays apart (V8 tie rule) in every order.
+    """
+    lang = KoreanEnglish.load()
+    venues = ["XYZ, Seoul", "XYZ, Busan", "XYZ Seoul", "XYZ", "Foo Gallery, Seoul", "Foo Gallery, Busan"]
+    tie = [_row(str(index), venue, f"p{index % 3}") for index, venue in enumerate(venues)]
+
+    def snapshot(rows: list[dict]) -> tuple:
+        result = build(rows, write=False, lang=lang)
+        return result.annotations, result.venues, sorted(result.merges)
+
+    for base in (tie, _load()):
+        expected = snapshot(base)
+        for seed in range(20):
+            rows = list(base)
+            random.Random(seed).shuffle(rows)
+            assert snapshot(rows) == expected, seed
+    annotations = build(tie, write=False, lang=lang).annotations
+    assert annotations["2"]["venue_id"] != annotations["3"]["venue_id"]
 
 
 def test_geonames_admin_and_neighbourhood_resolve_as_places(tmp_path: Path) -> None:
