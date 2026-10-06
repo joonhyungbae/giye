@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from giye.config import Config
+from giye.extract.paths import verified_cv_text
 from giye.field import Field
 from giye.ledger.io import read_csv, write_csv
 from giye.ledger.ledger import without_hidden
@@ -137,9 +138,9 @@ def _cv_texts(config: Config, sources: list[dict]) -> list[tuple[str, str]]:
     for source in sources:
         if source.get("active", "true") != "true" or not source.get("snapshot_path"):
             continue
-        path = resolve_stored(config, f"{source['snapshot_path']}.txt")
-        if path.is_file():
-            found.append((path.read_text(encoding="utf-8", errors="replace"), source.get("url") or ""))
+        text = verified_cv_text(config, source, errors="replace")
+        if text is not None:
+            found.append((text, source.get("url") or ""))
     return found
 
 

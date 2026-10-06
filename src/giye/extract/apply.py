@@ -52,7 +52,7 @@ from pathlib import Path
 from giye.extract.crosslang import RULE as CROSS_LANGUAGE_RULE
 from giye.extract.crosslang import Fold, clear_marks, fold_cross_language
 from giye.extract.grounding import CvText, GroundingStats, failures, mark
-from giye.extract.paths import resolve_stored
+from giye.extract.paths import verified_cv_text
 from giye.ledger.ids import (
     activity_id_key,
     cv_activity_key,
@@ -425,11 +425,9 @@ class _CvTexts:
         """None when the source has no text on disk: the row cannot be checked."""
         source_id = source.get("source_id") or ""
         if source_id not in self._cache:
-            stored = source.get("snapshot_path") or ""
-            path = resolve_stored(self._config, stored + ".txt") if stored else None
-            self._cache[source_id] = (
-                CvText.of(path.read_text(encoding="utf-8"), self._lang) if path is not None and path.is_file() else None
-            )
+            # Checked against content_sha256: an edited text is refused, not read.
+            text = verified_cv_text(self._config, source)
+            self._cache[source_id] = CvText.of(text, self._lang) if text is not None else None
         return self._cache[source_id]
 
 

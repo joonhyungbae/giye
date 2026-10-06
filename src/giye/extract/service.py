@@ -34,7 +34,7 @@ from giye.collect.fetch import fetcher_from_config
 from giye.config import Config
 from giye.extract.apply import ApplyStats, apply_extractions
 from giye.extract.chunk import split_cv
-from giye.extract.paths import resolve_stored
+from giye.extract.paths import verified_cv_text
 from giye.extract.prompt import prompt_sha256, prompt_text
 from giye.extract.provider import (
     AnthropicProvider,
@@ -465,13 +465,11 @@ def _documents(config: Config, sources: list[dict[str, str]]) -> list[tuple[str,
     """``(source_id, snapshot text)`` for sources that still have a text file."""
     found: list[tuple[str, str]] = []
     for source in sources:
-        stored = source.get("snapshot_path") or ""
-        if not stored:
+        # Checked against content_sha256: an edited text is refused, not read.
+        text = verified_cv_text(config, source)
+        if text is None:
             continue
-        path = resolve_stored(config, stored + ".txt")
-        if not path.is_file():
-            continue
-        found.append((source["source_id"], path.read_text(encoding="utf-8")))
+        found.append((source["source_id"], text))
     return found
 
 

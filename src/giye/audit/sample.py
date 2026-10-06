@@ -40,7 +40,7 @@ from pathlib import Path
 
 from giye.audit.sheet import columns_for, write_sheet
 from giye.config import Config, load
-from giye.extract.paths import resolve_stored
+from giye.extract.paths import verified_cv_text
 from giye.ledger.io import read_csv
 from giye.ledger.ledger import without_hidden
 from giye.ledger.schemas import TABLES
@@ -305,9 +305,9 @@ def _cv_texts(config: Config, sources: list[dict[str, str]]) -> dict[str, str]:
         stored = source.get("snapshot_path") or ""
         if not source_id or not stored:
             continue
-        path = resolve_stored(config, stored + ".txt")
-        if path.is_file():
-            found[source_id] = path.read_text(encoding="utf-8")
+        text = verified_cv_text(config, source)
+        if text is not None:
+            found[source_id] = text
     return found
 
 
