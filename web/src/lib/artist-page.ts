@@ -69,7 +69,6 @@ export type ArtistPageData = {
   };
   sources: PageSource[];
   years: PageYear[];
-  activityCount: number;
   background: { section: BackgroundEntry["section"]; rows: PageBackground[] }[];
   collaborations: {
     name: Bi;
@@ -336,7 +335,6 @@ export function shapeArtistPage(input: {
     },
     sources: sources.list,
     years,
-    activityCount: sorted.length,
     background,
     collaborations,
     links,

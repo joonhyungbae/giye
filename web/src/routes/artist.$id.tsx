@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { createFileRoute, Link, notFound, redirect } from "@tanstack/react-router";
+import { useCallback, useEffect, useRef, type MouseEvent } from "react";
 import { getArtistPage, getArtistRedirect } from "@/lib/giye.functions";
 import { ACTIVITY_TYPE_LABEL, LINK_TYPE_LABEL, useLang, VERIFICATION_LABEL } from "@/lib/i18n";
 import { CiteDialog } from "@/components/CiteDialog";
@@ -180,6 +181,15 @@ function ActivityYear({ year, sources }: { year: PageYear; sources: PageSource[]
   );
 }
 
+/**
+ * Years of records shown open; older years sit behind one "show N earlier records" control.
+ * The same rule for every person (author's decision, 2026-10-06): the most recent five years
+ * that have records stay open, and a person whose records fall in five years or fewer has nothing
+ * folded. Folded records stay in the HTML (details/summary), so search engines, citation and
+ * find-in-page still reach them; nothing is loaded later.
+ */
+const OPEN_YEARS = 5;
+
 const BACKGROUND_SECTION_LABEL: Record<string, [string, string]> = {
   education: ["학력", "Education"],
   employment: ["경력", "Employment"],
@@ -247,6 +257,31 @@ function ArtistPage() {
   // English page leads with the romanised name when the record has one; Korean stays beside it.
   const primaryName = lang === "en" && artist.name_en ? artist.name_en : artist.name_ko;
   const secondaryName = primaryName === artist.name_ko ? artist.name_en : artist.name_ko;
+
+  const activityCount = years.reduce((n, y) => n + y.rows.length, 0);
+  const lastYear = years[0]?.year;
+  const firstYear = years[years.length - 1]?.year;
+  const recentYears = years.slice(0, OPEN_YEARS);
+  const olderYears = years.slice(OPEN_YEARS);
+  const olderCount = olderYears.reduce((n, y) => n + y.rows.length, 0);
+  const olderRef = useRef<HTMLDetailsElement>(null);
+  // A year index link to a folded year opens the fold first, then lets the browser jump.
+  const openYear = useCallback((e: MouseEvent<HTMLAnchorElement>) => {
+    const id = e.currentTarget.hash.slice(1);
+    const fold = olderRef.current;
+    if (fold && !fold.open && fold.querySelector(`#${id}`)) fold.open = true;
+  }, []);
+  useEffect(() => {
+    // Arriving with #yYYYY for a folded year: open it and scroll there.
+    const id = window.location.hash.slice(1);
+    const fold = olderRef.current;
+    if (!/^y\d{4}$/.test(id) || !fold) return;
+    const target = fold.querySelector<HTMLElement>(`#${id}`);
+    if (target) {
+      fold.open = true;
+      target.scrollIntoView();
+    }
+  }, []);
 
   if (artist.status !== "PUBLISHED") {
     return (
@@ -320,7 +355,7 @@ function ArtistPage() {
     ...(artist.theme.length ? [{ text: tags(artist.theme) }] : []),
   ];
   const section =
-    "grid gap-6 border-t border-input py-10 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-16";
+    "grid grid-cols-[minmax(0,1fr)] gap-6 border-t border-input py-10 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-16";
   const sectionTitle = "font-mono text-[11px] uppercase text-muted-foreground";
 
   return (
@@ -476,16 +511,59 @@ function ArtistPage() {
       </header>
 
       <section className={section}>
-        <h2 className={sectionTitle}>01 / {t("활동", "Activities")}</h2>
+        <div className="lg:sticky lg:top-16 lg:self-start">
+          <h2 className={sectionTitle}>01 / {t("활동", "Activities")}</h2>
+          {years.length > 0 && (
+            <>
+              <p className="mt-2 text-sm">
+                {t(`기록 ${activityCount}건`, `${activityCount} record${activityCount === 1 ? "" : "s"}`)}
+                {" · "}
+                {firstYear === lastYear ? lastYear : `${firstYear}–${lastYear}`}
+              </p>
+              {years.length > 1 && (
+                <nav
+                  aria-label={t("연도 바로가기", "Jump to year")}
+                  className="-mx-1 mt-3 flex gap-x-1 gap-y-1 overflow-x-auto pb-1 font-mono text-xs lg:mx-0 lg:grid lg:max-h-[calc(100vh-10rem)] lg:grid-cols-3 lg:overflow-y-auto lg:overflow-x-visible"
+                >
+                  {years.map((y) => (
+                    <a
+                      key={y.year}
+                      href={`#y${y.year}`}
+                      onClick={openYear}
+                      className="shrink-0 px-1 py-0.5 text-accent no-underline hover:underline"
+                    >
+                      {y.year}
+                    </a>
+                  ))}
+                </nav>
+              )}
+            </>
+          )}
+        </div>
         <div>
           {years.length === 0 && (
             <p className="text-sm text-muted-foreground">
               {t("기록된 활동이 없습니다.", "No activities recorded.")}
             </p>
           )}
-          {years.map((y) => (
+          {recentYears.map((y) => (
             <ActivityYear key={y.year} year={y} sources={sources} />
           ))}
+          {olderYears.length > 0 && (
+            <details ref={olderRef} className="border-t border-border pt-5">
+              <summary className="cursor-pointer font-mono text-xs text-accent">
+                {t(
+                  `이전 기록 ${olderCount}건 보기 (${olderYears[olderYears.length - 1].year}–${olderYears[0].year})`,
+                  `Show ${olderCount} earlier record${olderCount === 1 ? "" : "s"} (${olderYears[olderYears.length - 1].year}–${olderYears[0].year})`,
+                )}
+              </summary>
+              <div className="mt-5">
+                {olderYears.map((y) => (
+                  <ActivityYear key={y.year} year={y} sources={sources} />
+                ))}
+              </div>
+            </details>
+          )}
           <SourceList sources={sources} used={activitySources} />
         </div>
       </section>
