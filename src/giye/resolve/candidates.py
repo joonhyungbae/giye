@@ -7,9 +7,13 @@ wraps ``hangul_name_keys`` and ``latin_name_keys``). A candidate is merged
 only when E1–E4 also hold; the evidence is prefixed ``X1+``. With no evidence
 the pair is queued (``possible_same_person``), never merged on the spelling.
 
-A Korean row that already has a Latin name is paired only when that Latin
-spelling does not meet the other row's (different spelling). Either row being
-team-like drops the pair. A collector identity key that pins them apart drops
+A Korean row that already has a Latin name is paired whether or not that
+Latin spelling meets the other row's. When it meets, the queue detail says
+``rule=x1_own_en``. Why (software review, round 6, MAJOR-2): the pair was
+skipped on the assumption that A2 had joined it, but A2 needs the same Latin
+tokens (``Do-yun Lee`` is not ``Doyun Lee``) and does not join a Latin-only
+personal name across programmes, so the most likely duplicates were neither
+attached nor queued. Either row being team-like drops the pair. A collector identity key that pins them apart drops
 the pair. Sharing a frame code drops the pair.
 
 Same-script exact names (spaces removed, case folded) that no rule accepts, that
@@ -138,7 +142,7 @@ def x1_candidates(artists: list[dict], language: LanguageModule | None = None) -
     (the configured default when None).
     The ledger copies an English-only name into ``name_ko``, so that row is still
     English-only when ``name_ko`` has no Hangul. A Korean row that also has a Latin
-    name is paired only when the two English keys do not meet.
+    name is paired too (:func:`x1_own_en` tells the two cases apart).
     """
     if language is None:
         # Imported here: the language module imports giye.resolve.names, whose package imports this file.
@@ -171,22 +175,17 @@ def x1_candidates(artists: list[dict], language: LanguageModule | None = None) -
     pairs: dict[tuple[str, str], tuple[str, str]] = {}
     for row in ko_rows:
         ko = row["name_ko"]
-        en = row.get("name_en") or ""
-        latin = bool(_LATIN.search(en))
         # Keys come from the language module (``name_keys``). For the Korean-English
         # module a bare Hangul personal name gives its Hangul keys, and a name
         # with Latin letters gives its Latin keys, as X1 compares them.
         hkeys = language.name_keys(ko)
         if not hkeys:
             continue
-        own = language.name_keys(en) if latin else set()
         hits: set[str] = set()
         for key in hkeys:
             hits.update(index.get(key, ()))
         for eid in hits:
             if eid == row["ledger_id"]:
-                continue
-            if latin and (own & en_keys[eid]):
                 continue
             ordered = tuple(sorted((row["ledger_id"], eid)))
             pairs[ordered] = (row["ledger_id"], eid)
@@ -384,9 +383,29 @@ def same_script_detail(left: str, right: str) -> str:
     return f"{left} shares a name with {right} (rule=same_script_exact)"
 
 
-def x1_detail(ko_row: dict, en_row: dict) -> str:
-    """Queue detail for an X1 romanisation pair that E1–E4 did not merge."""
-    return f"romanization match: {display_name(ko_row)} ~ {display_name(en_row)} ({en_row['ledger_id']})"
+def x1_own_en(ko_row: dict, en_row: dict, language: LanguageModule | None = None) -> bool:
+    """The Korean row's own Latin name has keys that meet the Latin-only row's keys."""
+    en = ko_row.get("name_en") or ""
+    if not _LATIN.search(en):
+        return False
+    if language is None:
+        from giye.normalize.language import default_language
+
+        language = default_language()
+    other = en_row.get("name_en") or en_row.get("name_ko") or ""
+    return bool(language.name_keys(en) & language.name_keys(other))
+
+
+def x1_detail(ko_row: dict, en_row: dict, language: LanguageModule | None = None) -> str:
+    """Queue detail for an X1 romanisation pair that E1–E4 did not merge.
+
+    ``(rule=x1_own_en)`` marks a pair whose Korean row already carries a Latin
+    name that meets the other row's, so those pairs can be counted.
+    """
+    detail = f"romanization match: {display_name(ko_row)} ~ {display_name(en_row)} ({en_row['ledger_id']})"
+    if x1_own_en(ko_row, en_row, language):
+        detail = f"{detail} (rule=x1_own_en)"
+    return detail
 
 
 def explicit_decision(detail: str) -> str:

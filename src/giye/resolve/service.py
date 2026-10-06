@@ -420,7 +420,7 @@ def _merge_or_queue_x1(state: _State, result: ResolveResult, *, dry_run: bool) -
             continue
         if state.frames.get(left, set()) & state.frames.get(right, set()):
             continue
-        item = new_queue_item(left, x1_detail(state.by_id[left], state.by_id[right]))
+        item = new_queue_item(left, x1_detail(rows[0], rows[1], state.language))
         fresh.append(item)
         known.add(covered)
     result.queued.extend(fresh)

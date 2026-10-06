@@ -7,6 +7,7 @@ People are fictitious (김하늘 / Haneul Kim and the demo cast). URLs are examp
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -906,3 +907,23 @@ def test_expand_teams_with_frames_touches_only_those_editions(tmp_path: Path):
     assert after["LED-p"]["reviewer_note"] == "curated"
     assert any(row["ledger_id"] == "LED-p" and row["role"] == "팀: 새벽 랩" for row in ledger.read("activities"))
     assert after[created[0]]["reviewer_note"] == "팀 구성원: 노을 스튜디오 (LED-a)"
+
+
+def test_x1_queues_a_korean_row_whose_own_latin_name_meets_the_other(tmp_path: Path):
+    """Review round 6, MAJOR-2: 이도윤 / Do-yun Lee and a Latin-only Doyun Lee were neither joined nor queued."""
+    ledger = _ledger(tmp_path)
+    _seed(
+        ledger,
+        [_artist("LED-ko", "GY-000001", "이도윤", "Do-yun Lee"), _artist("LED-en", "GY-000002", "Doyun Lee", "Doyun Lee")],
+        [_act("LED-ko", "EXAMPLE-RESIDENCY", 2019), _act("LED-en", "EXAMPLE-WORKSHOP", 2022)],
+        [_mem("LED-ko", "EXAMPLE-RESIDENCY"), _mem("LED-en", "EXAMPLE-WORKSHOP")],
+    )
+    assert x1_candidates(ledger.read("artists")) == [("LED-ko", "LED-en")]
+    result = resolve_ledger(ledger)
+    # The spelling is never enough: no merge, one queue item marked for counting.
+    assert not result.merges
+    queued = ledger.read("review_queue")
+    assert len(queued) == 1
+    assert "rule=x1_own_en" in queued[0]["detail"]
+    assert {"LED-ko", "LED-en"} <= {queued[0]["ledger_id"], *re.findall(r"LED-[a-z]+", queued[0]["detail"])}
+    assert len(ledger.read("artists")) == 2
