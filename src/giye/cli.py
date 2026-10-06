@@ -124,6 +124,12 @@ def _extract(args: argparse.Namespace) -> int:
             f"self_reported_superseded={applied.superseded_rows} "
             f"cross_language_folded={len(applied.folds)}"
         )
+        if config.extract_grounding:
+            ground = applied.grounding
+            print(
+                f"ungrounded={ground.marked} (year={ground.year} venue={ground.venue} "
+                f"year+venue={ground.both}) unchecked_no_text={ground.unchecked}"
+            )
     # Every model call failed (an unreachable server, a bad key): the stage did not
     # run, so the command fails. Some failures beside real extractions are reported
     # above and the run goes on; the next run retries those CVs.

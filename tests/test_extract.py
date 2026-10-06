@@ -1339,3 +1339,113 @@ def test_unreachable_model_server_is_a_provider_error_and_exits_non_zero(
     assert "invalid extraction" not in captured.out
     assert "provider error LED-haneul: connection error" in captured.err
     assert "every model call failed" in captured.err
+
+
+def _grounding_ledger(tmp_path: Path, *, grounding: bool) -> Ledger:
+    """One person, one CV text on disk, and an extraction file that cites it. Fictitious data."""
+    (tmp_path / "empty").mkdir(exist_ok=True)
+    config = _config(tmp_path, site=tmp_path / "empty", cache=tmp_path / "cache", sources="")
+    if grounding:
+        config.write_text(config.read_text(encoding="utf-8").replace("temperature = 0\n", "temperature = 0\ngrounding = true\n"), encoding="utf-8")
+    ledger = _ledger(tmp_path, config, [_person("LED-owner", "김하늘")])
+    stored = "data/raw/cv/LED-owner/CV-KO/20260115-aaaa"
+    text_path = tmp_path / f"{stored}.txt"
+    text_path.parent.mkdir(parents=True)
+    text_path.write_text(
+        "전시\n2021  신호 — Example   Hall\n2019 Open Studio, Example Art Space (Seoul)\n2018 밤의 주파수\n",
+        encoding="utf-8",
+    )
+    ledger.write(
+        "cv_sources",
+        [
+            empty_row(
+                CV_SOURCES_FIELDS,
+                source_id="CV-KO",
+                ledger_id="LED-owner",
+                lang="ko",
+                kind="web",
+                url="https://cv.example.org/ko",
+                active="true",
+                content_sha256="hash-1",
+                snapshot_path=stored,
+            )
+        ],
+        task="test",
+    )
+    _write_extract(
+        tmp_path,
+        "LED-owner",
+        ["CV-KO"],
+        ["hash-1"],
+        [
+            _entry("CV-KO", "신호", 2021, venue="example hall"),
+            _entry("CV-KO", "Open Studio", 2019, venue="Example Art Space, Seoul"),
+            _entry("CV-KO", "밤의 주파수", 2018, venue=""),
+            _entry("CV-KO", "Invented Show", 2021, venue="Example Grand Museum"),
+            _entry("CV-KO", "신호 재연", 2020, venue="Example Hall"),
+        ],
+    )
+    return ledger
+
+
+def test_grounding_hides_a_row_whose_year_or_venue_is_not_in_the_cv(tmp_path: Path):
+    ledger = _grounding_ledger(tmp_path, grounding=True)
+    self_report = empty_row(
+        ACTIVITIES_FIELDS,
+        activity_id="self-1",
+        ledger_id="LED-owner",
+        title="Invented Show",
+        year="2021",
+        venue="",
+        source_type="SELF_SUBMITTED",
+        source_url="https://example.org/self",
+        publishable="yes",
+        origin="survey",
+    )
+    roster = empty_row(
+        ACTIVITIES_FIELDS,
+        activity_id="roster-1",
+        ledger_id="LED-owner",
+        title="Example Workshop",
+        year="1999",
+        venue="Nowhere In The CV",
+        source_url="https://example.org/roster",
+        publishable="yes",
+        origin="EXAMPLE-WORKSHOP",
+    )
+    ledger.write("activities", [self_report, roster], task="test")
+    stats = apply_extractions(ledger, today=TODAY)
+    every = ledger.read("activities")
+    rows = {row["title"]: row for row in every if row["activity_id"] != "self-1"}
+    for grounded in ("신호", "Open Studio", "밤의 주파수"):
+        assert rows[grounded]["publishable"] == "yes", grounded
+        assert "ungrounded" not in rows[grounded]["reviewer_note"]
+    assert rows["Invented Show"]["publishable"] == "no"
+    assert rows["Invented Show"]["reviewer_note"].endswith("ungrounded=venue")
+    assert rows["신호 재연"]["publishable"] == "no"
+    assert rows["신호 재연"]["reviewer_note"].endswith("ungrounded=year")
+    # Never deleted, and an ungrounded row does not hide the self-report it repeats.
+    assert len(every) == 7
+    assert rows["Invented Show"]["origin"] == "cv:CV-KO"
+    self_row = next(row for row in every if row["activity_id"] == "self-1")
+    assert self_row["publishable"] == "yes"
+    # Roster rows are not model output and are not checked.
+    assert rows["Example Workshop"]["publishable"] == "yes"
+    assert (stats.grounding.year, stats.grounding.venue, stats.grounding.both, stats.grounding.unchecked) == (1, 1, 0, 0)
+
+
+def test_grounding_is_off_unless_configured(tmp_path: Path):
+    ledger = _grounding_ledger(tmp_path, grounding=False)
+    stats = apply_extractions(ledger, today=TODAY)
+    assert all(row["publishable"] == "yes" for row in ledger.read("activities"))
+    assert stats.grounding.marked == 0
+
+
+def test_grounding_text_rules():
+    from giye.extract.grounding import CvText, failures
+
+    text = CvText.of("2019\tShow,  Example Art-Space (Seoul)\n120200 numbers")
+    assert failures({"year": "2019", "venue": "example art-space"}, text) == []
+    assert failures({"year": "2019", "venue": "Example Art Space, Seoul"}, text) == []
+    assert failures({"year": "2020", "venue": ""}, text) == ["year"]
+    assert failures({"year": "2018", "venue": "Example Museum"}, text) == ["year", "venue"]

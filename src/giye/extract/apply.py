@@ -31,6 +31,11 @@
   copy not in the archive's first language gets ``publishable=no`` and
   ``superseded_by=<kept id>; rule=X2``. Marks are cleared at the start of each
   apply and recomputed, and every fold is listed in ``work/cv_folds.csv``.
+- Grounding (``giye.extract.grounding``, when ``[extract] grounding`` is on):
+  a CV row whose year, or non-empty venue, does not occur in the text of the
+  CV it cites gets ``ungrounded=<year|venue|year+venue>`` in its note and
+  ``publishable=no``. It stays in the ledger and does not hide a self-reported
+  row. Roster rows are not checked.
 - Activity ids come from ``giye.ledger`` (uuid5 of the ledger id, source,
   title, year, type, and venue). Applying the same reading again rewrites
   those ids; that rewrite is not a new activity.
@@ -46,6 +51,8 @@ from pathlib import Path
 
 from giye.extract.crosslang import RULE as CROSS_LANGUAGE_RULE
 from giye.extract.crosslang import Fold, clear_marks, fold_cross_language
+from giye.extract.grounding import CvText, GroundingStats, failures, mark
+from giye.extract.paths import resolve_stored
 from giye.ledger.ids import (
     activity_id_key,
     cv_activity_key,
@@ -92,6 +99,7 @@ class ApplyStats:
     closed_reviews: int = 0
     id_changes: int = 0
     folds: list[Fold] = field(default_factory=list)
+    grounding: GroundingStats = field(default_factory=GroundingStats)
 
 
 def self_reported(row: dict[str, str]) -> bool:
@@ -134,6 +142,7 @@ def apply_extractions(ledger: Ledger, *, today: date | None = None) -> ApplyStat
     activities = ledger.read("activities")
     queue = ledger.read("review_queue")
     stats = ApplyStats()
+    texts = _CvTexts(config) if config.extract_grounding else None
 
     frame_origins = {row["frame_code"] for row in ledger.read("frame_membership") if row.get("frame_code")}
     id_changes = reissue_frame_activity_ids(activities, frame_origins)
@@ -166,6 +175,7 @@ def apply_extractions(ledger: Ledger, *, today: date | None = None) -> ApplyStat
             id_changes=id_changes,
             today=today,
             stats=stats,
+            texts=texts,
         )
         # ``_apply_file`` replaces the list object when it drops old CV rows.
         activities = added
@@ -254,6 +264,8 @@ def _rows_from_file(
     others: list[dict[str, str]],
     ledger_id: str,
     today: date,
+    texts: _CvTexts | None = None,
+    stats: ApplyStats | None = None,
 ) -> tuple[list[dict[str, str]], int, int]:
     """CV rows to insert, plus how many copies and self-reports were skipped or hidden."""
     new_rows: list[dict[str, str]] = []
@@ -273,10 +285,21 @@ def _rows_from_file(
         if any(not self_reported(other) for other in twins):
             duplicates += 1
             continue
+        row = _cv_row(activity, source=source, ledger_id=ledger_id, year=year, title=title, today=today, counter=id_counter)
+        if texts is not None and stats is not None:
+            text = texts.get(source)
+            if text is None:
+                stats.grounding.unchecked += 1
+            else:
+                missing = failures(row, text)
+                if missing:
+                    # An ungrounded row is kept but hidden, and it does not hide
+                    # the self-reported copy of the event it claims.
+                    mark(row, missing, stats.grounding)
+                    new_rows.append(row)
+                    continue
         superseded += _supersede_self_reports(twins)
-        new_rows.append(
-            _cv_row(activity, source=source, ledger_id=ledger_id, year=year, title=title, today=today, counter=id_counter)
-        )
+        new_rows.append(row)
     return new_rows, duplicates, superseded
 
 
@@ -303,6 +326,7 @@ def _apply_file(
     id_changes: list[tuple[str, str, str, str]],
     today: date,
     stats: ApplyStats,
+    texts: _CvTexts | None = None,
 ) -> tuple[list[dict[str, str]], int, int]:
     """Replace this file's previous CV rows with the new reading. Returns activities, duplicates, superseded."""
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -317,7 +341,7 @@ def _apply_file(
     others = [row for row in kept if row.get("ledger_id") == ledger_id]
     _clear_superseded(others)
     new_rows, duplicates, superseded = _rows_from_file(
-        data, registry=registry, others=others, ledger_id=ledger_id, today=today
+        data, registry=registry, others=others, ledger_id=ledger_id, today=today, texts=texts, stats=stats
     )
     # A CV line whose key is absent from this extraction is a dropped fact.
     # It is not given a new id: a vanished line is a deletion, not a new activity.
@@ -386,6 +410,25 @@ def _cv_row(
         "reviewer_note": note,
         "origin": f"cv:{source['source_id']}",
     }
+
+
+class _CvTexts:
+    """The text of each CV source (``<snapshot_path>.txt``), read once per apply."""
+
+    def __init__(self, config) -> None:
+        self._config = config
+        self._cache: dict[str, CvText | None] = {}
+
+    def get(self, source: dict[str, str]) -> CvText | None:
+        """None when the source has no text on disk: the row cannot be checked."""
+        source_id = source.get("source_id") or ""
+        if source_id not in self._cache:
+            stored = source.get("snapshot_path") or ""
+            path = resolve_stored(self._config, stored + ".txt") if stored else None
+            self._cache[source_id] = (
+                CvText.of(path.read_text(encoding="utf-8")) if path is not None and path.is_file() else None
+            )
+        return self._cache[source_id]
 
 
 def _write_id_map(ledger: Ledger, id_changes: list[tuple[str, str, str, str]]) -> None:

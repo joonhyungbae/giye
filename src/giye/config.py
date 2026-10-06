@@ -203,6 +203,8 @@ class Config:
     extract_api_key_env: str = "GIYE_LLM_API_KEY"
     extract_cache: Path | None = None
     extract_allow_team: bool = False
+    # Grounding check on CV rows (giye.extract.grounding); see docs/RULES.md.
+    extract_grounding: bool = False
     extract_sources: tuple[ExtractSource, ...] = ()
     # Public origin of the published site. Citations use ``<site_url>/artist/<id>``
     # and ``<site_url>/data``. Empty until the file sets it. Publish refuses to run
@@ -364,6 +366,7 @@ def load(path: str | Path) -> Config:
         extract_api_key_env=_extract_api_key_env(extract.get("api_key_env", "GIYE_LLM_API_KEY")),
         extract_cache=_optional_path(root, extract.get("cache")),
         extract_allow_team=bool(extract.get("allow_team", False)),
+        extract_grounding=_extract_grounding(extract),
         extract_sources=_extract_sources(extract),
         site_url=_site_url(publish.get("site_url", "")),
         dataset_version=_plain(publish.get("dataset_version", "0.2"), "0.2", "[publish] dataset_version"),
@@ -436,6 +439,13 @@ def _venue_name_rules(value: object) -> str:
         return ",".join(value)
     if not isinstance(value, str):
         raise TypeError("[normalize] venue_name_rules must be a string or a list of strings")
+    return value
+
+
+def _extract_grounding(extract: dict) -> bool:
+    value = extract.get("grounding", Config.extract_grounding)
+    if not isinstance(value, bool):
+        raise TypeError("[extract] grounding must be true or false")
     return value
 
 
