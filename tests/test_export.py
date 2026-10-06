@@ -85,6 +85,13 @@ def test_demo_exports_warc_wacz_and_ro_crate(tmp_path: Path):
     graph = {entity["@id"]: entity for entity in crate["@graph"]}
     assert root["license"] == {"@id": "#no-data-licence"}
     assert graph["#no-data-licence"]["description"] == NO_DATA_LICENCE_REASON
+    # RO-Crate validator, RECOMMENDED level: an author and a publisher that are an
+    # Organization, and an encodingFormat on every File.
+    assert root["author"] == root["publisher"] == {"@id": "https://example.org"}
+    assert graph["https://example.org"]["@type"] == "Organization"
+    assert graph["https://example.org"]["name"] == "Example Archive"
+    file_entities = [entity for entity in crate["@graph"] if entity.get("@type") == "File"]
+    assert file_entities and all(entity.get("encodingFormat") for entity in file_entities)
     _assert_ids_inside_crate(meta_path.parent, crate)
     _assert_rocrate_11(meta_path)
     config_entity = next(entity for entity in crate["@graph"] if entity.get("name") == "giye.toml")

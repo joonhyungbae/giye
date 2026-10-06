@@ -85,7 +85,11 @@ hash, roster and CV inputs, snapshot files, and one action per stage with its ru
 The root dataset has `name`, `description`, and `datePublished`. The software entity is
 licensed AGPL-3.0-only. The dataset's `license` is the run's data licence when
 `[publish] data_license` or `[archive] data_license` is set (`data_licence` is the same
-key; `[publish]` wins). Otherwise that property is omitted and the description says why.
+key; `[publish]` wins). Otherwise it points to `#no-data-licence`, a statement that no
+data licence is granted (the software licence does not cover the data). The root's `author`
+and `publisher` are an `Organization` named by `[publish] citation_author` (with `site_url`),
+and every file entity has an `encodingFormat`, so the crate also passes the RO-Crate
+validator's RECOMMENDED level.
 A file entity's `@id` is a path inside the crate directory: files outside it are copied in
 (`data/<path under the data directory>`, `config/<config file>`), so the crate is
 self-contained and carries no local absolute path.

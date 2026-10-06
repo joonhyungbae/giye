@@ -22,6 +22,13 @@ The software entity's licence is AGPL-3.0-only. The root dataset's ``license``
 is the data licence of the run when ``[publish]`` or ``[archive]`` sets
 ``data_license`` (or ``data_licence``). Otherwise it points to a statement that
 no data licence is granted: the software licence does not cover the data.
+
+The root's ``author`` and ``publisher`` are one ``Organization``: the archive
+named by ``[publish] citation_author``, identified by ``site_url`` when set.
+Every ``File`` carries an ``encodingFormat`` (a media type from its suffix,
+``application/octet-stream`` when the suffix is unknown). Why: the RO-Crate
+validator's RECOMMENDED level asks for these, and they are already in the
+configuration or the file name.
 """
 
 from __future__ import annotations
@@ -29,6 +36,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import mimetypes
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -192,11 +200,37 @@ def _crate_file(
         "contentSize": path.stat().st_size,
         "sha256": digest,
     }
-    if encoding:
-        entity["encodingFormat"] = encoding
+    entity["encodingFormat"] = encoding or media_type(path)
     files.append(entity)
     file_ids[rel] = rel
     return rel
+
+
+# Media types for suffixes the pipeline writes, so the crate does not depend
+# on the host's mimetypes table for them.
+_MEDIA_TYPES = {
+    ".csv": "text/csv",
+    ".json": "application/json",
+    ".jsonl": "application/jsonl",
+    ".md": "text/markdown",
+    ".html": "text/html",
+    ".htm": "text/html",
+    ".txt": "text/plain",
+    ".toml": "application/toml",
+    ".yml": "application/yaml",
+    ".yaml": "application/yaml",
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+
+
+def media_type(path: Path) -> str:
+    """The ``encodingFormat`` of a crate file, from its suffix."""
+    suffix = path.suffix.lower()
+    if suffix in _MEDIA_TYPES:
+        return _MEDIA_TYPES[suffix]
+    guessed, _encoding = mimetypes.guess_type(path.name)
+    return guessed or "application/octet-stream"
 
 
 def _crate_paths(
@@ -280,6 +314,16 @@ def _assemble_graph(
         "hasPart": parts,
         "wasGeneratedBy": [{"@id": action["@id"]} for action in actions],
     }
+    site = (config.site_url or "").rstrip("/")
+    archive = {
+        "@id": site or "#archive",
+        "@type": "Organization",
+        "name": config.citation_author or config.name,
+    }
+    if site:
+        archive["url"] = site
+    root["author"] = {"@id": archive["@id"]}
+    root["publisher"] = {"@id": archive["@id"]}
     if data_licence:
         ref, entity = _licence_ref(data_licence)
         root["license"] = ref
@@ -308,7 +352,7 @@ def _assemble_graph(
         "conformsTo": {"@id": "https://w3id.org/ro/crate/1.1"},
         "about": {"@id": "./"},
     }
-    return [descriptor, root, software, *licence_entities, *work_entities, *files, *actions]
+    return [descriptor, root, archive, software, *licence_entities, *work_entities, *files, *actions]
 
 
 def _inputs(config: Config) -> tuple[list[dict], list[Path]]:
