@@ -17,7 +17,7 @@ without a `source_url` or a `collected_at` is left out of the snapshot.
 A person is published when all of these hold:
 
 - not listed as `scope=out` in `scope.csv`
-- `cv_link_ok` is `yes`, or the person has a frame membership
+- the person has a membership of an admitted frame (decision `included` or `adjacent`); `cv_link_ok` does not admit anyone
 - `source_url` starts with `http` (a roster membership or the frame's own URL can fill an empty one)
 - `collected_at` is not empty (no date is filled in at publish time)
 - `status` is empty, `PUBLISHED`, or `STAGED`

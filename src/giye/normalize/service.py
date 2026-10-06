@@ -539,7 +539,7 @@ def _report_text(
         "",
         (
             "A person is published by the same function as the site build (`published_ids`): "
-            "not scope=out, on an admitted roster or cv_link_ok=yes, with a source URL and a "
+            "not scope=out, on an admitted roster, with a source URL and a "
             "collection date, status empty / PUBLISHED / STAGED. "
             f"Published {published} of {artists}. One `record_depth` row each. "
             "The value is not copied into the site snapshot."

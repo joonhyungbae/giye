@@ -363,12 +363,12 @@ def test_roster_member_without_a_source_is_refused(tmp_path: Path):
 
 def test_rows_without_a_collection_date_are_not_published(tmp_path: Path):
     # No date is filled in at publish time: an activity without collected_at is left out.
-    artists = [_artist("LED-haneul", "김하늘", gy_id="GY-000001", cv_link_ok="yes")]
+    artists = [_artist("LED-haneul", "김하늘", gy_id="GY-000001")]
     activities = [
         _activity("LED-haneul", activity_id="act-dated", title="Dated"),
         _activity("LED-haneul", activity_id="act-undated", title="Undated", collected_at=""),
     ]
-    site = _publish(tmp_path, artists, activities)
+    site = _publish(tmp_path, artists, activities, [_member("LED-haneul", "EXAMPLE-RESIDENCY")])
     assert [row["title"] for row in site["activities.json"]] == ["Dated"]
 
 
@@ -514,8 +514,9 @@ def test_only_included_and_adjacent_memberships_are_published(tmp_path: Path):
 def test_p6_counts_the_same_people_publish_publishes(tmp_path: Path):
     """One definition of a published person: P6 record depth and the site agree.
 
-    One person's only programme is excluded, another has ``cv_link_ok=yes`` but
-    no collection date. Neither is published, and P6 does not count them.
+    One person's only programme is excluded, one has ``cv_link_ok=yes`` but no
+    admitted roster, another has ``cv_link_ok=yes`` but no collection date. None
+    is published (a CV link does not admit a person), and P6 does not count them.
     """
     from giye.ledger.io import read_csv
     from giye.normalize.service import normalize
@@ -530,7 +531,7 @@ def test_p6_counts_the_same_people_publish_publishes(tmp_path: Path):
     membership = [_member("LED-kept", "INC"), _member("LED-out", "EXC")]
     site = _publish(tmp_path, artists, [], membership, frames=frames)
     published = {row["external_ids"]["ledger_id"] for row in site["artists.json"]}
-    assert published == {"LED-kept", "LED-near"}
+    assert published == {"LED-kept"}
     result = normalize(load(tmp_path / "giye.toml"))
     attrs = read_csv(result.processed / "artist_attributes.csv")
     depth = {row["ledger_id"] for row in attrs if row["field"] == "record_depth"}

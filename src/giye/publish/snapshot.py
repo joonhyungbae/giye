@@ -6,8 +6,8 @@ and ``coverage.json``; ``frames.yml`` is not rewritten. Embedding flight files
 are stage 6 and are not built here. ``citations.json`` holds the APA, Chicago,
 and BibTeX strings (see ``giye.publish.cite``). See docs/RULES.md (publication).
 
-Who is published: a ledger row that is in scope, has an http(s) source, is on a
-roster or has ``cv_link_ok=yes``, and whose status is empty, ``PUBLISHED``, or
+Who is published: a ledger row that is in scope, has an http(s) source, is on an
+admitted roster (``cv_link_ok`` does not admit anyone), and whose status is empty, ``PUBLISHED``, or
 ``STAGED``. A roster membership counts only when the frame's decision is
 ``included`` or ``adjacent``. ``adjacent`` stays an adjacent strand.
 ``excluded``, ``planned``, ``no_public_roster``, and any other decision are

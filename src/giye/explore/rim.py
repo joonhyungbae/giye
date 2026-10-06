@@ -54,7 +54,7 @@ R7. One slot per artist. ``families[].participants`` equals ``n``. ``linked``
     between builds.
 
 Who is on the ring is who the site builder publishes: in scope, an http(s)
-source, on a roster or ``cv_link_ok=yes``, status empty / ``PUBLISHED`` /
+source, on a roster, status empty / ``PUBLISHED`` /
 ``STAGED``. A roster row is the evidence of participation. A publishable row
 with no ``gy_id`` is left off the ring. The collector, or the site builder,
 issues that permanent id and writes it; this function does not.
@@ -360,8 +360,8 @@ def _ring_people(
 ) -> tuple[list[dict[str, Any]], dict[str, str]]:
     """People on the ring, and ledger id → ``gy_id``.
 
-    Same publication test as the site: in scope, an http(s) source, on a roster
-    or ``cv_link_ok=yes``, status empty / ``PUBLISHED`` / ``STAGED``, and a
+    Same publication test as the site: in scope, an http(s) source, on a
+    roster, status empty / ``PUBLISHED`` / ``STAGED``, and a
     ``gy_id`` already issued. Returns the ring rows. This does not mint an id.
     """
     artists_out: list[dict[str, Any]] = []
@@ -376,8 +376,8 @@ def _ring_people(
         source = str(artist.get("source_url") or "")
         if not source.startswith("http") and ledger_id in roster_url:
             source = roster_url[ledger_id]
-        on_roster = ledger_id in mem_by
-        if not (artist.get("cv_link_ok") == "yes" or on_roster):
+        # A CV link does not admit a person: only a roster membership does.
+        if ledger_id not in mem_by:
             continue
         if not source.startswith("http"):
             continue

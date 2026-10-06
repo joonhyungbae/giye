@@ -509,12 +509,15 @@ def published_ids(
 
     ``giye publish`` builds its pages from this set and P6 counts record depth
     on it, so the two cannot disagree. In scope (not ``scope=out``), on an
-    admitted roster (:func:`admitted_memberships`) or ``cv_link_ok=yes``, an
-    http(s) source (the row's, or else the roster page's), a collection date
+    admitted roster (:func:`admitted_memberships`), an http(s) source (the row's, or else the roster page's), a collection date
     (a fact without one is not published), and status empty, ``PUBLISHED``, or
     ``STAGED``. ``edition_of`` maps a membership code to ``(registry frame,
     year)`` so a frame URL can fill a row that has none. The artist rows are
     not modified.
+
+    The population is the declared programme list, so a person enters only
+    through an admitted roster membership. A verified CV link (``cv_link_ok``)
+    deepens a record but does not admit a person who is on no admitted roster.
     """
     public = admitted_memberships(membership, decisions, edition_of)
     roster_url = roster_source_urls(public, frames, edition_of)
@@ -525,7 +528,7 @@ def published_ids(
         ledger_id = artist.get("ledger_id") or ""
         if not ledger_id or ledger_id in out_of_scope:
             continue
-        if artist.get("cv_link_ok") != "yes" and ledger_id not in members:
+        if ledger_id not in members:
             continue
         source = artist.get("source_url") or ""
         if not source.startswith("http"):
