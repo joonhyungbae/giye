@@ -12,7 +12,7 @@ import random
 from pathlib import Path
 
 from giye.normalize.language import KoreanEnglish
-from giye.normalize.venue_names import generic_name
+from giye.normalize.venue_names import generic_name, hangul_signature
 from giye.normalize.venues import build, institution_key
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -103,3 +103,41 @@ def test_n1_stripping_a_year_or_qualifier_never_leaves_a_generic_name() -> None:
     assert not _together(venues, "Studio Etc", "Studio")
     assert generic_name("시립미술관 외", LANG) and generic_name("museum of art", LANG)
     assert not generic_name("gallery 1898", LANG) and not generic_name("예시미술관", LANG)
+
+
+def test_n3_v9_does_not_join_two_hangul_institutions_that_read_alike() -> None:
+    """N-3: 시립 reads as nothing, so 예시미술관 and 예시시립미술관 give one bag. Neither joins."""
+    venues = ["예시미술관", "예시시립미술관", "Yesi Museum of Art"]
+    groups = _groups(venues)
+    assert not _together(venues, "예시미술관", "예시시립미술관")
+    assert not any("Yesi Museum of Art" in group and len(group) > 1 for group in groups)
+    # One Hangul institution with that reading: V9 joins as before.
+    assert _together(["예시시립미술관", "Yesi Museum of Art"], "예시시립미술관", "Yesi Museum of Art")
+    # Spellings of one name (spaces, a qualifier) are not a second institution.
+    alone = ["예시 미술관", "예시미술관 외", "Yesi Museum of Art"]
+    assert _together(alone, "예시 미술관", "Yesi Museum of Art")
+    assert hangul_signature("예시미술관", LANG) != hangul_signature("예시시립미술관", LANG)
+
+
+def test_n3_x2_does_not_fold_through_an_ambiguous_reading() -> None:
+    from giye.extract.crosslang import clear_marks, fold_cross_language
+
+    def cv(activity_id: str, title: str, venue: str, person: str) -> dict[str, str]:
+        return {
+            "activity_id": activity_id,
+            "ledger_id": person,
+            "title": title,
+            "venue": venue,
+            "year": "2021",
+            "activity_type": "group_exhibition",
+            "publishable": "yes",
+            "reviewer_note": "",
+            "origin": f"cv:{activity_id}",
+        }
+
+    rows = [cv("ko", "빛", "예시미술관", "p1"), cv("en", "Machines", "Yesi Museum of Art", "p1")]
+    clear_marks(rows)
+    assert [fold.folded["activity_id"] for fold in fold_cross_language(rows, lang=LANG, keep_korean=True)] == ["en"]
+    rows.append(cv("other", "물", "예시시립미술관", "p2"))
+    clear_marks(rows)
+    assert fold_cross_language(rows, lang=LANG, keep_korean=True) == []

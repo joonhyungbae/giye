@@ -20,7 +20,9 @@ The rule is conservative. Two publishable ``cv:`` rows of one person fold when
 - they have the same year and the same activity type,
 - each venue names exactly one institution (V2 split, V3 classification), and
   the two read as the same institution: the same V4/V7a–d key, the same V7e
-  word bag, or a V9 reading of the Hangul name equal to the Latin bag. A V8b
+  word bag, or a V9 reading of the Hangul name equal to the Latin bag (not a
+  reading that another Hangul institution in the ledger shares with different
+  proper words, such as 예시미술관 and 예시시립미술관; N-3). A V8b
   office is never joined to its place. An empty venue, or a venue that is only
   a place, names no institution and never folds. A name of generic venue words
   only (``Art Space``, ``갤러리``: V4's generic test) never folds, and two venues
@@ -154,11 +156,17 @@ def _venue_parts(venue: str, lang: LanguageModule) -> tuple[list[str], Places]:
     return keys, (cities, frozenset(place.country for place in found if place.country))
 
 
-def same_institution(left: str, right: str, lang: LanguageModule) -> bool:
+def same_institution(
+    left: str,
+    right: str,
+    lang: LanguageModule,
+    ambiguous: frozenset[tuple[str, ...]] | set[tuple[str, ...]] = frozenset(),
+) -> bool:
     """V7 key or word bag, or a V9 Hangul reading equal to the Latin bag. V8b blocks an office.
 
     A generic name (V4: venue words only) is never the same institution: it
-    names no particular place (N-2).
+    names no particular place (N-2). A V9 bag in ``ambiguous`` (two Hangul
+    institutions of the archive read it alike, N-3) is not a match.
     """
     if not left or not right:
         return False
@@ -173,7 +181,7 @@ def same_institution(left: str, right: str, lang: LanguageModule) -> bool:
         return True  # V7e
     for hangul, latin in ((left, right), (right, left)):
         bag = venue_names.latin_bag(latin, lang, cross_script=True)
-        if bag and bag in venue_names.hangul_bags(hangul, lang):
+        if bag and bag not in ambiguous and bag in venue_names.hangul_bags(hangul, lang):
             return True  # V9
     return False
 
@@ -181,6 +189,15 @@ def same_institution(left: str, right: str, lang: LanguageModule) -> bool:
 def _other_places(left: Places, right: Places) -> bool:
     """True when both venues name a city (or both a country) and none is shared: two events in two places."""
     return any(mine and theirs and not mine & theirs for mine, theirs in zip(left, right))
+
+
+def _ambiguous_readings(activities: list[dict[str, str]], lang: LanguageModule) -> set[tuple[str, ...]]:
+    """N-3 over every venue in the ledger: V9 bags two different Hangul institutions read alike."""
+    hangul: set[str] = set()
+    for venue in sorted({(row.get("venue") or "").strip() for row in activities} - {""}):
+        if HANGUL_RE.search(venue):
+            hangul.update(key for key in institutions(venue, lang) if venue_names.mostly_hangul(key))
+    return venue_names.ambiguous_readings({key: key for key in hangul}, lang)
 
 
 def fold_cross_language(
@@ -206,6 +223,7 @@ def fold_cross_language(
     keys_of: dict[str, list[str]] = {}
     places_of: dict[str, Places] = {}
     folds: list[Fold] = []
+    ambiguous = _ambiguous_readings(activities, lang)
     for (ledger_id, year, activity_type), sides in sorted(groups.items()):
         if not sides["ko"] or not sides["latin"]:
             continue
@@ -218,7 +236,7 @@ def fold_cross_language(
             for latin in sorted(sides["latin"], key=lambda item: item["activity_id"])
             if not _other_places(places_of[ko["activity_id"]], places_of[latin["activity_id"]])
             and any(
-                same_institution(left, right, lang)
+                same_institution(left, right, lang, ambiguous)
                 for left in keys_of[ko["activity_id"]]
                 for right in keys_of[latin["activity_id"]]
             )

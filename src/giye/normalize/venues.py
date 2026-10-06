@@ -818,13 +818,18 @@ def _merge_v9(
         bag = None if venue_names.is_qualified(key) else venue_names.latin_bag(key, lang, cross_script=True)
         if bag:
             latin_roots[bag].add(key)
+    hangul_keys = sorted(key for key in keys if not venue_names.is_qualified(key) and venue_names.mostly_hangul(key))
+    # N-3: a bag that two different Hangul institutions read alike (예시미술관 and
+    # 예시시립미술관: 시립 reads as nothing) is ambiguous, and neither joins the Latin name.
+    ambiguous = venue_names.ambiguous_readings({key: union_find.find(key) for key in hangul_keys}, lang)
     # The first Hangul reading that matches anything decides (현대 = contemporary before modern).
     edges: list[tuple[str, str, tuple]] = []
-    for key in sorted(key for key in keys if not venue_names.is_qualified(key)):
+    for key in hangul_keys:
         for bag in venue_names.hangul_bags(key, lang):
             hits = sorted({union_find.find(latin) for latin in latin_roots.get(bag, ())})
             if hits:
-                edges.extend((union_find.find(key), latin_root, bag) for latin_root in hits)
+                if bag not in ambiguous:
+                    edges.extend((union_find.find(key), latin_root, bag) for latin_root in hits)
                 break
     # One reading per component. Two different bags in one component are ambiguous.
     component = UnionFind({node for hangul, latin, _bag in edges for node in (f"h:{hangul}", f"l:{latin}")})

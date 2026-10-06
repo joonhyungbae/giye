@@ -50,6 +50,7 @@ module's. The rules here only assemble them.
 from __future__ import annotations
 
 import re
+from collections import defaultdict
 from functools import cache
 from itertools import product
 from types import SimpleNamespace
@@ -282,8 +283,8 @@ def latin_bag(key: str, lang: LanguageModule, cross_script: bool = False) -> tup
     return _canon([_latin_word(word) for word in re.findall(r"[a-z0-9]+", key)], lang, cross_script)
 
 
-def hangul_bags(key: str, lang: LanguageModule) -> tuple[tuple[str, ...], ...]:
-    """V9: every reading of a Hangul name, glossary order, so the first reading is the primary one.
+def _hangul_pieces(key: str, lang: LanguageModule) -> list[tuple[str, tuple[tuple[str, ...], ...]]]:
+    """V9 segmentation: ``(Hangul segment, its readings)`` in order, or [] when ``key`` is not read.
 
     A place token that ends in 시·도·군·구 is not consumed when the next character is 립
     (서울시립 = 서울 + 시립, not 서울시 + 립).
@@ -291,11 +292,12 @@ def hangul_bags(key: str, lang: LanguageModule) -> tuple[tuple[str, ...], ...]:
     glossary = lang.glossary
     key = name_part(key)
     if not mostly_hangul(key) or DATE_RE.search(key) or re.search(r"[a-z]", key):
-        return ()
+        return []
     text = key.replace(" ", "")
     gloss_max = max((len(word) for word in glossary), default=1)
-    pieces: list[tuple[tuple[str, ...], ...]] = []
+    pieces: list[tuple[str, tuple[tuple[str, ...], ...]]] = []
     rest = ""
+    rest_source = ""
     index = 0
     while index < len(text):
         hit: tuple[int, tuple[tuple[str, ...], ...]] | None = None
@@ -314,16 +316,25 @@ def hangul_bags(key: str, lang: LanguageModule) -> tuple[tuple[str, ...], ...]:
             hit = (1, glossary[text[index]])
         if hit:
             if rest:
-                pieces.append(((rest,),))
-                rest = ""
-            pieces.append(hit[1])
+                pieces.append((rest_source, ((rest,),)))
+                rest = rest_source = ""
+            pieces.append((text[index : index + hit[0]], hit[1]))
             index += hit[0]
         else:
             char = text[index]
             rest += lang.romanise(char) if HANGUL_RE.fullmatch(char) else char
+            rest_source += char
             index += 1
     if rest:
-        pieces.append(((rest,),))
+        pieces.append((rest_source, ((rest,),)))
+    return pieces
+
+
+def hangul_bags(key: str, lang: LanguageModule) -> tuple[tuple[str, ...], ...]:
+    """V9: every reading of a Hangul name, glossary order, so the first reading is the primary one."""
+    pieces = [readings for _segment, readings in _hangul_pieces(key, lang)]
+    if not pieces:
+        return ()
     out: list[tuple[str, ...]] = []
     for combo in product(*pieces):
         bag = _canon([token for part in combo for token in part], lang, cross_script=True)
@@ -332,6 +343,43 @@ def hangul_bags(key: str, lang: LanguageModule) -> tuple[tuple[str, ...], ...]:
         if len(out) > 16:
             break
     return tuple(out)
+
+
+def hangul_signature(key: str, lang: LanguageModule) -> tuple[str, ...]:
+    """N-3: the primary reading of a Hangul name with every word it drops kept as itself.
+
+    V9 reads 시립 as nothing, so 예시미술관 and 예시시립미술관 give one bag.
+    Their signatures differ (the second keeps ``=시립``): they are two
+    institutions that read alike, and V9 joins neither to the Latin name.
+    """
+    tokens: list[str] = []
+    for segment, readings in _hangul_pieces(key, lang):
+        primary = readings[0] if readings else ()
+        tokens.extend(primary if primary else ("=" + segment,))
+    return tuple(sorted(tokens))
+
+
+def ambiguous_readings(keys: dict[str, str], lang: LanguageModule) -> set[tuple[str, ...]]:
+    """N-3: V9 bags that two different Hangul institutions read alike.
+
+    ``keys`` maps each Hangul key to its component (the entity it already
+    belongs to). A bag is ambiguous when keys in two or more components read
+    it with different signatures (:func:`hangul_signature`). Keys with one
+    signature are spellings of one name and do not make a bag ambiguous.
+    """
+    seen: dict[tuple[str, ...], dict[tuple[str, ...], set[str]]] = defaultdict(lambda: defaultdict(set))
+    for key, component in keys.items():
+        bags = hangul_bags(key, lang)
+        if not bags:
+            continue
+        signature = hangul_signature(key, lang)
+        for bag in bags:
+            seen[bag][signature].add(component)
+    return {
+        bag
+        for bag, by_signature in seen.items()
+        if len(by_signature) >= 2 and len(set().union(*by_signature.values())) >= 2
+    }
 
 
 def specific(key: str, lang: LanguageModule) -> bool:
