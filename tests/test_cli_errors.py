@@ -95,3 +95,13 @@ def test_unexpected_errors_still_show_a_traceback(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr("giye.cli._name_keys", boom)
     with pytest.raises(RuntimeError, match="not a configuration problem"):
         main(["name-keys", "김하늘"])
+
+
+def test_demo_into_an_existing_ledger_is_one_line(tmp_path: Path, capsys):
+    """Software review round 6, minor 8: this printed a traceback."""
+    (tmp_path / "ledger").mkdir()
+    (tmp_path / "ledger" / "artists.csv").write_text("ledger_id\n", encoding="utf-8")
+    assert main(["demo", "--output", str(tmp_path)]) == 2
+    err = capsys.readouterr().err
+    assert "already holds a ledger" in err
+    assert "Traceback" not in err

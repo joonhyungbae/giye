@@ -28,7 +28,7 @@ from datetime import datetime, timezone, tzinfo
 from pathlib import Path
 
 from giye.collect.base import run_configured
-from giye.config import Config, ConfigError, load
+from giye.config import Config, ConfigError, GiyeError, load
 from giye.explore.rim import build_rim_order, write_rim_order
 from giye.explore.ties import LAYERS, layers_for_config
 from giye.extract.service import extract
@@ -115,7 +115,8 @@ def run_demo(
     out = Path(output) if output is not None else Path(tempfile.mkdtemp(prefix="giye-demo-"))
     out.mkdir(parents=True, exist_ok=True)
     if (out / "ledger" / "artists.csv").is_file():
-        raise FileExistsError(f"{out} already holds a ledger; giye demo needs an empty directory")
+        # A one-line error, not a traceback: this is a usage mistake (software review, round 6).
+        raise GiyeError(f"{out} already holds a ledger; giye demo needs an empty directory")
     try:
         loaded = load(path)
     except ConfigError:
