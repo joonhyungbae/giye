@@ -59,9 +59,12 @@ export function fieldPeopleEn(plural: boolean): string {
   return plural ? `${site.fieldEn} artists` : `${site.fieldEn} artist`;
 }
 
-/** Browser-tab title of a page: "<page> · GIYE". The home page is "GIYE" alone. */
+/**
+ * Browser-tab title of a page: "<page> · GIYE". The home page is "기예" alone, in both languages
+ * (author's decision, 2026-10-06).
+ */
 export function pageTitle(name?: string): string {
-  return name ? `${name} · GIYE` : "GIYE";
+  return name ? `${name} · GIYE` : "기예";
 }
 
 /**
