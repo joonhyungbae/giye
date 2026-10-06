@@ -58,6 +58,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -283,11 +284,16 @@ class SnapshotStore:
         another frame does not win: re-collection should read the frame that
         is running. Newest is the greatest ``fetched_at``; the same timestamp
         keeps the later line. ``None`` means this store never kept the URL.
+
+        A line kept from another source (``via`` other than ``direct``, such as
+        an Internet Archive capture the evidence pass stored) is not served:
+        its bytes are not what the site answered when the row was collected,
+        and its ``fetched_at`` is not the capture date.
         """
         matched = [
             (index, frame, row)
             for index, (frame, row) in enumerate(self._servable_lines())
-            if _line_matches(row, url) and _request_matches(row, method, body_sha256)
+            if _line_matches(row, url) and _request_matches(row, method, body_sha256) and _direct(row)
         ]
         # A legacy POST line does not record its body, so a line that names the
         # body exactly wins over it. Legacy captures of one URL with different
@@ -393,9 +399,11 @@ class SnapshotStore:
         folder = snapshots / "sha256" / sha[:2]
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{sha}{suffix}"
-        if path.is_file():
+        # No manifest line names an existing file: it may be a write cut short by
+        # a crash or a full disk. Reuse it only when its bytes have the hash.
+        if path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == sha:
             return path, False
-        path.write_bytes(content)
+        _write_atomic(path, content)
         return path, True
 
     def _resolve_stored(self, snapshots: Path, frame_dir: str, rel: str) -> Path | None:
@@ -410,6 +418,20 @@ class SnapshotStore:
             if candidate.is_file() and _inside(snapshots, candidate):
                 return candidate
         return None
+
+
+def _write_atomic(path: Path, content: bytes) -> None:
+    """Write to a temporary file, flush it to disk, then rename it over ``path``.
+
+    A crash leaves either no file or the whole file under the hash name, never
+    a truncated object that a later capture of the same bytes would reuse.
+    """
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    with tmp.open("wb") as handle:
+        handle.write(content)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp, path)
 
 
 def _safe_rel(rel: str) -> bool:
@@ -466,6 +488,12 @@ def _request_matches(row: dict, method: str, body_sha256: str) -> bool:
     line_method = row.get("method") if isinstance(row.get("method"), str) else ""
     line_body = row.get("body_sha256") if isinstance(row.get("body_sha256"), str) else ""
     return (line_method or "GET").upper() == (method or "GET").upper() and line_body == (body_sha256 or "")
+
+
+def _direct(row: dict) -> bool:
+    """True for a body the archive fetched from the site itself (``via`` absent or ``direct``)."""
+    via = row.get("via")
+    return not via or via == "direct"
 
 
 def _fetched_at(row: dict) -> str:
