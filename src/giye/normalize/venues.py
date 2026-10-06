@@ -373,11 +373,30 @@ def institution_key(text: str, lang: LanguageModule | None = None) -> str:
     return key.strip()
 
 
+def _funder_acronyms(fragments: list[Fragment], alias_pairs: list[tuple[str, str]]) -> list[Fragment]:
+    """N-4: an acronym written as the alias of a funder is that funder, not an institution.
+
+    ``Arts Council Example (ACE)``: ACE abbreviates the funder in the same row,
+    so it must not become the row's venue or join an institution called ACE.
+    """
+    funders = {fragment.text for fragment in fragments if fragment.kind == "funder"}
+    acronyms = {
+        acronym
+        for left, right in alias_pairs
+        for name, acronym in ((left, right), (right, left))
+        if name in funders and _acronym_symbols(acronym)
+    }
+    return [
+        replace(fragment, kind="funder") if fragment.kind == "institution" and fragment.text in acronyms else fragment
+        for fragment in fragments
+    ]
+
+
 def parse_venue(row: dict, lang: LanguageModule) -> ParsedVenue:
     """V2 split and V3 classification of one activity row's venue."""
     venue_norm = norm_text(row.get("venue"))
     pieces, alias_pairs = split_venue(venue_norm)
-    fragments = classify_fragments(pieces, lang)
+    fragments = _funder_acronyms(classify_fragments(pieces, lang), alias_pairs)
     qualifier = place_qualifier(fragments)
     fragments = [
         replace(fragment, key=entity_key(fragment.text, qualifier, lang))
@@ -594,7 +613,8 @@ def _audit_unmerged_lines(blocked_components: list[dict]) -> list[str]:
         "",
         (
             "V5e: if a candidate pair's connected component contains two or more distinct Hangul name keys, "
-            "the whole component is left unmerged."
+            "the whole component is left unmerged. V5d (N-4): an acronym written beside the names of two or "
+            "more institutions joins none of them; it is listed first."
         ),
         "",
         f"- Component count: {len(blocked_components)}",
@@ -917,9 +937,14 @@ def _index_named_fragments(
 
 def _alias_candidates(
     parsed: list[ParsedVenue], lang: LanguageModule, key_kinds: dict[str, set[str]]
-) -> dict[tuple[str, str], set[str]]:
-    """V5a/V5d pairs that are both institutions, mapped to the artists who wrote them."""
+) -> tuple[dict[tuple[str, str], set[str]], dict[tuple[str, str], str]]:
+    """V5a/V5d pairs that are both institutions, mapped to the artists who wrote them.
+
+    The second map gives, for a pair in which exactly one side is written as an
+    acronym (``KAMS``, ``SeMA``), the key of that acronym (N-4).
+    """
     candidate_artists: dict[tuple[str, str], set[str]] = defaultdict(set)
+    acronym_of: dict[tuple[str, str], str] = {}
     for row in parsed:
         for left, right in row.alias_pairs:
             if not _alias_candidate(left, right):
@@ -931,8 +956,33 @@ def _alias_candidates(
             right_key = entity_key(right, row.qualifier, lang)
             if left_key == right_key or left_key not in key_kinds or right_key not in key_kinds:
                 continue
-            candidate_artists[tuple(sorted((left_key, right_key)))].add(row.ledger_id)
-    return candidate_artists
+            pair = tuple(sorted((left_key, right_key)))
+            candidate_artists[pair].add(row.ledger_id)
+            left_acronym, right_acronym = bool(_acronym_symbols(left)), bool(_acronym_symbols(right))
+            if left_acronym != right_acronym:
+                acronym_of[pair] = left_key if left_acronym else right_key
+    return candidate_artists, acronym_of
+
+
+def _ambiguous_acronyms(
+    acronym_of: dict[tuple[str, str], str], roots: dict[str, str]
+) -> dict[str, list[str]]:
+    """N-4: acronyms written beside names of two or more different institutions.
+
+    ``roots`` is the entity of each key once every rule except the acronym
+    pairs has run. An acronym whose partner names fall in two or more of those
+    entities is shared, so it is ambiguous and joins none of them
+    (``Example Arts Service (EAS)`` and ``Example Art School (EAS)``).
+    Returns each ambiguous acronym key with its partner keys.
+    """
+    partners: dict[str, set[str]] = defaultdict(set)
+    for pair, acronym in acronym_of.items():
+        partners[acronym].add(pair[0] if pair[1] == acronym else pair[1])
+    return {
+        acronym: sorted(names)
+        for acronym, names in sorted(partners.items())
+        if len({roots.get(name, name) for name in names}) >= 2
+    }
 
 
 def _alias_pair_tiers(
@@ -990,6 +1040,25 @@ def _v5e_components(
         )
     blocked_components.sort(key=lambda component: (-component["n_rows"], -component["n_artists"], component["names"]))
     return candidate_graph, blocked_roots, blocked_components
+
+
+def _acronym_block_records(
+    shared: dict[str, list[str]], spell_rows: dict[str, dict[str, set[str]]], parsed: list[ParsedVenue]
+) -> list[dict]:
+    """Audit section 6 records of the acronyms N-4 left unjoined."""
+    ledger_of = {row.activity_id: row.ledger_id for row in parsed}
+    records: list[dict] = []
+    for acronym, partners in shared.items():
+        keys = [acronym, *partners]
+        rows = {row_id for key in keys for row_ids in spell_rows[key].values() for row_id in row_ids}
+        records.append(
+            {
+                "n_rows": len(rows),
+                "n_artists": len({ledger_of[row_id] for row_id in rows}),
+                "names": [min(spell_rows[key].items(), key=_spelling_sort)[0] for key in keys],
+            }
+        )
+    return records
 
 
 def _apply_v5(
@@ -1198,13 +1267,32 @@ def _resolve(
     """
     parsed = sorted((parse_venue(row, lang) for row in activity_rows), key=lambda row: (row.activity_id, row.norm))
     key_kinds, spell_rows = _index_named_fragments(parsed, lang)
-    candidate_artists = _alias_candidates(parsed, lang, key_kinds)
+    candidate_artists, acronym_of = _alias_candidates(parsed, lang, key_kinds)
     repeated_pairs, single_pairs = _alias_pair_tiers(candidate_artists, lang)
     candidate_graph, blocked_roots, blocked_components = _v5e_components(
         key_kinds, repeated_pairs, spell_rows, parsed, lang
     )
+    # N-4: a dry run without the acronym pairs gives each name its entity; an
+    # acronym beside names of two entities is shared and its pairs are dropped.
+    dry, *_unused = _apply_v5(
+        key_kinds,
+        [pair for pair in repeated_pairs if pair not in acronym_of],
+        [pair for pair in single_pairs if pair not in acronym_of],
+        blocked_roots,
+        candidate_graph,
+        lang,
+    )
+    _name_rule_merges(dry, set(key_kinds), spell_rows, parsed, lang, rules)
+    shared = _ambiguous_acronyms(acronym_of, {key: dry.find(key) for key in key_kinds})
+    dropped = {pair for pair, acronym in acronym_of.items() if acronym in shared}
+    blocked_components.extend(_acronym_block_records(shared, spell_rows, parsed))
     union_find, alias_merges, single_merges, v5_merges, qualified_pairs = _apply_v5(
-        key_kinds, repeated_pairs, single_pairs, blocked_roots, candidate_graph, lang
+        key_kinds,
+        [pair for pair in repeated_pairs if pair not in dropped],
+        [pair for pair in single_pairs if pair not in dropped],
+        blocked_roots,
+        candidate_graph,
+        lang,
     )
     root_before_name_rules = {key: union_find.find(key) for key in key_kinds}
     rule_merges = _name_rule_merges(union_find, set(key_kinds), spell_rows, parsed, lang, rules)

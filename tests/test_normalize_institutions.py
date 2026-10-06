@@ -119,6 +119,33 @@ def test_n3_v9_does_not_join_two_hangul_institutions_that_read_alike() -> None:
     assert hangul_signature("예시미술관", LANG) != hangul_signature("예시시립미술관", LANG)
 
 
+def test_n4_an_acronym_of_two_institutions_joins_neither() -> None:
+    """N-4: a shared acronym is ambiguous; one institution's acronym still joins it (V5d)."""
+    shared = ["Example Arts Service (EAS)"] * 2 + ["Example Art School (EAS)"] * 2
+    people = ["p1", "p2", "p3", "p4"]
+    assert not _together(shared, "Example Arts Service (EAS)", "Example Art School (EAS)", people)
+    rows = [_row(index, venue, people[index]) for index, venue in enumerate(shared)]
+    result = build(rows, write=False, lang=LANG)
+    assert not [merge for merge in result.merges if merge[0] == "V5d"]
+    single = ["Example Arts Service (EAS)"] * 2
+    rows = [_row(index, venue, people[index]) for index, venue in enumerate(single)]
+    assert [merge[0] for merge in build(rows, write=False, lang=LANG).merges] == ["V5d"]
+    # A Hangul and a Latin name of one institution (joined by V9) share the acronym without ambiguity.
+    one = ["예시미술관 (YMA)", "예시미술관 (YMA)", "Yesi Museum of Art (YMA)", "Yesi Museum of Art (YMA)", "Yesi Museum of Art"]
+    assert _together(one, "예시미술관 (YMA)", "Yesi Museum of Art (YMA)", ["p1", "p2", "p3", "p4", "p5"])
+
+
+def test_n4_a_funder_acronym_is_the_funder() -> None:
+    """N-4: the acronym of a funder in the same row does not become the row's venue."""
+    venues = ["Example Culture Center (ECC)"] * 2 + ["Example Arts Council (ECC)"] * 2
+    rows = [_row(index, venue, f"p{index}") for index, venue in enumerate(venues)]
+    result = build(rows, write=False, lang=LANG)
+    kinds = [result.annotations[row["activity_id"]]["venue_kind"] for row in rows]
+    assert kinds == ["institution", "institution", "funder", "funder"]
+    center = result.annotations[rows[0]["activity_id"]]["venue_id"]
+    assert all(result.annotations[row["activity_id"]]["venue_id"] != center for row in rows[2:])
+
+
 def test_n3_x2_does_not_fold_through_an_ambiguous_reading() -> None:
     from giye.extract.crosslang import clear_marks, fold_cross_language
 
