@@ -452,11 +452,28 @@ class Ledger:
             self.write("activities", activities, task="merge")
 
     def _rewrite_extract(self, kept: str, remap: dict[str, str]) -> None:
-        """Point a kept person's extraction file at the surviving source ids."""
-        path = self.config.work / "cv_extract" / f"{kept}.json"
-        if not path.is_file():
+        """Point every extraction file that names a collapsed source at the surviving source id.
+
+        A merge does not rename extraction files, so the dropped record's file
+        keeps its own name and may still cite the source id that was collapsed
+        into the kept record's registration of the same URL.
+        """
+        directory = self.config.work / "cv_extract"
+        if not directory.is_dir():
             return
+        for path in sorted(directory.glob("*.json")):
+            self._rewrite_extract_file(path, remap)
+
+    @staticmethod
+    def _rewrite_extract_file(path: Path, remap: dict[str, str]) -> None:
+        """Rewrite one extraction file's source ids through ``remap`` when it names one."""
         data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return
+        named = {str(item.get("source_id")) for item in data.get("sources", []) if isinstance(item, dict)}
+        named |= {str(item.get("source_id")) for item in data.get("activities", []) if isinstance(item, dict)}
+        if not named & set(remap):
+            return
         seen: set[str] = set()
         sources = []
         for source in data.get("sources", []):

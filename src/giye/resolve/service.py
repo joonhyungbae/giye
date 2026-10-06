@@ -44,7 +44,7 @@ from giye.resolve.candidates import (
     x1_candidates,
     x1_detail,
 )
-from giye.resolve.cv import fold_merged_cvs, load_cv_activities, move_extract_file
+from giye.resolve.cv import fold_merged_cvs, load_cv_activities
 from giye.resolve.evidence import (
     evidence_e1,
     evidence_e2_e4,
@@ -167,8 +167,12 @@ class _State:
         self.generic = generic_titles(self.rows_of, self.cvs, self.ledger.config.generic_title_records)
 
     def transfer_cv(self, keep: str, drop: str) -> None:
-        """Move the dropped person's CV file and keep both activity lists on the survivor."""
-        move_extract_file(self.ledger.config, keep, drop)
+        """Keep both activity lists on the survivor for the rest of this run.
+
+        The extraction file is not renamed: the merge moves ``cv_sources`` to
+        the survivor, and a later run reads ownership from there
+        (``giye.resolve.cv``).
+        """
         # Both readings stay on the survivor. Dropping the second list would
         # hide a CV line from a later pair in this same run.
         dropped = self.cvs.pop(drop, None)

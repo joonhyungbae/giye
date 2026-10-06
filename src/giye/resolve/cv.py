@@ -1,12 +1,22 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """CV activities the same-person rules read.
 
-One JSON file per person lives at ``data/work/cv_extract/<ledger_id>.json``
-with an ``activities`` list (``title``, ``venue``, ``year``). That file wins
-when it exists, because it is the extracted reading of the CV. A configured
-directory of HTML CVs fills in people who have no file yet, matched by
-``data-name-ko`` and ``data-name-en``. The match has to be unique so two
-people are not given the same page. Resolution reads only these local files.
+Extraction files live at ``data/work/cv_extract/<ledger_id>.json`` with an
+``activities`` list (``title``, ``venue``, ``year``, ``source_id``). The file
+name is the record the CV was read for, not its owner. A line belongs to the
+owner of its CV source in the ledger (``cv_sources.ledger_id``), followed
+through merges (``merged <ledger id>`` on the kept row). A line with no
+registered source belongs to the file's ``ledger_id`` (or its name), followed
+the same way. Why (software review, round 6, MAJOR-3): indexing by file name
+dropped the absorbed record's CV after a merge whenever the survivor had a
+file of its own, and after the ledger was restored from its backups a renamed
+file still gave one person's CV to the other. A merge therefore no longer
+renames an extraction file; the ledger says who owns each CV.
+
+A configured directory of HTML CVs fills in people who have no extraction
+yet, matched by ``data-name-ko`` and ``data-name-en``. The match has to be
+unique so two people are not given the same page. Resolution reads only these
+local files.
 """
 
 from __future__ import annotations
@@ -82,17 +92,47 @@ def read_html_cvs(directory: Path) -> list[dict]:
 
 
 def load_cv_activities(ledger: Ledger, config: Config) -> dict[str, list[dict]]:
-    """Ledger id → extracted activities. JSON for that id wins over HTML."""
+    """Living ledger id → extracted activities, by CV ownership in the ledger. Extraction wins over HTML."""
+    # Imported here: giye.resolve.candidates is a sibling module of this package's __init__.
+    from giye.resolve.candidates import absorption_map
+
     artists = ledger.read("artists")
+    live = {artist["ledger_id"] for artist in artists}
+    absorbed = absorption_map(artists)
+
+    def owner_of(lid: str) -> str:
+        """The living record that holds ``lid`` now, or empty."""
+        lid = absorbed.get(lid, lid)
+        return lid if lid in live else ""
+
+    sources = ledger.read("cv_sources") if ledger.path("cv_sources").exists() else []
+    source_owner = {row["source_id"]: owner_of(row.get("ledger_id") or "") for row in sources if row.get("source_id")}
     found: dict[str, list[dict]] = {}
     directory = config.work / "cv_extract"
+    files: list[tuple[str, dict]] = []
     if directory.is_dir():
-        for artist in artists:
-            path = directory / f"{artist['ledger_id']}.json"
-            if not path.is_file():
-                continue
+        for path in sorted(directory.glob("*.json")):
             data = json.loads(path.read_text(encoding="utf-8"))
-            found[artist["ledger_id"]] = list(data.get("activities") or [])
+            if isinstance(data, dict):
+                files.append((path.stem, data))
+    # The apply stage's rule: a file left under a retired id whose sources a
+    # living record's file already covers is an older reading, not a second CV.
+    covered = {
+        str(item.get("source_id"))
+        for stem, data in files
+        if stem in live
+        for item in data.get("sources") or []
+        if isinstance(item, dict)
+    }
+    for stem, data in files:
+        listed = {str(item.get("source_id")) for item in data.get("sources") or [] if isinstance(item, dict)}
+        if stem not in live and listed and listed <= covered:
+            continue
+        default = owner_of(str(data.get("ledger_id") or stem))
+        for activity in data.get("activities") or []:
+            owner = source_owner.get(str(activity.get("source_id") or "")) or default
+            if owner:
+                found.setdefault(owner, []).append(activity)
     if config.cv_dir is None:
         return found
     for person in read_html_cvs(config.cv_dir):
@@ -100,24 +140,6 @@ def load_cv_activities(ledger: Ledger, config: Config) -> dict[str, list[dict]]:
         if lid and lid not in found:
             found[lid] = list(person.get("activities") or [])
     return found
-
-
-def move_extract_file(config: Config, keep: str, drop: str) -> None:
-    """Point a dropped person's extraction file at the survivor, when the survivor has none.
-
-    When both people already have a file, both files stay. Apply folds the two
-    readings once they share an owner. Joining them into one document would
-    change that fold (a repeated title is dropped inside one file only when the
-    venues match, and across files when the title and year match). The extract
-    stage treats the pair of files as the survivor's reading, so it does not
-    hash both texts together and miss the per-CV cache.
-    """
-    directory = config.work / "cv_extract"
-    source = directory / f"{drop}.json"
-    dest = directory / f"{keep}.json"
-    if source.is_file() and not dest.is_file():
-        dest.write_text(source.read_text(encoding="utf-8").replace(drop, keep), encoding="utf-8")
-        source.unlink()
 
 
 def fold_merged_cvs(ledger: Ledger) -> None:

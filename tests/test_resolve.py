@@ -927,3 +927,56 @@ def test_x1_queues_a_korean_row_whose_own_latin_name_meets_the_other(tmp_path: P
     assert "rule=x1_own_en" in queued[0]["detail"]
     assert {"LED-ko", "LED-en"} <= {queued[0]["ledger_id"], *re.findall(r"LED-[a-z]+", queued[0]["detail"])}
     assert len(ledger.read("artists")) == 2
+
+
+def _two_cv_people(tmp_path: Path, *, both_files: bool) -> Ledger:
+    from giye.ledger.schemas import CV_SOURCES_FIELDS
+
+    ledger = _ledger(tmp_path)
+    _seed(
+        ledger,
+        [_artist("LED-a", "GY-000001", "한별"), _artist("LED-b", "GY-000002", "윤가온")],
+        [_act("LED-a", "EXAMPLE-WORKSHOP-2021", 2021), _act("LED-b", "EXAMPLE-RESIDENCY-2019", 2019)],
+        [_mem("LED-a", "EXAMPLE-WORKSHOP-2021"), _mem("LED-b", "EXAMPLE-RESIDENCY-2019")],
+    )
+    ledger.write(
+        "cv_sources",
+        [
+            empty_row(CV_SOURCES_FIELDS, source_id="CV-A", ledger_id="LED-a", url="https://a.example.org/cv"),
+            empty_row(CV_SOURCES_FIELDS, source_id="CV-B", ledger_id="LED-b", url="https://b.example.org/cv"),
+        ],
+        task="test",
+    )
+    if both_files:
+        _cv(ledger, "LED-a", [{"title": "Line of A", "venue": "", "year": 2020, "source_id": "CV-A"}])
+    _cv(ledger, "LED-b", [{"title": "Line of B", "venue": "", "year": 2018, "source_id": "CV-B"}])
+    return ledger
+
+
+def test_resolver_reads_the_absorbed_cv_after_a_merge(tmp_path: Path):
+    """Review round 6, MAJOR-3a: the absorbed record's extraction was ignored when the survivor had one."""
+    from giye.resolve.cv import load_cv_activities
+    from giye.resolve.decide import merge_people
+
+    ledger = _two_cv_people(tmp_path, both_files=True)
+    merge_people(ledger, "LED-a", "LED-b", evidence="H same studio and same works, checked by the author 2026-01-15")
+    titles = sorted(line["title"] for line in load_cv_activities(ledger, ledger.config).get("LED-a", []))
+    assert titles == ["Line of A", "Line of B"]
+
+
+def test_restoring_the_backups_gives_each_cv_back_to_its_owner(tmp_path: Path):
+    """Review round 6, MAJOR-3b: after the documented restore the survivor kept the other person's CV."""
+    from giye.resolve.cv import load_cv_activities
+    from giye.resolve.decide import merge_people
+
+    ledger = _two_cv_people(tmp_path, both_files=False)
+    before = {table: ledger.read(table) for table in ("artists", "activities", "frame_membership", "cv_sources")}
+    merge_people(ledger, "LED-a", "LED-b", evidence="H same studio and same works, checked by the author 2026-01-15")
+    assert [line["title"] for line in load_cv_activities(ledger, ledger.config)["LED-a"]] == ["Line of B"]
+    # The restore: every table the merge wrote goes back to its earlier bytes.
+    for table, rows in before.items():
+        ledger.write(table, rows, task="restore")
+    ledger.write("gy_retired", [], task="restore")
+    cvs = load_cv_activities(ledger, ledger.config)
+    assert "LED-a" not in cvs
+    assert [line["title"] for line in cvs["LED-b"]] == ["Line of B"]

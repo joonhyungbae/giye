@@ -5,8 +5,9 @@ The pipeline queues a pair it will not merge. These functions record that
 decision on the ledger the resolver already uses. :func:`merge_people` is the
 one checked merge path; the public ``Ledger.merge`` delegates to it. It runs
 the same team guard automatic merges use, then writes the merge (the dropped
-``gy_id`` is retired and redirects). CV files are joined and folded the same
-way. Every write is a ledger write, so the dated backup already happens there.
+``gy_id`` is retired and redirects). CV rows are folded the same way; the
+extraction files stay where they are, because CV ownership is read from
+``cv_sources`` (``giye.resolve.cv``). Every write is a ledger write, so the dated backup already happens there.
 
 A merge a person makes keeps the same documentary guarantee as an automatic
 one (docs/RULES.md, manual merges). The evidence string names a rule and a
@@ -38,7 +39,7 @@ from giye.resolve.candidates import (
     review_id_set,
     set_evidence_snapshot,
 )
-from giye.resolve.cv import fold_merged_cvs, move_extract_file
+from giye.resolve.cv import fold_merged_cvs
 from giye.resolve.teams import team_person_mismatch
 
 
@@ -142,7 +143,6 @@ def merge_people(
         dates = ", ".join(_decided_on(item) for item in distinct)
         # A comma, not a semicolon: the kept row's note is split on ";".
         text = f"{text}, overrides distinct decision of {dates}"
-    move_extract_file(ledger.config, keep_id, drop_id)
     # verify_merge_evidence ran above, so the unchecked path writes the merge.
     ledger._merge_rows(keep_id, drop_id, evidence=text, rule=code)
     if distinct:
