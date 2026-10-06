@@ -11,8 +11,8 @@ holds. X1 is stricter: either side being a team drops the pair, because that
 loop is about personal names.
 
 Whether a name is a bare personal name is the language module's
-``personal_name`` (the Korean–English module: two to four Hangul syllables
-starting with a listed surname). Callers with a config pass that module;
+``personal_name`` (the Korean–English module: a Hangul name starting with a
+listed surname, spaced or not, or a Latin-only name of two to six tokens). Callers with a config pass that module;
 without one the default Korean–English module is used.
 
 A team line also names its members. Each member is on that roster edition in

@@ -661,6 +661,7 @@ def _attach_one_roster_row(
         field=state.field,
         language=language,
         team_lid=str(row.get("team_lid") or ""),
+        note=str(row.get("reviewer_note") or ""),
     )
     stored_ko, stored_en = _stored_name(raw_ko, raw_en)
     attached = bool(decision.ledger_id and decision.ledger_id in state.by_id)

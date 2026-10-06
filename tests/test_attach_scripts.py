@@ -111,3 +111,67 @@ def test_shared_website_does_not_join_two_accented_latin_names(tmp_path: Path) -
     )
     assert len(ledger.read("artists")) == 2
     assert _rules(ledger) == ["first", "first"]
+
+
+# --- Hangul names outside the unspaced surname shape, and the group branch ---
+
+
+def test_spaced_and_compound_surname_hangul_names_are_personal() -> None:
+    language = default_language()
+    for name in ("김 하늘", "박 서연", "독고영재", "독고 영재", "남궁민수", "선우정아", "알렉스 리", "마리아 김"):
+        assert language.personal_name(name), name
+
+
+def test_spaced_hangul_name_is_not_joined_to_the_unspaced_one_on_another_programme(tmp_path: Path) -> None:
+    for left, right in (("김하늘", "김 하늘"), ("김 하늘", "김 하늘")):
+        ledger = _two_programmes(tmp_path / f"{left}-{right}".replace(" ", "_"), _row(left), _row(right))
+        assert len(ledger.read("artists")) == 2, (left, right)
+        assert _rules(ledger) == ["first", "first"]
+        assert len(ledger.read("review_queue")) == 1
+
+
+def test_names_not_recognised_as_groups_do_not_take_a3(tmp_path: Path) -> None:
+    for name_ko, name_en in (("독고영재", ""), ("알렉스 리", ""), ("山田太郎", ""), ("", "Ana Maria de la Cruz")):
+        ledger = _two_programmes(
+            tmp_path / (name_ko or name_en).replace(" ", "_"), _row(name_ko, name_en), _row(name_ko, name_en)
+        )
+        assert len(ledger.read("artists")) == 2, name_ko or name_en
+        assert "A3" not in _rules(ledger)
+        assert len(ledger.read("review_queue")) == 1
+
+
+def test_a3_still_joins_a_name_with_a_team_word(tmp_path: Path) -> None:
+    ledger = _two_programmes(tmp_path, _row("빛소리 콜렉티브"), _row("빛소리 콜렉티브"))
+    assert len(ledger.read("artists")) == 1
+    assert _rules(ledger) == ["first", "A3"]
+
+
+def test_a3_joins_a_stored_team_row_with_the_same_name(tmp_path: Path) -> None:
+    ledger = _two_programmes(
+        tmp_path, _row("빛과소리", reviewer_note="members=김하늘|박서연"), _row("빛과소리")
+    )
+    assert len(ledger.read("artists")) == 1
+    assert _rules(ledger) == ["first", "A3"]
+
+
+def test_shared_website_needs_meeting_names_unless_a_side_is_a_group(tmp_path: Path) -> None:
+    for left, right in (
+        (_row("김 하늘"), _row("박 서연")),
+        (_row("알렉스 리"), _row("마리아 김")),
+        (_row("독고영재"), _row("", "Haneul Kim")),
+        (_row("山田太郎"), _row("", "Haneul Kim")),
+        (_row("", "Ana Maria de la Cruz"), _row("", "Haneul Kim")),
+    ):
+        left["websites"] = [SITE]
+        right["websites"] = [SITE]
+        ledger = _two_programmes(tmp_path / str(left["name_ko"] or left["name_en"]).replace(" ", "_"), left, right)
+        assert _rules(ledger) == ["first", "first"], (left, right)
+    ledger = _two_programmes(
+        tmp_path / "group", _row("루멘 랩", websites=[SITE]), _row("", "Lumen Lab", websites=[SITE])
+    )
+    assert _rules(ledger) == ["first", "A6"]
+
+
+def test_hangul_romanisation_keys_ignore_spaces() -> None:
+    language = default_language()
+    assert language.name_keys("김 하늘") == language.name_keys("김하늘") != set()

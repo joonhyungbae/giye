@@ -367,7 +367,9 @@ def hangul_name_keys(name_ko: str) -> set[str]:
     when the number of candidate spellings exceeds 2,000, when any character is not a
     precomposed Hangul syllable, or when the name has a single syllable.
     """
-    name = (name_ko or "").strip()
+    # As documented above: spaces and hyphens are not part of the name, so
+    # ``김 하늘`` has the keys of ``김하늘`` (before 2026-10-06 it had none).
+    name = re.sub(r"[\s\-]+", "", name_ko or "")
     if len(name) < 2 or any(not _hangul_syllable(ch) for ch in name):
         return set()
     keys, count = korean_keys_v2(name)

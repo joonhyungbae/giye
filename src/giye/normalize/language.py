@@ -4,7 +4,7 @@
 The rules that depend on a language read it through this interface, so a later
 archive can supply another script pair without editing the rule code. The
 Korean–English module is the default. ``personal_name`` is the bare personal-name
-test of A2, A3, A4, A6 and T1 (Hangul surname shape, or two to four Latin
+test of A2, A3, A4, A6 and T1 (Hangul surname shape, or two to six Latin
 tokens). ``name_keys`` wraps ``giye.resolve.names`` (personal
 names, rule X1). The venue rules (V7–V9) read generic words, place names, and
 romanisation here. Institution merging uses ``romanise`` (one syllable at a
@@ -31,15 +31,17 @@ if TYPE_CHECKING:  # pragma: no cover
     from giye.config import Config
 
 _HANGUL = re.compile(r"[가-힣]")
-# A Latin-only personal name is two to four tokens of Latin-script letters
+# A Latin-only personal name is two to six tokens of Latin-script letters
 # (accents included: ``José García``, ``Đặng Thị Lan``). One token is too
-# common to treat as a collision of people (the same floor A2 uses). Five or
-# more tokens are not the given-name-plus-surname shape this test is for.
+# common to treat as a collision of people (the same floor A2 uses). Up to six
+# tokens, because names with particles (``Ana Maria de la Cruz``) are personal
+# names too; before 2026-10-06 the bound was four, and such a name lost the
+# Latin-only guard of A2. Seven or more tokens are read as a title, not a name.
 # Separators are spaces, hyphens, apostrophes, and periods. Group words are not
 # listed here: they differ by archive and live in the field file's team list,
 # which attachment applies on top of this shape.
 _LATIN_SEPARATORS = re.compile(r"[\s.'’\-]+")
-LATIN_PERSONAL_TOKENS = (2, 4)
+LATIN_PERSONAL_TOKENS = (2, 6)
 DEFAULT_LANGUAGE = "giye.normalize.lang.ko_en:KoEn"
 
 # A bare 2–4 syllable Korean personal name starts with one of these surnames.
@@ -53,11 +55,41 @@ KOREAN_SURNAMES = frozenset(
     "김이박최정강조윤장임한오서신권황안송류유홍전고문양손배백허남심노하곽성차주우구민진나지엄채원천방공현함변염여추도소석선설마길연위표명기반왕금옥육인맹제모탁국어은편용예경봉사부가복태목형피두감음빈동온호범좌팽승간상갈"
     "라계시"
 )
-_KOREAN_PERSONAL_NAME = re.compile(r"[가-힣]{2,4}")
+# Two-syllable surnames. Most start with a syllable that is a surname of its
+# own (남궁 with 남), but 독고 does not, so the compound list is read as well.
+KOREAN_COMPOUND_SURNAMES = frozenset({"남궁", "황보", "제갈", "사공", "선우", "서문", "독고", "동방"})
+_HANGUL_SYLLABLES = re.compile(r"[가-힣]+")
+
+
+def korean_personal_shape(text: str) -> bool:
+    """A Hangul personal name: the surname shape, written with or without spaces.
+
+    Unspaced: two to four syllables starting with a listed surname, single
+    (``KOREAN_SURNAMES``) or compound (``KOREAN_COMPOUND_SURNAMES``).
+    Spaced: two to five syllables in all, starting with a listed surname
+    (``김 하늘``, ``독고 영재``) or with a word of one syllable (``알렉스 리``,
+    ``마리아 김``: a foreign name in Hangul, given name first, whose one-syllable
+    word is the family name; ``리`` and other transliterations are not on the
+    census list, so the list is not asked). Why the spaced form: a roster's spacing is not stable, and before
+    2026-10-06 ``김 하늘`` failed the test and A3 joined it across programmes on
+    the name alone. Why not every short Hangul string: the team test
+    (``team_like``) reads a non-personal name's aliases and English name for
+    group evidence, and a short group name without a team word would lose it.
+    """
+    words = (text or "").split()
+    if not words or not all(_HANGUL_SYLLABLES.fullmatch(word) for word in words):
+        return False
+    compact = "".join(words)
+    starts = compact[:2] in KOREAN_COMPOUND_SURNAMES or compact[:1] in KOREAN_SURNAMES
+    if len(words) == 1:
+        return 2 <= len(compact) <= 4 and starts
+    if not 2 <= len(compact) <= 5:
+        return False
+    return starts or any(len(word) == 1 for word in words)
 
 
 def latin_personal_shape(text: str) -> bool:
-    """Two to four tokens of Latin-script letters, separated by spaces, hyphens, apostrophes or periods.
+    """Two to six tokens of Latin-script letters, separated by spaces, hyphens, apostrophes or periods.
 
     A token is a run of Latin letters with their combining marks (NFKC first),
     so an accented name has the shape of its plain spelling. Before 2026-10-06
@@ -215,16 +247,16 @@ class KoreanEnglish:
         return self._gazetteer
 
     def personal_name(self, name: str) -> bool:
-        """A bare personal name: Hangul surname shape, or two to four Latin tokens.
+        """A bare personal name: Hangul surname shape, or two to six Latin tokens.
 
-        Hangul is two to four syllables starting with a listed Korean surname.
-        Latin is the whole string matching ``_LATIN_PERSONAL`` (two to four
-        alphabetic tokens, no Hangul). A field file's group words are not
+        Hangul is :func:`korean_personal_shape` (a listed surname, spaced or not).
+        Latin is :func:`latin_personal_shape` (two to six Latin-script tokens,
+        no Hangul). A field file's group words are not
         applied here; attachment treats a team-word hit as a group, not as
         this name.
         """
         text = (name or "").strip()
-        if _KOREAN_PERSONAL_NAME.fullmatch(text) and text[:1] in KOREAN_SURNAMES:
+        if korean_personal_shape(text):
             return True
         if not text or _HANGUL.search(text):
             return False

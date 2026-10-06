@@ -20,18 +20,18 @@ A2. The name keys match and the English names agree.
     either side, is not joined here: the agreeing Latin string is the whole
     of the evidence. Two Hangul names whose English tokens agree are still A2.
 
-A3. The name is not a bare personal name.
-    ``person_like`` asks the language module (``personal_name``). The
-    Korean–English module takes a Hangul surname shape or two to four Latin
-    tokens. A group, a studio, or any other spelling is not that pattern, so
-    the first same-key row is reused. A Latin-only personal name does not take
-    this branch. A name the field file's team words match is a group, so it
-    still does. A Latin-only name outside the two-to-four token shape takes
-    this branch for the same reason a non-personal spelling does.
+A3. The name is positively a group.
+    ``name_class`` reads the incoming row: a team word of the field file, a
+    ``members=`` / ``rep=`` note, or person-shaped aliases on a non-personal
+    name (``team_like``) make a group, and the first same-key row is reused.
+    A name that is not a personal name and not a group (``other``: Han
+    characters, a long transliteration) takes A3 only when a same-key row is a
+    recorded group. Not fitting the personal shape is not evidence of a
+    group, so such a name is otherwise queued.
 
 A4. A same-key row exists and it has no roster membership yet.
     The first roster attaches to it. Only a bare Korean personal name reaches
-    this branch; other names have already joined at A3.
+    this branch.
 
 A5. The collector's identity key matches a key already stored on a row.
     Checked before the name rules. A miss does not fall through, so two people
@@ -40,14 +40,13 @@ A5. The collector's identity key matches a key already stored on a row.
 A6. The same own website is owned by exactly one existing row.
     Used when the name rules and the identity key did not choose a row. A
     non-social link owned by one row can join a different spelling. A link
-    owned by two rows is not used. When either side is a bare personal name
-    (Hangul or Latin-only), the names must also meet (:func:`names_meet`):
-    the same Hangul spelling, a shared name key, or a shared romanisation key
-    (X1). Why: a duo or a studio site is listed by people with different
-    names, so a shared link alone joined a Latin-named member to another
-    person (software review, round 6). Korean names had this guard; Latin
-    names did not. A group spelling (``Lumen Lab`` / ``루멘 랩``) still
-    joins on the link.
+    owned by two rows is not used. The names must also meet
+    (:func:`names_meet`: the same Hangul spelling, a shared name key, or a
+    shared romanisation key, X1) unless one side is a group and neither side
+    is a personal name (``name_class``). Why: a duo or a studio site is
+    listed by people with different names, so a shared link alone joined
+    two different people. A group spelling (``Lumen Lab`` / ``루멘 랩``)
+    still joins on the link.
 
 The roster row's printed name is never dropped: the ledger keeps a spelling
 the person does not already carry as an alias (``giye.ledger.ledger``).
@@ -160,22 +159,20 @@ def _latin_only_personal(
     words: re.Pattern[str],
     artist: dict | None = None,
 ) -> bool:
-    """A Latin-only personal name: the language module's shape, and not a team.
+    """A Latin-only personal name: the language module's shape, and not a group.
 
-    Hangul on either field is not this case (a Hangul row with an agreeing
-    English name stays on A2), and neither is any other script: every letter
-    must be Latin, accents included (``José García`` is Latin-only). The field file's team words, a ``members=`` /
-    ``rep=`` note, or person-shaped aliases make a group, which keeps A3.
-    Group words are the archive's list, so they are not compiled into the
-    language module.
+    Every letter on both fields must be Latin, accents included (``José
+    García``). Hangul on either field is not this case (a Hangul row with an
+    agreeing English name stays on A2), and neither is any other script. The
+    field file's team words, a ``members=`` / ``rep=`` note, or person-shaped
+    aliases make a group (``team_like``), which keeps A2 and A3. Group words
+    are the archive's list, so they are not compiled into the language module.
     """
     ko = (name_ko or "").strip()
     en = (name_en or "").strip()
     if not _all_latin(f"{ko} {en}"):
         return False
     primary = en or ko
-    if not primary:
-        return False
     row = {
         "name_ko": ko or primary,
         "name_en": en,
@@ -187,17 +184,48 @@ def _latin_only_personal(
     return person_like(primary, language)
 
 
-def _bare_personal(
+def name_class(
     name_ko: str,
     name_en: str,
+    aliases: str,
+    note: str,
     language: LanguageModule | None,
     words: re.Pattern[str],
-) -> bool:
-    """A name A3 must not reuse: a Hangul personal name, or a Latin-only one."""
+) -> str:
+    """``group``, ``personal`` or ``other``: how A3 and A6 read a name.
+
+    ``group`` is positive evidence only: ``team_like`` (a team word in the
+    name, a ``members=`` / ``rep=`` note, or two person-shaped aliases on a
+    non-personal name). ``personal`` is a Latin-only name that is not a group,
+    or a name the language module calls personal (``personal_name``: for
+    Korean–English, the Hangul surname shape, spaced or not). Everything else
+    is ``other``: a name the rules cannot place, such as Han characters or a
+    long Hangul transliteration. Why ``other`` is not ``group``: a name outside
+    the personal shape is not evidence of a group, and before 2026-10-06 A3
+    joined such names across programmes on the name alone (``김 하늘``,
+    ``독고영재``, ``알렉스 리``).
+    """
+    primary = (name_ko or "").strip() or (name_en or "").strip()
+    row = {"name_ko": primary, "name_en": name_en or "", "aliases": aliases or "", "reviewer_note": note or ""}
+    if team_like(row, words=words, language=language):
+        return "group"
     if _latin_only_personal(name_ko, name_en, language, words):
-        return True
-    ko = name_ko or ""
-    return bool(hangul_compact(ko) and person_like(ko, language))
+        return "personal"
+    if hangul_compact(name_ko) and person_like(name_ko or "", language):
+        return "personal"
+    return "other"
+
+
+def _artist_class(artist: dict, language: LanguageModule | None, words: re.Pattern[str]) -> str:
+    """:func:`name_class` of a stored row, its aliases and note included."""
+    return name_class(
+        artist.get("name_ko") or "",
+        artist.get("name_en") or "",
+        artist.get("aliases") or "",
+        artist.get("reviewer_note") or "",
+        language,
+        words,
+    )
 
 
 def _member_list(artist: dict, language: LanguageModule | None = None) -> bool:
@@ -297,6 +325,7 @@ def match_artist(
     aliases: str,
     field: Field,
     language: LanguageModule | None = None,
+    note: str = "",
 ) -> Attachment:
     """A1–A4 (see docs/RULES.md). ``rule`` is None when nothing attaches; ``ambiguous`` is the near-miss."""
     candidates = _same_key_rows(artists, name_ko, name_en, language)
@@ -311,8 +340,15 @@ def match_artist(
     agreed = _a2_ledger_id(candidates, name_en, incoming_latin, language, words)
     if agreed:
         return Attachment(agreed, "A2", ())
-    if not _bare_personal(name_ko, name_en, language, words):
+    # A3 needs a positive group signal: the incoming name is a group, or it is
+    # not a personal name and a same-key row is a recorded group.
+    incoming_class = name_class(name_ko, name_en, aliases, note, language, words)
+    if incoming_class == "group":
         return Attachment(candidates[0]["ledger_id"], "A3", ())
+    if incoming_class == "other":
+        group_row = next((artist for artist in candidates if _artist_class(artist, language, words) == "group"), None)
+        if group_row is not None:
+            return Attachment(group_row["ledger_id"], "A3", ())
     # A4 stays the Korean path. A Latin personal name stays unattached rather
     # than joining the first roster-less row on the name alone.
     if hangul_compact(name_ko) and person_like(name_ko or "", language):
@@ -341,6 +377,7 @@ def attach_row(
     field: Field,
     team_lid: str = "",
     language: LanguageModule | None = None,
+    note: str = "",
 ) -> Attachment:
     """A5, then A1–A4, then A6 (see docs/RULES.md).
 
@@ -354,10 +391,10 @@ def attach_row(
             artist["ledger_id"] for artist in artists if artist.get("name_ko") and artist.get("name_ko") == name_ko
         )
         return Attachment(found, "A5" if found else None, ambiguous)
-    decision = match_artist(artists, families_by_lid, frame_code, name_ko, name_en, aliases, field, language)
+    decision = match_artist(artists, families_by_lid, frame_code, name_ko, name_en, aliases, field, language, note)
     if decision.ledger_id and decision.ledger_id == team_lid:
         others = [artist for artist in artists if artist["ledger_id"] != decision.ledger_id]
-        decision = match_artist(others, families_by_lid, frame_code, name_ko, name_en, aliases, field, language)
+        decision = match_artist(others, families_by_lid, frame_code, name_ko, name_en, aliases, field, language, note)
     if decision.ledger_id or not websites:
         return decision
     wanted = {url_key(url) for url in websites}
@@ -375,10 +412,11 @@ def attach_row(
     if owner is None:
         return decision
     words = field.compiled_team_words()
-    personal = _bare_personal(name_ko, name_en, language, words) or _bare_personal(
-        owner.get("name_ko") or "", owner.get("name_en") or "", language, words
-    )
-    if personal and not names_meet(name_ko, name_en, aliases, owner, language):
+    classes = {name_class(name_ko, name_en, aliases, note, language, words), _artist_class(owner, language, words)}
+    # The link alone joins only a group spelling: one side is a recorded group
+    # and neither side is a personal name. Any other pair must also meet by name.
+    link_alone = "group" in classes and "personal" not in classes
+    if not link_alone and not names_meet(name_ko, name_en, aliases, owner, language):
         return decision
     return Attachment(owner["ledger_id"], "A6", ())
 
