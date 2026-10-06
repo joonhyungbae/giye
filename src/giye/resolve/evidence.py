@@ -14,8 +14,8 @@ give or take one year. An edition both rows are on is not used. The event regex 
 A prefix in the config replaces the field file's pattern for that prefix.
 
 E3. A work title in brackets (``〈…〉``, ``<…>``, ``《…》``, and the same family)
-appears on both roster rows, or on one roster row and the other's CV, in the
-same year give or take one year. The normalised title is at least 3 characters.
+appears on both roster rows, or on one roster row and the other's CV (as
+whole words, :func:`title_in`), in the same year give or take one year. The normalised title is at least 3 characters.
 The event name itself is E2's business, so an unbracketed title does not count.
 A title many records use does not identify one work: when its base (the
 normalised title without a trailing number, ``Untitled #3`` → ``untitled``) is
@@ -33,6 +33,8 @@ from __future__ import annotations
 import re
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
+
+from giye.normalize.match import occurs
 
 # E2. The CV year and the roster edition year may differ by at most this much.
 YEAR_WINDOW = 1
@@ -271,17 +273,35 @@ def roster_works(rows: list[dict], generic: frozenset[str] = frozenset()) -> set
     return found
 
 
+def spaced_title(text: str) -> str:
+    """Lower-cased text with punctuation and runs of space replaced by one space (word boundaries kept)."""
+    return re.sub(r"[\W_]+", " ", (text or "").lower()).strip()
+
+
+def title_in(work: str, text: str) -> bool:
+    """A normalised work title occurs in ``text`` as whole words (``giye.normalize.match``).
+
+    ``work`` has its spaces removed (``norm_title``), so a space may fall
+    anywhere inside it; the ends must sit on word boundaries.
+    """
+    return occurs(work, spaced_title(text), loose_spaces=True)
+
+
 def cv_lists_work(cv_rows: list[dict], works: set[tuple[str, int]]) -> str | None:
-    """E3 hit: a CV title contains a roster work in the same year ± ``YEAR_WINDOW``."""
+    """E3 hit: a CV title names a roster work, as whole words, in the same year ± ``YEAR_WINDOW``.
+
+    Whole words, not a substring: 〈Sea〉 is not in "Research Residency" and
+    〈Light〉 is not in "Lighthouse Festival" (software review, round 6).
+    """
     if not works or not cv_rows:
         return None
     for activity in cv_rows:
-        text = norm_title(str(activity.get("title") or ""))
+        text = str(activity.get("title") or "")
         year = _year(activity.get("year"))
         if year is None:
             continue
-        for work, work_year in works:
-            if work in text and abs(year - work_year) <= YEAR_WINDOW:
+        for work, work_year in sorted(works):
+            if abs(year - work_year) <= YEAR_WINDOW and title_in(work, text):
                 return f"{year} {str(activity.get('title') or '')[:80]}"
     return None
 

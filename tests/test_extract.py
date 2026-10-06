@@ -1489,3 +1489,45 @@ def test_grounding_venue_reads_a_bracketed_other_script_name():
     assert failures({"year": "2021", "venue": "예시어둠관 (Seoul)"}, text) == ["venue"]
     # A same-script bracket (a branch, an acronym) is not used either.
     assert failures({"year": "2021", "venue": "Example Night Hall (Example Dark Hall)"}, text) == ["venue"]
+
+
+def test_grounding_refuses_the_invented_venues_of_a_fake_model():
+    """Software review round 6, MAJOR-4: readings a fake model invented against the demo CV."""
+    from giye.extract.grounding import CvText, failures
+    from giye.normalize.language import default_language
+
+    lang = default_language()
+    text = CvText.of(
+        "Haneul Kim\nResidencies\n2019 Example Residency, Seoul\nGroup exhibitions\n"
+        "2022 Signal, Seoul Museum of Art\n"
+        "2024 예시 미디어전, 예시문화원, 부산. Example Media Exhibition at the Example Culture Center.\n",
+        lang,
+    )
+    assert failures({"year": "2022", "venue": "Seoul Museum of Art"}, text) == []
+    assert failures({"year": "2019", "venue": "Example Residency, Seoul"}, text) == []
+    for venue, year in (
+        ("Imaginary Kunsthalle, Berlin", "2022"),
+        # Generic words found inside a longer name are not that name.
+        ("Museum of Art, Busan", "2022"),
+        ("Art, Berlin", "2022"),
+        ("Residency, Seoul", "2019"),
+    ):
+        assert failures({"year": year, "venue": venue}, text) == ["venue"], venue
+    assert failures({"year": "2011", "venue": "Seoul Museum of Art"}, text) == ["year"]
+    # Inherent to the institution-part rule, documented in the module: an
+    # invented same-script bracket next to an institution that occurs, and an
+    # empty venue, claim nothing the rule checks.
+    assert failures({"year": "2024", "venue": "Example Culture Center (Imaginary Hall)"}, text) == []
+    assert failures({"year": "2019", "venue": ""}, text) == []
+
+
+def test_grounding_matches_whole_words_only():
+    from giye.extract.grounding import CvText, failures
+    from giye.normalize.language import default_language
+
+    lang = default_language()
+    text = CvText.of("2020 Lighthouse Festival\n2021 푸른바다미술관 개인전\n2022 예시미술관에서 단체전\n", lang)
+    assert failures({"year": "2020", "venue": "Light"}, text) == ["venue"]
+    # A Hangul name may not start inside a word, but a particle may follow it.
+    assert failures({"year": "2021", "venue": "바다미술관"}, text) == ["venue"]
+    assert failures({"year": "2022", "venue": "예시미술관"}, text) == []

@@ -8,7 +8,10 @@ source" made false. This rule is deterministic and checks two fields a reader
 can verify against the document:
 
 - the year: the four digits occur in the text, not inside a longer number;
-- a non-empty venue (rule G-V, docs/RULES.md), first match wins:
+- a non-empty venue (rule G-V, docs/RULES.md), first match wins. Every
+  occurrence below is on word boundaries (``giye.normalize.match``): a Latin
+  name may not start or end inside a word, a Hangul name may not start inside
+  one. Before 2026-10-06 these were substring tests (software review, round 6).
   1. the whole venue occurs in the text, both sides normalised the same way
      (NFC, case-folded, whitespace collapsed; failing that, punctuation and
      brackets replaced by a space in both);
@@ -30,6 +33,22 @@ can verify against the document:
      reverse), one is mostly Hangul and the other Latin, and the partner is
      not a place, the partner is tested by rules 2 and 3 as well. Either name
      occurring grounds the venue.
+
+Generic words: an institution part of generic venue words only (``Museum of
+Art``, ``Art``, ``Residency``; the V7e/V9 test ``venue_names.specific``) names
+no particular place and grounds nothing by rules 2–4. Such a venue holds only
+when the whole venue occurs where a venue starts in the text (after a line
+start, punctuation or a number), so ``Residency, Seoul`` is not grounded by
+``Example Residency, Seoul`` and ``Museum of Art, Busan`` is not grounded by
+``Seoul Museum of Art``.
+
+What the rule cannot catch, by design: an invented same-script bracket next
+to an institution that occurs (``Example Culture Center (Imaginary Hall)``),
+because a same-script bracket is not a second form of the name (rule 4) and
+the institution part is the claim; an invented city next to an institution
+that occurs (``Example Art Space, Daegu``), because the city is not checked;
+and an empty venue, which claims nothing. These are properties of the
+institution-part rule, not oversights.
 
 Why the institution part: a model reading "Venue (City, Country)" or a CV
 line that puts the city on another line writes "Venue, City, Country". Those
@@ -59,7 +78,8 @@ import unicodedata
 from dataclasses import dataclass, field
 
 from giye.normalize import venue_names
-from giye.normalize.language import LanguageModule
+from giye.normalize.language import LanguageModule, default_language
+from giye.normalize.match import occurrences, occurs
 from giye.normalize.rules import norm_text
 from giye.normalize.venues import bracketed_pairs, classify_fragments, institution_key, split_venue
 
@@ -188,12 +208,27 @@ def bracket_alias(venue: str, part: str, lang: LanguageModule | None) -> str:
     return ""
 
 
+def names_something(part: str, lang: LanguageModule | None) -> bool:
+    """The institution part holds a proper word, not generic venue words only (V7e/V9 ``specific``).
+
+    ``Museum of Art``, ``Art`` and ``Residency`` name no particular place, so
+    finding them in a CV that writes ``Seoul Museum of Art`` or ``Example
+    Residency`` does not ground a reading (software review, round 6).
+    """
+    if not part.strip():
+        return False
+    lang = lang or default_language()
+    return venue_names.specific(institution_key(part, lang), lang)
+
+
 def _part_in(part: str, text: CvText) -> bool:
-    """Rules 2 and 3 for one institution name."""
+    """Rules 2 and 3 for one institution name. A part of generic words only grounds nothing."""
+    if not names_something(part, text.lang):
+        return False
     bare = strip_punct(part)
-    if bare and (bare in text.bare or bare.replace(" ", "") in text.nospace):
+    if bare and occurs(bare, text.bare, loose_spaces=True):
         return True
-    return bool(part) and _cross_script(part, text)
+    return _cross_script(part, text)
 
 
 def _cross_script(part: str, text: CvText) -> bool:
@@ -209,16 +244,26 @@ def _cross_script(part: str, text: CvText) -> bool:
     return bag is not None and bag in text.hangul_readings()
 
 
+def _segment_start(text: str, start: int) -> bool:
+    """Nothing but a line start, punctuation or a number comes before ``start``."""
+    before = text[:start].rstrip()
+    return not before or not before[-1].isalpha()
+
+
 def venue_in(venue: str, text: CvText) -> bool:
     """An empty venue holds. Otherwise rule 1, 2, 3 or 4 of the module docstring."""
     if not venue.strip():
         return True
-    if collapse(venue) in text.collapsed:
+    part = institution_part(venue, text.lang)
+    if not names_something(part, text.lang):
+        # Generic words and a place ("Residency, Seoul"): the whole venue must
+        # occur where a venue starts, not as the tail of a longer name.
+        return any(_segment_start(text.collapsed, at) for at in occurrences(collapse(venue), text.collapsed))
+    if occurs(collapse(venue), text.collapsed):
         return True
     bare = strip_punct(venue)
-    if bare and bare in text.bare:
+    if bare and occurs(bare, text.bare):
         return True
-    part = institution_part(venue, text.lang)
     if _part_in(part, text):
         return True
     alias = bracket_alias(venue, part, text.lang)

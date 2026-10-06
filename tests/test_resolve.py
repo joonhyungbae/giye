@@ -980,3 +980,18 @@ def test_restoring_the_backups_gives_each_cv_back_to_its_owner(tmp_path: Path):
     cvs = load_cv_activities(ledger, ledger.config)
     assert "LED-a" not in cvs
     assert [line["title"] for line in cvs["LED-b"]] == ["Line of B"]
+
+
+def test_e3_cv_side_matches_whole_words_not_substrings():
+    """Software review round 6, MAJOR-4: 〈Sea〉 was found in "Research" and 〈Light〉 in "Lighthouse"."""
+    from giye.resolve.evidence import cv_lists_work
+
+    assert cv_lists_work([{"title": "Research Residency Showcase", "year": 2020}], {("sea", 2020)}) is None
+    assert cv_lists_work([{"title": "Lighthouse Festival", "year": 2020}], {("light", 2020)}) is None
+    assert cv_lists_work([{"title": "〈Sea〉 open studio", "year": 2020}], {("sea", 2020)})
+    assert cv_lists_work([{"title": "Light, Example Hall", "year": 2021}], {("light", 2020)})
+    # Hangul: not inside a longer compound, but a suffix may follow.
+    assert cv_lists_work([{"title": "푸른바다 개인전", "year": 2020}], {("바다", 2020)}) is None
+    assert cv_lists_work([{"title": "바다전", "year": 2020}], {("바다", 2020)})
+    # Spacing inside a title is not stable, so a key without spaces still meets a spaced title.
+    assert cv_lists_work([{"title": "푸른 신호 전시", "year": 2020}], {("푸른신호", 2020)})

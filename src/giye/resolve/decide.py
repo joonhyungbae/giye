@@ -374,7 +374,7 @@ def _verify_e2(state, keep: str, drop: str, rest: str) -> str:
 
 
 def _verify_e3(state, keep: str, drop: str, rest: str) -> str:
-    from giye.resolve.evidence import YEAR_WINDOW, cv_lists_work, norm_title, roster_works
+    from giye.resolve.evidence import YEAR_WINDOW, cv_lists_work, roster_works, title_in
 
     works = {lid: roster_works(state.rows_of.get(lid, []), state.generic) for lid in (keep, drop)}
     holding: set[str] = {
@@ -388,22 +388,20 @@ def _verify_e3(state, keep: str, drop: str, rest: str) -> str:
                 holding.add(title)
     if not holding:
         return "no work is credited on both rosters, or on one roster and the other's CV"
-    cited = norm_title(rest)
-    if any(title in cited for title in holding):
+    if any(title_in(title, rest) for title in sorted(holding)):
         return ""
     return "the cited work is not the work the two records share"
 
 
 def _verify_e4(state, keep: str, drop: str, rest: str) -> str:
-    from giye.resolve.evidence import norm_title, teams
+    from giye.resolve.evidence import teams, title_in
 
     shared = teams(state.rows_of.get(keep, []), prefix=state.team_prefix) & teams(
         state.rows_of.get(drop, []), prefix=state.team_prefix
     )
     if not shared:
         return "the two rosters credit no team in common"
-    cited = norm_title(rest)
-    if any(team in cited for team in shared):
+    if any(title_in(team, rest) for team in sorted(shared)):
         return ""
     return "the cited team is not the team both rosters credit"
 
