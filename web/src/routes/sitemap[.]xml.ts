@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { createFileRoute } from "@tanstack/react-router";
+import { site } from "@/config/site";
 import { loadArtists } from "@/lib/giye.data";
 
 const STATIC_PATHS = [
@@ -18,8 +19,10 @@ const STATIC_PATHS = [
 export const Route = createFileRoute("/sitemap.xml")({
   server: {
     handlers: {
-      GET: async ({ request }) => {
-        const origin = new URL(request.url).origin;
+      GET: async () => {
+        // The configured public origin, not the request's: behind the tunnel the request
+        // arrives over http, and robots.txt and canonical links say https.
+        const origin = site.origin;
         const artists = loadArtists();
         const urls = [
           ...STATIC_PATHS.map((p) => ({
