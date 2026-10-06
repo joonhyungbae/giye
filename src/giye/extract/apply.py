@@ -56,7 +56,7 @@ from pathlib import Path
 
 from giye.extract import corrections as person_corrections
 from giye.extract.crosslang import CrossLanguage, Fold, clear_marks, fold_cross_language
-from giye.extract.grounding import CvText, GroundingStats, failures, mark
+from giye.extract.grounding import NOTE_KEY, CvText, GroundingStats, failures, mark, sync_review_items
 from giye.extract.paths import verified_cv_text
 from giye.ledger.ids import (
     activity_id_key,
@@ -107,6 +107,9 @@ class ApplyStats:
     # X2 pairs opened on the review queue in this apply, and all still undecided.
     cross_language_queued: int = 0
     cross_language_pending: int = 0
+    # Review items for ungrounded CV rows opened, and closed because the row now holds or is gone.
+    ungrounded_opened: int = 0
+    ungrounded_closed: int = 0
     grounding: GroundingStats = field(default_factory=GroundingStats)
     corrected: int = 0
     corrections_unmatched: list[person_corrections.Correction] = field(default_factory=list)
@@ -192,6 +195,9 @@ def apply_extractions(ledger: Ledger, *, today: date | None = None) -> ApplyStat
         stats.duplicates += dup
         stats.superseded_rows += superseded
 
+    if texts is not None:
+        _ground_rows_not_applied(activities, registry=registry, texts=texts, stats=stats.grounding)
+
     # S1 after every file, and also on the rows of a file skipped as stale: the
     # rows were written from the extraction, so a correction recorded later must
     # reach them now, not after the next extraction. Before X2, so the fold
@@ -215,6 +221,8 @@ def apply_extractions(ledger: Ledger, *, today: date | None = None) -> ApplyStat
     stats.folds = crossed.folds
     stats.cross_language_queued, stats.cross_language_pending = crossed.queued, crossed.pending
     _write_fold_log(ledger, stats.folds)
+    if texts is not None:
+        stats.ungrounded_opened, stats.ungrounded_closed = sync_review_items(activities, queue)
 
     stats.id_changes = len(id_changes)
     if id_changes:
@@ -222,6 +230,40 @@ def apply_extractions(ledger: Ledger, *, today: date | None = None) -> ApplyStat
     ledger.write("activities", activities, task="apply-cv")
     ledger.write("review_queue", queue, task="apply-cv")
     return stats
+
+
+def _ground_rows_not_applied(
+    activities: list[dict[str, str]],
+    *,
+    registry: dict[str, dict[str, str]],
+    texts: _CvTexts,
+    stats: GroundingStats,
+) -> None:
+    """Check the publishable CV rows no extraction file wrote in this apply.
+
+    Why: grounding ran only while a file was applied, so the rows of a file
+    skipped as stale (its CV changed and the new reading is not in the replay
+    cache) kept the state of an apply made before grounding existed. On the
+    production copy of 2026-10-06 that left 167 published rows the rule fails.
+    Runs before S1, so it reads the extraction as made, like the check inside
+    the apply. A row already marked is left as it is.
+    """
+    for row in activities:
+        origin = row.get("origin") or ""
+        if not origin.startswith("cv:") or row.get("publishable") != "yes":
+            continue
+        if row.get("activity_id") in stats.checked_ids or f"{NOTE_KEY}=" in (row.get("reviewer_note") or ""):
+            continue
+        source = registry.get(origin[3:])
+        text = texts.get(source) if source else None
+        if text is None:
+            stats.unchecked += 1
+            continue
+        stats.checked_ids.add(row.get("activity_id") or "")
+        missing = failures(row, text)
+        if missing:
+            mark(row, missing, stats)
+            stats.marked_outside_apply += 1
 
 
 def _extraction_owner(data: dict, registry: dict[str, dict[str, str]]) -> str:
@@ -311,6 +353,7 @@ def _rows_from_file(
             if text is None:
                 stats.grounding.unchecked += 1
             else:
+                stats.grounding.checked_ids.add(row["activity_id"])
                 missing = failures(row, text)
                 if missing:
                     # An ungrounded row is kept but hidden, and it does not hide
@@ -447,8 +490,24 @@ class _CvTexts:
         if source_id not in self._cache:
             # Checked against content_sha256: an edited text is refused, not read.
             text = verified_cv_text(self._config, source)
-            self._cache[source_id] = CvText.of(text, self._lang) if text is not None else None
+            self._cache[source_id] = (
+                CvText.of(text, self._lang, taken=_snapshot_date(source.get("snapshot_path") or ""))
+                if text is not None
+                else None
+            )
         return self._cache[source_id]
+
+
+def _snapshot_date(stored: str) -> date | None:
+    """The day a CV snapshot was taken, from its stored name (``…/20260922-d432ce0b``), or None."""
+    matched = re.search(r"(?:^|/)(\d{8})-[0-9a-f]+$", stored)
+    if not matched:
+        return None
+    try:
+        stamp = matched.group(1)
+        return date(int(stamp[:4]), int(stamp[4:6]), int(stamp[6:]))
+    except ValueError:
+        return None
 
 
 def _write_id_map(ledger: Ledger, id_changes: list[tuple[str, str, str, str]]) -> None:

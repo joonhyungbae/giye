@@ -81,9 +81,12 @@ on disk cannot be checked and is left as it is (counted as ``unchecked``). Only
 
 from __future__ import annotations
 
+import hashlib
 import re
 import unicodedata
+import uuid
 from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta, timezone
 
 from giye.normalize import venue_names
 from giye.normalize.language import LanguageModule, default_language
@@ -103,9 +106,15 @@ HANGUL_SPAN = 6
 LATIN_SPAN = 8
 
 
+# Control characters other than line breaks and tabs. A text snapshot can carry
+# them (a backspace inside 大津橋（\x08愛知）), and they hid a venue the CV writes
+# from the whole-venue test (production copy, 2026-10-06).
+_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
+
+
 def collapse(text: str) -> str:
-    """NFC, whitespace collapsed to one space, case-folded."""
-    return _SPACE.sub(" ", unicodedata.normalize("NFC", text)).strip().casefold()
+    """NFC, control characters removed, whitespace collapsed to one space, case-folded."""
+    return _SPACE.sub(" ", _CONTROL.sub("", unicodedata.normalize("NFC", text))).strip().casefold()
 
 
 def strip_punct(text: str) -> str:
@@ -126,11 +135,14 @@ class CvText:
     nospace: str = ""
     raw: str = ""
     lang: LanguageModule | None = None
+    relative: frozenset[str] = frozenset()
     _hangul: set[tuple[str, ...]] | None = None
     _latin: set[tuple[str, ...]] | None = None
 
     @classmethod
-    def of(cls, text: str, lang: LanguageModule | None = None) -> CvText:
+    def of(cls, text: str, lang: LanguageModule | None = None, *, taken: date | None = None) -> CvText:
+        """``taken`` is the snapshot's date, for years stated as "N days ago"."""
+        text = _CONTROL.sub("", text)
         bare = strip_punct(text)
         return cls(
             collapsed=collapse(text),
@@ -138,6 +150,7 @@ class CvText:
             nospace=bare.replace(" ", ""),
             raw=unicodedata.normalize("NFC", text),
             lang=lang,
+            relative=relative_years(text, taken),
         )
 
     def hangul_readings(self) -> set[tuple[str, ...]]:
@@ -167,23 +180,74 @@ class CvText:
         return self._latin
 
 
+_DAYS_AGO = re.compile(r"(?<!\d)(\d{1,5})\s+days?\s+ago\b")
+
+
+def relative_years(text: str, taken: date | None) -> frozenset[str]:
+    """Years a page states as "N days ago", counted back from the day the snapshot was taken.
+
+    Why: a portfolio page that prints "3089 days ago" instead of a date names
+    a year only relative to the day it was read, and a reading that converts
+    it was a miss of the year test (production copy, 2026-10-06).
+    """
+    if taken is None:
+        return frozenset()
+    found = set()
+    for days in _DAYS_AGO.findall(text.casefold()):
+        try:
+            found.add(str((taken - timedelta(days=int(days))).year))
+        except OverflowError:
+            continue
+    return frozenset(found)
+
+
 def year_in(year: str, text: CvText) -> bool:
-    """The year occurs as a number of its own (not inside ``120190``)."""
+    """The year occurs as a number of its own (not inside ``120190``), or as "N days ago" (:func:`relative_years`)."""
     year = str(year).strip()
-    return bool(year) and re.search(rf"(?<!\d){re.escape(year)}(?!\d)", text.collapsed) is not None
+    if not year:
+        return False
+    return year in text.relative or re.search(rf"(?<!\d){re.escape(year)}(?!\d)", text.collapsed) is not None
+
+
+# A country code written after a place without a comma ("Seoul KR", "Berlin DE").
+_TRAILING_CODE = re.compile(r"^(.+?)\s+([A-Z]{2,3})$")
+
+
+def venue_parts(venue: str, lang: LanguageModule | None) -> list[str]:
+    """V2 parts of ``venue``, with a trailing country code split off as its own part.
+
+    Why the code: a reading "Seoul KR" is one V2 part, which V3 does not read
+    as a place, so it was tested as an institution and failed against a CV
+    that writes "Seoul South Korea" (production copy, 2026-10-06). The code is
+    split off only when V3 reads it as a place (G1 of the venue rules).
+    """
+    parts, _aliases = split_venue(norm_text(venue))
+    if lang is None:
+        return parts
+    out: list[str] = []
+    for part in parts:
+        matched = _TRAILING_CODE.match(part)
+        if matched and classify_fragments([matched.group(2)], lang)[0].kind == "place":
+            out.extend((matched.group(1), matched.group(2)))
+        else:
+            out.append(part)
+    return out
+
+
+def _non_place_parts(venue: str, lang: LanguageModule | None) -> list[str]:
+    parts = venue_parts(venue, lang)
+    if lang is None:
+        return parts[:1]
+    return [fragment.text for fragment in classify_fragments(parts, lang) if fragment.kind != "place"]
 
 
 def institution_part(venue: str, lang: LanguageModule | None) -> str:
     """The first V2 part of ``venue`` that V3 does not classify as a place; the first part if all are places."""
-    parts, _aliases = split_venue(norm_text(venue))
+    parts = venue_parts(venue, lang)
     if not parts:
         return ""
-    if lang is None:
-        return parts[0]
-    for fragment in classify_fragments(parts, lang):
-        if fragment.kind != "place":
-            return fragment.text
-    return parts[0]
+    found = _non_place_parts(venue, lang)
+    return found[0] if found else parts[0]
 
 
 def _latin(text: str) -> bool:
@@ -225,6 +289,12 @@ def names_something(part: str, lang: LanguageModule | None) -> bool:
     """
     if not part.strip():
         return False
+    letters = [char for char in part if char.isalpha()]
+    if letters and not any(_latin(char) or "HANGUL" in unicodedata.name(char, "") for char in letters):
+        # Another script (Japanese, Chinese): the generic-word lists are Korean
+        # and English only, so such a name is read as naming a place, not as
+        # generic words (production copy, 2026-10-06: アートラボあいち大津橋).
+        return True
     lang = lang or default_language()
     return venue_names.specific(institution_key(part, lang), lang)
 
@@ -258,6 +328,12 @@ def _segment_start(text: str, start: int) -> bool:
     return not before or not before[-1].isalpha()
 
 
+def _segment_end(text: str, end: int) -> bool:
+    """Nothing but a line end, punctuation or a number comes after ``end``."""
+    after = text[end:].lstrip()
+    return not after or not after[0].isalpha()
+
+
 def venue_in(venue: str, text: CvText) -> bool:
     """An empty venue holds. Otherwise rule 1, 2, 3 or 4 of the module docstring."""
     if not venue.strip():
@@ -266,7 +342,24 @@ def venue_in(venue: str, text: CvText) -> bool:
     if not names_something(part, text.lang):
         # Generic words and a place ("Residency, Seoul"): the whole venue must
         # occur where a venue starts, not as the tail of a longer name.
-        return any(_segment_start(text.collapsed, at) for at in occurrences(collapse(venue), text.collapsed))
+        if any(_segment_start(text.collapsed, at) for at in occurrences(collapse(venue), text.collapsed)):
+            return True
+        # The generic part as a whole segment of the text ("…,Gallery Gallery,"):
+        # nothing but punctuation, a number or a line edge on either side.
+        needle = collapse(part)
+        if needle and any(
+            _segment_start(text.collapsed, at) and _segment_end(text.collapsed, at + len(needle))
+            for at in occurrences(needle, text.collapsed)
+        ):
+            return True
+        # A later part of two words or more that names something ("biennale,
+        # curated by …, 2nd Moscow Biennal"): that part is the claim, tested by
+        # rules 2 and 3. One word is not enough: a city the gazetteer does not
+        # list ("Gallery, Antwerp") would otherwise ground a generic venue.
+        return any(
+            len(other.split()) >= 2 and names_something(other, text.lang) and _part_in(other, text)
+            for other in _non_place_parts(venue, text.lang)[1:]
+        )
     if occurs(collapse(venue), text.collapsed):
         return True
     bare = strip_punct(venue)
@@ -278,9 +371,11 @@ def venue_in(venue: str, text: CvText) -> bool:
     return bool(alias) and _part_in(alias, text)
 
 
-# Title parts for G-T: " / ", " | ", " - " (and dashes) between parts, and
-# brackets of every kind around one.
-_TITLE_SPLIT = re.compile(r"\s[/|│–—-]\s|[|│()\[\]{}〈〉《》<>「」『』【】“”\"]")
+# Title parts for G-T: " / ", " | ", " - " (and dashes) and ", " between parts,
+# and brackets of every kind around one. The comma since 2026-10-06: a reading
+# that adds a description after the title ("TESTIGOS, documental sobre …")
+# failed although the CV writes the title.
+_TITLE_SPLIT = re.compile(r"\s[/|│–—-]\s|,\s|[|│()\[\]{}〈〉《》<>「」『』【】“”\"]")
 
 
 def title_in(title: str, text: CvText) -> bool:
@@ -324,6 +419,10 @@ class GroundingStats:
     title: int = 0
     unchecked: int = 0
     marked_ids: list[str] = field(default_factory=list)
+    # Rows checked while their extraction file was applied.
+    checked_ids: set[str] = field(default_factory=set)
+    # Rows marked by the pass over CV rows no file wrote in this apply (a stale or missing extraction).
+    marked_outside_apply: int = 0
 
     @property
     def marked(self) -> int:
@@ -345,3 +444,82 @@ def mark(row: dict[str, str], missing: list[str], stats: GroundingStats) -> None
     row["publishable"] = "no"
     note = row.get("reviewer_note") or ""
     row["reviewer_note"] = f"{note}; {NOTE_KEY}={reason}".strip("; ")
+
+
+# The review item a row that fails grounding opens. A person checks the row
+# against its CV: a reading the CV does not bear out is an invention, a
+# reading it does bear out is a miss of this rule (and a reason to tune it).
+REVIEW_REASON = "ungrounded_extraction"
+_ROW_KEY = re.compile(r"(?:^|;)\s*row=([0-9a-f]+)")
+_NOTE_REASON = re.compile(rf"(?:^|;)\s*{NOTE_KEY}=([^;]+)")
+
+
+def row_key(row: dict[str, str]) -> str:
+    """Stable id of one CV reading: source, year, type, title, venue (16 hex digits of SHA-256).
+
+    Not the activity id, which carries the ledger id and changes on a merge.
+    """
+    origin = row.get("origin") or ""
+    material = "\x1f".join(
+        (
+            origin.removeprefix("cv:"),
+            (row.get("year") or "").strip(),
+            row.get("activity_type") or "",
+            " ".join(norm_text(row.get("title") or "").casefold().split()),
+            " ".join(norm_text(row.get("venue") or "").casefold().split()),
+        )
+    )
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
+
+
+def _clean(text: str) -> str:
+    return " ".join((text or "").replace(";", ",").split())
+
+
+def sync_review_items(activities: list[dict[str, str]], queue: list[dict[str, str]]) -> tuple[int, int]:
+    """Open one review item per ungrounded CV row; close items whose row is grounded or gone.
+
+    Returns (opened, closed). The row itself is not dropped: it stays in the
+    ledger with ``publishable=no`` and its ``ungrounded=`` note, and the item
+    tells a person to look at it. An item a person already closed is left as
+    it is and not opened again for the same reading.
+    """
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    failing: dict[str, dict[str, str]] = {}
+    for row in activities:
+        if not (row.get("origin") or "").startswith("cv:"):
+            continue
+        reason = _NOTE_REASON.search(row.get("reviewer_note") or "")
+        if reason:
+            failing.setdefault(row_key(row), {**row, "_missing": reason.group(1).strip()})
+    known: dict[str, dict[str, str]] = {}
+    for item in queue:
+        if item.get("reason") == REVIEW_REASON:
+            matched = _ROW_KEY.search(item.get("detail") or "")
+            if matched:
+                known[matched.group(1)] = item
+    opened = closed = 0
+    for key, row in sorted(failing.items()):
+        if key in known:
+            continue
+        queue.append(
+            {
+                "queue_id": str(uuid.uuid4()),
+                "ledger_id": row.get("ledger_id") or "",
+                "reason": REVIEW_REASON,
+                "detail": (
+                    f"row={key}; activity={row.get('activity_id') or ''}; missing={row['_missing']}; "
+                    f"source={(row.get('origin') or '').removeprefix('cv:')}; "
+                    f"{_clean(row.get('year') or '')} {_clean(row.get('title') or '')} — {_clean(row.get('venue') or '')}"
+                ),
+                "status": "open",
+                "created_at": now,
+            }
+        )
+        opened += 1
+    for key, item in sorted(known.items()):
+        if key not in failing and item.get("status") == "open":
+            item["status"] = "done"
+            item["detail"] = f"{item.get('detail') or ''}; grounded_or_gone={now[:10]}"
+            closed += 1
+    return opened, closed

@@ -1439,6 +1439,57 @@ def test_grounding_hides_a_row_whose_year_or_venue_is_not_in_the_cv(tmp_path: Pa
     assert (stats.grounding.year, stats.grounding.venue, stats.grounding.both, stats.grounding.unchecked) == (1, 1, 0, 0)
 
 
+def test_an_ungrounded_row_opens_one_review_item_and_is_kept(tmp_path: Path):
+    """Software review 5, MAJOR-3: a failing row is hidden and queued for a person, never dropped."""
+    from giye.extract.grounding import REVIEW_REASON
+
+    ledger = _grounding_ledger(tmp_path, grounding=True)
+    stats = apply_extractions(ledger, today=TODAY)
+    items = [item for item in ledger.read("review_queue") if item["reason"] == REVIEW_REASON]
+    assert stats.ungrounded_opened == 2 and len(items) == 2
+    assert all(item["status"] == "open" and item["ledger_id"] == "LED-owner" for item in items)
+    details = sorted(item["detail"] for item in items)
+    assert "missing=venue" in details[0] + details[1] and "missing=year" in details[0] + details[1]
+    assert any("Invented Show — Example Grand Museum" in detail for detail in details)
+    # A second apply opens nothing new.
+    stats = apply_extractions(ledger, today=TODAY)
+    assert stats.ungrounded_opened == 0
+    assert len([item for item in ledger.read("review_queue") if item["reason"] == REVIEW_REASON]) == 2
+    # A reading without the invented row closes its item.
+    _write_extract(tmp_path, "LED-owner", ["CV-KO"], ["hash-1"], [_entry("CV-KO", "신호", 2021, venue="example hall")])
+    stats = apply_extractions(ledger, today=TODAY)
+    assert stats.ungrounded_closed == 2
+    assert {item["status"] for item in ledger.read("review_queue") if item["reason"] == REVIEW_REASON} == {"done"}
+
+
+def test_grounding_also_checks_rows_of_a_stale_extraction(tmp_path: Path):
+    """A row written before grounding existed, whose file is skipped as stale, is checked too."""
+    ledger = _grounding_ledger(tmp_path, grounding=True)
+    _write_extract(tmp_path, "LED-owner", ["CV-KO"], ["hash-old"], [_entry("CV-KO", "Invented Show", 2021, venue="x")])
+    old = [
+        empty_row(
+            ACTIVITIES_FIELDS,
+            activity_id=f"old-{n}",
+            ledger_id="LED-owner",
+            title=title,
+            year=year,
+            venue=venue,
+            source_url="https://cv.example.org/ko",
+            collected_at="2026-01-15",
+            publishable="yes",
+            origin="cv:CV-KO",
+        )
+        for n, (title, year, venue) in enumerate((("Invented Show", "2021", "Example Grand Museum"), ("신호", "2021", "Example Hall")))
+    ]
+    ledger.write("activities", old, task="test")
+    stats = apply_extractions(ledger, today=TODAY)
+    assert stats.skipped_stale == ["LED-owner"]
+    rows = {row["activity_id"]: row for row in ledger.read("activities")}
+    assert rows["old-0"]["publishable"] == "no" and rows["old-0"]["reviewer_note"].endswith("ungrounded=venue")
+    assert rows["old-1"]["publishable"] == "yes"
+    assert stats.grounding.marked_outside_apply == 1
+
+
 def test_grounding_can_be_turned_off(tmp_path: Path):
     ledger = _grounding_ledger(tmp_path, grounding=False)
     stats = apply_extractions(ledger, today=TODAY)
@@ -1454,6 +1505,41 @@ def test_grounding_text_rules():
     assert failures({"year": "2019", "venue": "Example Art Space, Seoul"}, text) == []
     assert failures({"year": "2020", "venue": ""}, text) == ["year"]
     assert failures({"year": "2018", "venue": "Example Museum"}, text) == ["year", "venue"]
+
+
+def test_grounding_normalisation_misses_found_on_the_production_copy():
+    """Each case is a correct reading the rule failed on the production copy of 2026-10-06 (fictitious names)."""
+    from giye.extract.grounding import CvText, failures
+    from giye.normalize.language import default_language
+
+    lang = default_language()
+    text = CvText.of(
+        "2022 Example Day Seoul South Korea Performance\n"
+        "2016年 ワークショップ｜アートラボ例示橋（\x08愛知）\n"
+        "2021 Example Show,Gallery Gallery,\"Antwerp, Belgium\"\n"
+        "2007 Monuments biennale, curated by A. Curator, 2nd Example Biennial\n"
+        "2017 TESTIGOS (WITNESSES)\n",
+        lang,
+    )
+    # A trailing country code is a place, not part of an institution name.
+    assert failures({"year": "2022", "venue": "Seoul KR", "title": "Example Day"}, text) == []
+    # A control character inside the text, and a Japanese name read as naming a place.
+    assert failures({"year": "2016", "venue": "アートラボ例示橋（愛知）"}, text) == []
+    # A generic name that is a whole segment of the text.
+    assert failures({"year": "2021", "venue": "Gallery Gallery, Antwerp, Belgium"}, text) == []
+    # A generic first part, and a later part that names the event.
+    assert failures({"year": "2007", "venue": "biennale, curated by A. Curator, 2nd Example Biennial"}, text) == []
+    # G-T reads the title up to a comma.
+    assert failures({"year": "2017", "venue": "", "title": "TESTIGOS, documental sobre el campo"}, text) == []
+    # A year stated as "N days ago", counted back from the snapshot's date.
+    from datetime import date
+
+    relative = CvText.of("Lume (Auto), 1635 days ago", lang, taken=date(2026, 9, 22))
+    assert failures({"year": "2022", "venue": "", "title": "Lume (Auto)"}, relative) == []
+    assert failures({"year": "2021", "venue": "", "title": "Lume (Auto)"}, relative) == ["year"]
+    # Still refused: a generic name that is the tail of a longer one, and an invented institution.
+    assert failures({"year": "2021", "venue": "Gallery, Antwerp"}, text) == ["venue"]
+    assert failures({"year": "2022", "venue": "Example Grand Hall, Seoul KR"}, text) == ["venue"]
 
 
 def test_grounding_venue_reads_the_institution_part():
