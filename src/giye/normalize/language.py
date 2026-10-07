@@ -124,6 +124,15 @@ class VenueWords:
     alternatives for a V8 part after a name in the pair's script or a Latin name.
     ``admin_offices`` and ``latin_admin_offices`` are the office markers of V8b
     (a district office is not the district). Longer markers are tried first.
+    ``national_prefixes`` (the script's own spelling, matched at the start of
+    the spaceless generic name) and ``national_tokens`` (the first Latin token)
+    are the V4n national markers. ``national_countries`` are the ISO codes in
+    which such a name is one institution: the module's own country, where a
+    national generic name is a government house name. Elsewhere several
+    institutions share one national designation (two cities' national museums
+    in one country), so V4n leaves them apart. ``host_roles`` are the V7f role words, removed
+    only at a token boundary. ``collaboration_phrases`` name a partner, not the
+    host, and are not removed. Another field supplies its own tuples.
     """
 
     script: str = ""
@@ -135,6 +144,11 @@ class VenueWords:
     latin_building_parts: tuple[str, ...] = ()
     admin_offices: tuple[str, ...] = ()
     latin_admin_offices: tuple[str, ...] = ()
+    national_prefixes: tuple[str, ...] = ()
+    national_tokens: tuple[str, ...] = ()
+    national_countries: tuple[str, ...] = ()
+    host_roles: tuple[str, ...] = ()
+    collaboration_phrases: tuple[str, ...] = ()
 
 
 # Korean–English words for V7b–d and V8 (docs/RULES.md). Tuple order is

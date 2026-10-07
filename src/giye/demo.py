@@ -215,7 +215,11 @@ def _institution_counts(merges: dict[str, int], processed: Path, lang: LanguageM
     another spelling is one of those merges.
     """
     counts = {
-        "V7": sum(count for rule, count in merges.items() if rule == "V7" or rule.startswith("V7")),
+        "V7": sum(
+            count
+            for rule, count in merges.items()
+            if rule.startswith("V7") and not rule.startswith("V7f")
+        ),
         "V8": merges.get("V8", 0),
         "V9": merges.get("V9", 0),
     }

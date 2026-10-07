@@ -63,7 +63,10 @@ LAYERS: tuple[tuple[str, frozenset[str] | None], ...] = (
     ("base", frozenset()),
     ("V7", frozenset({"V7"})),
     ("V7+V8", frozenset({"V7", "V8"})),
-    ("V7+V8+V9", None),
+    # Not None: None would also apply V4n, V7f and V9u. This ladder is the
+    # V7–V9 key merges the replay can reproduce. V4n remaps rows, so a layer
+    # that included it would not end where the replay ends.
+    ("V7+V8+V9", frozenset({"V7", "V8", "V9"})),
 )
 # Rules the replay applies one merge at a time, in this order. V7a–d come before them.
 MERGE_RULES = ("V7e", "V8", "V9")
@@ -296,8 +299,12 @@ def attribute_merges(
 
     per_rule = {rule: {"merges": 0, "merges_that_added_ties": 0, "ties_added": 0} for rule in MERGE_RULES}
     for rule, _kept, _joined in merges:
+        if rule not in per_rule:
+            continue
         per_rule[rule]["merges"] += 1
     for rule, kept, joined in merges:
+        if rule not in per_rule:
+            continue
         left_root, right_root = union_find.find(kept), union_find.find(joined)
         if left_root == right_root:
             continue

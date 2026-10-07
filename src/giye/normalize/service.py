@@ -98,7 +98,11 @@ class NormalizeResult:
 
 
 def parse_name_rules(raw: str | None) -> frozenset[str] | None:
-    """``None`` means V7, V8 and V9. ``none`` / ``off`` / ``base`` means none of them."""
+    """``None`` means every name rule. ``none`` / ``off`` / ``base`` means none of them.
+
+    Ids are matched without case, then stored as ``NAME_RULES`` spells them
+    (``V4n``, not ``V4N``).
+    """
     if raw is None:
         return None
     text = raw.strip()
@@ -106,11 +110,12 @@ def parse_name_rules(raw: str | None) -> frozenset[str] | None:
         return None
     if text.lower() in {"none", "off", "base"}:
         return frozenset()
-    chosen = frozenset(part.strip().upper() for part in text.split(",") if part.strip())
-    unknown = chosen - NAME_RULES
+    canonical = {rule.upper(): rule for rule in NAME_RULES}
+    parts = [part.strip() for part in text.split(",") if part.strip()]
+    unknown = sorted(part for part in parts if part.upper() not in canonical)
     if unknown:
-        raise ValueError(f"unknown venue name rules: {sorted(unknown)}")
-    return chosen
+        raise ValueError(f"unknown venue name rules: {unknown}")
+    return frozenset(canonical[part.upper()] for part in parts)
 
 
 def resolve_stored(config: Config, stored: str) -> Path:
@@ -531,7 +536,7 @@ def _report_text(
             f"- Activities whose venue yielded a country: {manifest['counts']['venue_country']} / {activities}"
             " (V1, G1–G6, every place-name fragment split on a delimiter)"
         ),
-        f"- Institution entities: {venue_result.stats['entities']} (V2–V6, then V7–V9)",
+        f"- Institution entities: {venue_result.stats['entities']} (V2–V9, then V4n, V7f, V9u)",
         f"- Institution entities shared by two or more distinct artists: {venue_result.stats['shared_entities']}",
         "- venue_kind: "
         + " · ".join(
@@ -607,7 +612,7 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
     """Write the processed layer for ``config``. Does not change the ledger.
 
     ``venue_name_rules`` overrides ``[normalize] venue_name_rules`` when it is
-    not ``None``. An empty config value applies V7, V8 and V9.
+    not ``None``. An empty config value applies every name rule (V7, V8, V9, V4n, V7f, V9u).
     """
     raw_rules = venue_name_rules if venue_name_rules is not None else config.venue_name_rules
     name_rules = parse_name_rules(raw_rules if raw_rules else None)

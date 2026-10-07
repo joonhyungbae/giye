@@ -79,7 +79,7 @@ The demo puts those phrases in `field.toml` and leaves this table out.
 | `reference` | path | unset | no | Passed to `load` as `reference`. A directory with `geonames/` and `countries/`. The GeoNames city list is not shipped (the packaged table carries only the Korean administrative units derived from GeoNames KR.txt). When set, it replaces the packaged city table. | `"reference"` |
 | `glossary` | path | unset | no | Passed to `load` as `glossary`. Replaces the packaged Korean–English glossary YAML. | `"glossary.yaml"` |
 | `gazetteer` | path | unset | no | Passed to `load` as `cities`. Replaces the packaged city table. Ignored when `reference` is set. | `"cities.tsv"` |
-| `venue_name_rules` | string or array of strings | `""` | no | `giye.normalize.service.parse_name_rules`. Empty means V7, V8, and V9. `none`, `off`, or `base` means none of them. A comma-separated string or a list is a subset of `V7`, `V8`, `V9`. The `giye normalize` CLI can override the file. | `"V7,V8"` |
+| `venue_name_rules` | string or array of strings | `""` | no | `giye.normalize.service.parse_name_rules`. Empty means every name rule (V7, V8, V9, V4n, V7f, V9u). `none`, `off`, or `base` means none of them. A comma-separated string or a list is a subset of those ids. The `giye normalize` CLI can override the file. | `"V7,V8"` |
 
 ## `[extract]`
 

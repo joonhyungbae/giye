@@ -169,7 +169,7 @@ def test_demo_v7_v8_v9_and_false_merges(tmp_path: Path) -> None:
     section = audit.split("## 7. Merges")[1]
     bullets = [line for line in section.splitlines() if line.startswith("- ") and not line.startswith("- none")]
     assert len(bullets) == len(result.merges)
-    assert all(line.split()[1] in {"V5a", "V5d", "V5f", "V7e", "V8", "V9"} for line in bullets)
+    assert all(line.split()[1] in {"V5a", "V5d", "V5f", "V7e", "V8", "V9", "V4n", "V7f", "V9u"} for line in bullets)
 
 
 def test_v3c_place_v8_branch_and_v8b_office(tmp_path: Path) -> None:
@@ -607,3 +607,189 @@ def test_venue_words_come_from_the_language_module() -> None:
     assert latin_part_parent("north museum wing", korean) == ""
     assert hangul_part_parent("서울시립미술관본관", korean) == "서울시립미술관"
     assert hangul_part_parent("서울시립미술관본관", toy) == ""
+
+
+def _without(*rules: str) -> frozenset[str]:
+    return NAME_RULES - set(rules)
+
+
+def test_v4n_joins_same_country_and_fold_and_refuses_the_rest(tmp_path: Path) -> None:
+    """V4n: one national museum per country when the display fold matches, article kept."""
+    rows = [
+        _row("seoul-a", "National Art Museum, Seoul", "p1"),
+        _row("seoul-b", "National Art Museum, Seoul", "p2"),
+        _row("busan", "National Art Museum, Busan", "p3"),
+        _row("berlin", "National Art Museum, Berlin", "p4"),
+        _row("bare", "National Art Museum", "p5"),
+        _row("kr-a", "국립미술관, 서울", "p6"),
+        _row("kr-b", "국립미술관, 부산", "p7"),
+    ]
+    result = build(rows, tmp_path, write=True)
+    seoul = result.annotations["seoul-a"]["venue_id"]
+    assert result.annotations["seoul-b"]["venue_id"] == seoul
+    assert result.annotations["busan"]["venue_id"] == seoul
+    assert result.annotations["berlin"]["venue_id"] != seoul
+    assert result.annotations["bare"]["venue_id"] != seoul
+    hangul = result.annotations["kr-a"]["venue_id"]
+    assert result.annotations["kr-b"]["venue_id"] == hangul
+    assert hangul != seoul
+    assert any(rule == "V4n" for rule, _kept, _joined in result.merges)
+    assert "V4n" in result.annotations["busan"]["venue_rule"]
+    keeper = next(row for row in result.venues if row["venue_id"] == seoul)
+    assert keeper["n_rows"] == 3
+    # Seoul and Busan are one entity. Berlin and the row with no city stay apart.
+    same_name = [row for row in result.venues if row["name"] == "National Art Museum"]
+    assert {row["venue_id"] for row in same_name} == {
+        seoul,
+        result.annotations["bare"]["venue_id"],
+        result.annotations["berlin"]["venue_id"],
+    }
+    audit = (tmp_path / "venue_audit.md").read_text(encoding="utf-8")
+    assert "### V4n — " in audit
+    merges = (tmp_path / "venue_merges.csv").read_text(encoding="utf-8")
+    assert "V4n," in merges
+
+    folded = build(
+        [
+            _row("the", "The National Art Museum, Seoul"),
+            _row("plain", "National Art Museum, Busan"),
+        ],
+        write=False,
+    )
+    assert folded.annotations["the"]["venue_id"] != folded.annotations["plain"]["venue_id"]
+    assert not any(rule == "V4n" for rule, _kept, _joined in folded.merges)
+
+    # Outside the module's national_countries two cities' national museums are
+    # two institutions (measured on the reference archive: two Polish cities).
+    abroad = build(
+        [
+            _row("ny", "National Art Museum, New York", "p1"),
+            _row("la", "National Art Museum, Los Angeles", "p2"),
+        ],
+        write=False,
+    )
+    assert abroad.annotations["ny"]["venue_id"] != abroad.annotations["la"]["venue_id"]
+    assert not any(rule == "V4n" for rule, _kept, _joined in abroad.merges)
+
+    bare_module = build(rows, lang=KoreanEnglish.load(), write=False)
+    assert bare_module.annotations["seoul-a"]["venue_id"] != bare_module.annotations["busan"]["venue_id"]
+    assert not any(rule == "V4n" for rule, _kept, _joined in bare_module.merges)
+
+
+def test_v7f_strips_a_role_on_a_token_boundary_only_when_the_key_exists() -> None:
+    """V7f: the role leaves the display name only when the stripped entity is already there.
+
+    A spaced Hangul name and the same name without spaces are already one entity
+    under V7d, so the glued spelling is tested on its own. The display name is
+    then the glued text, and the role is not a token.
+    """
+    rows = [
+        _row("base", "예시문화재단", "p1"),
+        _row("host", "예시문화재단 주최", "p2"),
+        _row("lead", "주최 예시문화재단", "p3"),
+        _row("collab", "예시문화재단 협력", "p4"),
+        _row("partner", "in collaboration with 예시문화재단", "p5"),
+        _row("missing", "예시창작재단 후원", "p6"),
+        _row("split", "예시국립미술관, 예시문화재단 주최", "p7"),
+        _row("gallery", "Yesi Gallery", "p8"),
+        _row("english", "supported by Yesi Gallery", "p9"),
+    ]
+    result = build(rows, write=False)
+    base = result.annotations["base"]["venue_id"]
+    assert result.annotations["host"]["venue_id"] == base
+    assert result.annotations["host"]["funder_id"] == base
+    assert result.annotations["lead"]["venue_id"] == base
+    assert result.annotations["english"]["venue_id"] == result.annotations["gallery"]["venue_id"]
+    for activity_id in ("collab", "partner", "missing"):
+        assert result.annotations[activity_id]["venue_id"] != base, activity_id
+    museum = result.annotations["split"]["venue_id"]
+    assert museum != base
+    assert result.annotations["split"]["funder_id"] == base
+    assert any(rule == "V7f" for rule, _kept, _joined in result.merges)
+    assert not any(rule == "V7f" and "예시창작재단" in joined for rule, _kept, joined in result.merges)
+
+    for glued in ("예시문화재단주최", "주최예시문화재단"):
+        alone = build([_row("base", "예시문화재단"), _row("glued", glued)], write=False)
+        assert alone.annotations["base"]["venue_id"] != alone.annotations["glued"]["venue_id"], glued
+        assert not any(rule == "V7f" for rule, _kept, _joined in alone.merges)
+
+
+def test_v9u_joins_only_a_unique_pair_that_passes_the_spelling_gate() -> None:
+    """V9u: unique exact bag, one reading, same country. V9 already takes a clean pair."""
+    # A clean pair is one entity under V9, so the V9u join is observed with V9 off:
+    # that is the situation of a pair V9 left as two entities.
+    rules = _without("V9")
+    joined = build(
+        [_row("h", "예시갤러리", "p1"), _row("l", "Yesi Gallery", "p2")],
+        name_rules=rules,
+        write=False,
+    )
+    assert joined.annotations["h"]["venue_id"] == joined.annotations["l"]["venue_id"]
+    assert any(rule == "V9u" for rule, _kept, _joined in joined.merges)
+    assert len(joined.venues) == 1
+
+    with_v9 = build(
+        [_row("h", "예시갤러리", "p1"), _row("l", "Yesi Gallery", "p2")],
+        write=False,
+    )
+    assert with_v9.annotations["h"]["venue_id"] == with_v9.annotations["l"]["venue_id"]
+    assert any(rule == "V9" for rule, _kept, _joined in with_v9.merges)
+    assert not any(rule == "V9u" for rule, _kept, _joined in with_v9.merges)
+
+    ambiguous = build(
+        [
+            _row("h", "예시갤러리", "p1"),
+            _row("a", "Yesi Gallery", "p2"),
+            _row("b", "Gallery Yesi", "p3"),
+        ],
+        name_rules=rules,
+        write=False,
+    )
+    assert len({ambiguous.annotations[key]["venue_id"] for key in ("h", "a", "b")}) == 3
+    assert not any(rule == "V9u" for rule, _kept, _joined in ambiguous.merges)
+
+    abroad = build(
+        [_row("h", "예시갤러리, Seoul", "p1"), _row("l", "Yesi Gallery, Berlin", "p2")],
+        name_rules=rules,
+        write=False,
+    )
+    assert abroad.annotations["h"]["venue_id"] != abroad.annotations["l"]["venue_id"]
+
+    two_readings = build(
+        [_row("h", "예시문화재단", "p1"), _row("l", "Yesi Culture Foundation", "p2")],
+        name_rules=rules,
+        write=False,
+    )
+    assert two_readings.annotations["h"]["venue_id"] != two_readings.annotations["l"]["venue_id"]
+
+    stored = build(
+        [
+            _row("h", "예시갤러리 (Yesi Art Hall)", "p1"),
+            _row("l", "Yesi Gallery", "p2"),
+        ],
+        name_rules=rules,
+        write=False,
+    )
+    assert stored.annotations["h"]["venue_id"] != stored.annotations["l"]["venue_id"]
+    assert any(rule == "V5f" for rule, _kept, _joined in stored.merges)
+
+
+def test_v4n_v7f_v9u_ablation_leaves_the_entities_apart() -> None:
+    """``--venue-name-rules`` can turn the three rules off without turning V7–V9 off."""
+    from giye.normalize.service import parse_name_rules
+
+    assert parse_name_rules("v4n,V7F,V9U") == frozenset({"V4n", "V7f", "V9u"})
+    rows = [
+        _row("seoul", "National Art Museum, Seoul", "p1"),
+        _row("busan", "National Art Museum, Busan", "p2"),
+        _row("base", "예시문화재단", "p3"),
+        _row("host", "예시문화재단 주최", "p4"),
+        _row("h", "예시갤러리", "p5"),
+        _row("l", "Yesi Gallery", "p6"),
+    ]
+    off = build(rows, name_rules=_without("V4n", "V7f", "V9u"), write=False)
+    assert off.annotations["seoul"]["venue_id"] != off.annotations["busan"]["venue_id"]
+    assert off.annotations["base"]["venue_id"] != off.annotations["host"]["venue_id"]
+    # V9 still joins the clean bilingual pair. V9u does not add a second join.
+    assert off.annotations["h"]["venue_id"] == off.annotations["l"]["venue_id"]
+    assert not any(rule in {"V4n", "V7f", "V9u"} for rule, _kept, _joined in off.merges)

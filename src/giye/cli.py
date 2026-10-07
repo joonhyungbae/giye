@@ -540,7 +540,10 @@ def _add_stage_parsers(sub: argparse._SubParsersAction) -> None:
             sp.add_argument(
                 "--venue-name-rules",
                 default=None,
-                help="Ablation: comma-separated V7,V8,V9, or 'none'. Default: the config, else all three.",
+                help=(
+                    "Ablation: comma-separated subset of V7,V8,V9,V4n,V7f,V9u, or 'none'. "
+                    "Default: the config, else all of them."
+                ),
             )
         if stage == "explore":
             sp.add_argument(
