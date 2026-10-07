@@ -166,7 +166,8 @@ def test_demo_v7_v8_v9_and_false_merges(tmp_path: Path) -> None:
     assert ids["현대나비"] == ids["Contemporary Nabi"]
     assert ids["현대나비"] != ids["Modern Nabi"]
     audit = (tmp_path / "venue_audit.md").read_text(encoding="utf-8")
-    section = audit.split("## 7. Merges")[1]
+    # Section 8 is the country fill. The merge bullets are only section 7.
+    section = audit.split("## 7. Merges")[1].split("\n## ")[0]
     bullets = [line for line in section.splitlines() if line.startswith("- ") and not line.startswith("- none")]
     assert len(bullets) == len(result.merges)
     assert all(line.split()[1] in {"V5a", "V5d", "V5f", "V7e", "V8", "V9", "V4n", "V7f", "V9u"} for line in bullets)

@@ -149,6 +149,18 @@ class VenueWords:
     national_countries: tuple[str, ...] = ()
     host_roles: tuple[str, ...] = ()
     collaboration_phrases: tuple[str, ...] = ()
+    # G7. A Hangul name that starts with one of these is in this module's country.
+    # Longest first. A bare national-museum marker (국립) is not in the list: it
+    # also begins foreign museums. ``place_suffixes`` are stripped to form a
+    # place stem of at least two syllables (서울시 → 서울; a one-syllable stem is
+    # not kept). ``hall_words`` continue a place prefix as a tour (순회), and
+    # ``province_continuations`` continue it into a name that is not a Korean
+    # place (사천 + 성). ``conjunction_marks`` start a second party (한국 & 일본).
+    country_markers: tuple[str, ...] = ()
+    place_suffixes: tuple[str, ...] = ()
+    hall_words: tuple[str, ...] = ()
+    province_continuations: tuple[str, ...] = ()
+    conjunction_marks: tuple[str, ...] = ()
 
 
 # Korean–English words for V7b–d and V8 (docs/RULES.md). Tuple order is
@@ -181,6 +193,15 @@ KO_EN_VENUE_WORDS = VenueWords(
     # V8b. A city hall is not the city. Longer suffixes first when matched.
     admin_offices=("주민센터", "구청", "시청", "군청", "도청"),
     latin_admin_offices=("district office", "city hall"),
+    # G7 country markers. 국립 is a V4n national prefix, not a country marker.
+    country_markers=("대한민국", "한국"),
+    # Longest first, so 특별자치시 is removed before 시.
+    place_suffixes=("특별자치시", "특별자치도", "특별시", "광역시", "시", "군", "구", "도"),
+    # A tour is not the place the prefix names. The hall guard itself reads stored
+    # institutions, not this list; the list is the prefix continuation that blocks a fill.
+    hall_words=("순회",),
+    province_continuations=("성",),
+    conjunction_marks=("&", "/", "·"),
 )
 
 

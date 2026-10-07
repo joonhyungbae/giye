@@ -45,7 +45,8 @@ VENUE_FIELDS = [
 # N-8: every join, machine-readable (the audit's section 7 is Markdown).
 MERGE_FIELDS = ["rule", "venue_id", "kept_key", "joined_key"]
 # Order of the rule ids in ``venue_rule`` and ``rules``.
-RULE_ORDER = ("V4", "V4n", "V7", "V5a", "V5d", "V5f", "V7e", "V7f", "V8", "V9", "V9u")
+# G7–G11 fill an empty country (docs/RULES.md). They are not merge rules.
+RULE_ORDER = ("V4", "V4n", "V7", "V5a", "V5d", "V5f", "V7e", "V7f", "V8", "V9", "V9u", "G7", "G8", "G9", "G10", "G11")
 # V2 separators. The full-width and ideographic commas and semicolon split like
 # their ASCII forms (예시미술관，서울); before 2026-10-06 they did not (audit m1).
 SPLIT_CHARS = {",", "/", "|", "·", ";", "，", "、", "；", "\x1f"}
@@ -117,6 +118,8 @@ class BuildResult:
     root_before_name_rules: dict[str, str] = field(default_factory=dict)
     name_rule_merges: list[tuple[str, str, str]] = field(default_factory=list)
     merges: list[tuple[str, str, str]] = field(default_factory=list)
+    # venue_id → (country, region, rule ids) for entities whose stored country was empty.
+    country_fills: dict[str, tuple[str, str, str]] = field(default_factory=dict)
 
 
 class UnionFind:
@@ -596,8 +599,8 @@ def _audit_sample_lines(
     lines = [
         "# Place and institution entity-resolution audit sample",
         "",
-        "Rules G1–G6 · V2–V9, V4n, V7f, V9u. Random sample seed: `20260925`.",
-        "Section 7 lists every merge and the rule that made it.",
+        "Rules G1–G6 · V2–V9, V4n, V7f, V9u · G7–G11 country fill. Random sample seed: `20260925`.",
+        "Section 7 lists every merge and the rule that made it. Section 8 lists the country fill.",
         "",
         "## 1. Random sample of activity rows",
         "",
@@ -1032,12 +1035,14 @@ def build(
     name_rules: frozenset[str] | None = None,
     write: bool = True,
     lang: LanguageModule | None = None,
+    frames: list[tuple[str, str, str]] | None = None,
 ) -> BuildResult:
     """Build venue entities from activity rows.
 
     ``name_rules=None`` applies V7 (spelling and V7e), V8, V9, V4n, V7f and V9u.
     ``write=False`` skips ``venues.csv`` and ``venue_audit.md``. ``lang`` defaults
-    to the Korean–English module.
+    to the Korean–English module. ``frames`` is ``(code, name_ko, name_en)`` from
+    the registry; G8 reads those names and nothing else on the frame.
     """
     rules = NAME_RULES if name_rules is None else frozenset(name_rules)
     unknown = rules - NAME_RULES
@@ -1048,7 +1053,7 @@ def build(
     language = lang or load_language("giye.normalize.lang.ko_en:KoEn")
     token = _V7_SPELLING.set("V7" in rules)
     try:
-        return _resolve(activity_rows, out_dir, rules, write, language)
+        return _resolve(activity_rows, out_dir, rules, write, language, frames or [])
     finally:
         _V7_SPELLING.reset(token)
 
@@ -1927,6 +1932,7 @@ def _resolve(
     rules: frozenset[str],
     write: bool,
     lang: LanguageModule,
+    frames: list[tuple[str, str, str]],
 ) -> BuildResult:
     """V2–V6, then whichever of V7e/V8/V9 are in ``rules``. The caller sets V7 spelling.
 
@@ -1987,6 +1993,22 @@ def _resolve(
     )
     all_merges = [*all_merges, *extra]
     rule_merges = [*rule_merges, *extra]
+    # Imported here: country fill reads venue rows this function has just built.
+    from giye.normalize.country import apply_country_fill
+
+    country = apply_country_fill(
+        parsed,
+        annotations,
+        venue_rows,
+        row_roots,
+        redirect,
+        entity_by_root,
+        lang,
+        frames,
+        key_of=lambda text: institution_key(text, lang),
+        pairs_of=bracketed_pairs,
+        rule_order=RULE_ORDER,
+    )
     if write:
         assert out_dir is not None
         _write_csv(out_dir / "venues.csv", venue_rows)
@@ -2019,7 +2041,9 @@ def _resolve(
                 lang,
                 absorbed,
                 redirect,
-            ),
+            ).rstrip()
+            + "\n"
+            + "\n".join(country["audit"]),
             encoding="utf-8",
         )
     stats = {
@@ -2032,6 +2056,7 @@ def _resolve(
         "qualified_alias_pairs": len(qualified_pairs),
         "alias_entities": len(alias_roots),
         "blocked_alias_components": len(blocked_components),
+        "country_fill": country["counts"],
     }
     return BuildResult(
         annotations=annotations,
@@ -2041,4 +2066,5 @@ def _resolve(
         root_before_name_rules=root_before_name_rules,
         name_rule_merges=rule_merges,
         merges=all_merges,
+        country_fills=country["cv_fills"],
     )

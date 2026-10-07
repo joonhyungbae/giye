@@ -119,6 +119,23 @@ class Index(NamedTuple):
     us_admin_codes: set[str]
 
 
+def hangul_admin_places(path: Path) -> list[tuple[str, str, str]]:
+    """Hangul names in a ``kr_places.tsv``: ``(name, admin1, published region)``.
+
+    English rows are omitted. The region is the published ``KR_REGION`` tag, or
+    ``기타`` for a Korean province that tag does not list. G7 stems these names;
+    the file is the packaged table, not whatever extra cities a GeoNames tree adds.
+    """
+    rows: list[tuple[str, str, str]] = []
+    for row in _read_tsv(path):
+        name = (row.get("name") or "").strip()
+        if not name or not HANGUL.search(name):
+            continue
+        admin1 = row.get("admin1") or ""
+        rows.append((name, admin1, KR_REGION.get(admin1, "기타")))
+    return rows
+
+
 def place_key(text: str) -> str:
     """Comparison key: stripped, lower-cased, surrounding punctuation removed."""
     return re.sub(r"\s+", " ", text.strip().lower().strip(".,;:()[]\"'"))

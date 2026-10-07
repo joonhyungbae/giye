@@ -167,6 +167,46 @@ def _table(config: Config, filename: str) -> list[dict[str, str]]:
     return read_csv(config.ledger / filename)
 
 
+def _frame_names(config: Config) -> list[tuple[str, str, str]]:
+    """``(code, name_ko, name_en)`` for G8. A missing registry is an empty list.
+
+    The same loader the rest of the pipeline uses. Event patterns and text
+    inside parentheses are not names of this rule.
+    """
+    if not config.frames.is_file():
+        return []
+    from giye.collect.frames import load_frames
+
+    return [(frame.code, frame.name_ko, frame.name_en) for frame in load_frames(config.frames).frames]
+
+
+def _stamp_country_fills(activity_out: list[dict[str, str]], fills: dict[str, tuple[str, str, str]]) -> None:
+    """Write a country fill onto a CV row whose V1 country is empty.
+
+    A stored V1 country, and its region, stay as they are. The fill is the
+    entity's own G7–G10 result, not a copy of a country the entity already had.
+    """
+    for row in activity_out:
+        if not str(row.get("origin") or "").startswith("cv:"):
+            continue
+        if row.get("venue_country"):
+            continue
+        fill = fills.get(row.get("venue_id") or "")
+        if not fill:
+            continue
+        country, region, rules = fill
+        row["venue_country"] = country
+        if region and not row.get("venue_region"):
+            row["venue_region"] = region
+        extra = [part for part in rules.split("|") if part]
+        for column in ("rules", "venue_rule"):
+            current = [part for part in (row.get(column) or "").split("|") if part]
+            for part in extra:
+                if part not in current:
+                    current.append(part)
+            row[column] = "|".join(current)
+
+
 def _frame_rows(config: Config) -> list[dict[str, str]]:
     """Registry frames as the dicts P6's published-person test reads.
 
@@ -551,7 +591,7 @@ def _report_text(
         "",
         (
             f"- Activities whose venue yielded a country: {manifest['counts']['venue_country']} / {activities}"
-            " (V1, G1–G6, every place-name fragment split on a delimiter)"
+            " (V1, G1–G6, then G7–G11 when the V1 country is empty)"
         ),
         f"- Institution entities: {venue_result.stats['entities']} (V2–V9, then V4n, V7f, V9u)",
         f"- Institution entities shared by two or more distinct artists: {venue_result.stats['shared_entities']}",
@@ -665,8 +705,11 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
     tags = config.field_config.resolved()
     flags, links = _flags_and_links(loaded.by_artist, loaded.frames_of, patterns)
     venue_places = _places_by_venue(loaded.activities, language)
-    venue_result = build(loaded.activities, out, name_rules=name_rules, lang=language)
+    venue_result = build(
+        loaded.activities, out, name_rules=name_rules, lang=language, frames=_frame_names(config)
+    )
     activity_out = _activity_rows(loaded.activities, venue_places, venue_result, links, flags)
+    _stamp_country_fills(activity_out, venue_result.country_fills)
     attributes, filled, depth_counts = _derive_attributes(
         config,
         loaded.artists,
