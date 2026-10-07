@@ -124,6 +124,7 @@ def resolve_ledger(ledger: Ledger, *, dry_run: bool = False) -> ResolveResult:
 class _State:
     def __init__(self, ledger: Ledger) -> None:
         self.ledger = ledger
+        # Shared event patterns only. [resolve.edition_only] is P4 (event_links), not E2.
         self.patterns = pattern_table(ledger.config.field_config.event_patterns, ledger.config.event_patterns)
         self.team_prefix = ledger.config.field_config.team_prefix or "팀:"
         self.team_words = ledger.config.field_config.compiled_team_words()

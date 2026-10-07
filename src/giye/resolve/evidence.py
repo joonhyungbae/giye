@@ -12,6 +12,7 @@ E2. One row's CV names the event on the other's roster in that edition's year,
 give or take one year. An edition both rows are on is not used. The event regex comes from the field file
 (``[resolve.events]``) plus ``[resolve.event_patterns]`` in the archive config.
 A prefix in the config replaces the field file's pattern for that prefix.
+``[resolve.edition_only]`` is not read here: those fragments are P4 only.
 
 E3. A work title in brackets (``〈…〉``, ``<…>``, ``《…》``, and the same family)
 appears on both roster rows, or on one roster row and the other's CV (as
@@ -84,8 +85,10 @@ GENERIC_TITLE_RECORDS = 4
 def pattern_table(*layers: tuple[tuple[str, str], ...]) -> dict[str, str]:
     """Merge pattern tables. A later layer replaces a key and keeps its position.
 
-    The field file is the first layer. ``[resolve.event_patterns]`` is the next,
-    so a configured prefix overrides the field without reordering the rest.
+    The field file is the first layer. A config table is the next, so a
+    configured prefix overrides the field without reordering the rest.
+    E2 passes ``[resolve.events]`` then ``[resolve.event_patterns]``.
+    P4 passes ``[resolve.edition_only]`` the same way, as its own table.
     """
     table: dict[str, str] = {}
     for layer in layers:

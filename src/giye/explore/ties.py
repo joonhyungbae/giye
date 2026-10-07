@@ -21,7 +21,8 @@ Roster independent (``roster_independent_ties``)
     year flags are not read, as in the flock evaluation. A row is dropped when
     it restates one of the same person's roster editions: the edition code ends
     ``-YYYY``, that year equals the row's year, and the edition's event pattern
-    (rule E2's table, from the field file and ``[resolve.event_patterns]``)
+    (rule E2's table, from the field file and ``[resolve.event_patterns]``;
+    ``[resolve.edition_only]`` is not read)
     matches the normalised title and venue. E2 itself allows one year either
     way; this filter does not, because the row is the programme the person is
     already on, not a neighbouring year. An undated edition, or a code with no

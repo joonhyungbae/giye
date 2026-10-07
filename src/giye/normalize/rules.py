@@ -235,29 +235,62 @@ def venue_place(venue: str, gazetteer: Gazetteer) -> tuple[str, str]:
     return (got[1], got[2]) if got else ("", "")
 
 
+def join_patterns(shared: str | None, extra: str | None) -> str | None:
+    """P4: the shared event regex, then the edition-only regex.
+
+    Either side may be absent. A prefix that exists only on the edition-only
+    table still links. Each side is wrapped so an alternation inside one does
+    not bind into the other. E2 does not call this.
+    """
+    parts = [part for part in (shared, extra) if part]
+    if not parts:
+        return None
+    if len(parts) == 1:
+        return parts[0]
+    return "|".join(f"(?:{part})" for part in parts)
+
+
 def event_links(
     rows: list[dict],
     memberships: list[str],
     event_pattern: Callable[[str], str | None],
-) -> dict[str, str]:
+    edition_pattern: Callable[[str], str | None] | None = None,
+) -> tuple[dict[str, str], set[str]]:
     """P4: activity_id → frame edition it is an account of.
 
     A roster row (origin = a frame code) is its edition. A CV row is linked to
     an edition of a frame the artist is on when its title or venue names that
-    frame's event in that edition's year. Rows stay as they are. The stored
-    value is the frame code. This is not identity rule E1 (docs/RULES.md): E1
-    joins two people who share a website, and reusing that id here would make
-    the two rules indistinguishable.
+    frame's event in that edition's year. The shared regex is tried first; the
+    edition-only regex (``[resolve.edition_only]``) is joined after it and is
+    not an E2 pattern. Rows stay as they are. The stored value is the frame
+    code. This is not identity rule E1 (docs/RULES.md): E1 joins two people who
+    share a website, and reusing that id here would make the two rules
+    indistinguishable.
+
+    The set is activity ids whose CV link matched only the edition-only regex
+    (rule P4a). A shared-regex hit is not in the set. Roster rows are not in it.
     """
     out: dict[str, str] = {}
-    editions = []
+    only_edition: set[str] = set()
+    editions: list[tuple[str, int, re.Pattern[str] | None, re.Pattern[str] | None]] = []
     # Sorted codes: when two editions of one year both match, the smaller code
     # wins, whatever order the membership rows are in.
     for code in sorted(set(memberships)):
         match = re.search(r"-(\d{4})$", code)
-        pattern = event_pattern(code)
-        if match and pattern:
-            editions.append((code, int(match.group(1)), re.compile(pattern, re.IGNORECASE)))
+        if not match:
+            continue
+        shared = event_pattern(code)
+        extra = edition_pattern(code) if edition_pattern else None
+        if not shared and not extra:
+            continue
+        editions.append(
+            (
+                code,
+                int(match.group(1)),
+                re.compile(shared, re.IGNORECASE) if shared else None,
+                re.compile(extra, re.IGNORECASE) if extra else None,
+            )
+        )
     for row in rows:
         origin = row.get("origin") or ""
         if origin in memberships:
@@ -266,11 +299,18 @@ def event_links(
         if not origin.startswith("cv:") or not str(row.get("year", "")).isdigit():
             continue
         text = f"{row.get('title', '')} {row.get('venue', '')}"
-        for code, year, compiled in editions:
-            if int(row["year"]) == year and compiled.search(text):
-                out[row["activity_id"]] = code
-                break
-    return out
+        for code, year, shared_re, extra_re in editions:
+            if int(row["year"]) != year:
+                continue
+            shared_hit = bool(shared_re and shared_re.search(text))
+            extra_hit = bool(extra_re and extra_re.search(text))
+            if not shared_hit and not extra_hit:
+                continue
+            out[row["activity_id"]] = code
+            if extra_hit and not shared_hit:
+                only_edition.add(row["activity_id"])
+            break
+    return out, only_edition
 
 
 # ── P6 record depth ──────────────────────────────────────────────────────────────────────────────

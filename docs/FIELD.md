@@ -28,6 +28,17 @@ These rows are not inherited. A field that omits the table has no E2 phrases of 
 EXAMPLE-RESIDENCY = '예시 ?레지던시|example residency'
 ```
 
+### `[resolve.edition_only]`
+
+Table, same shape as `[resolve.events]`. P4 only. `event_links` joins the regex after the shared one for the same prefix. E2 does not read it, and it is not inherited. A prefix in `giye.toml` `[resolve.edition_only]` replaces that prefix. A CV row that matches only this regex records `P4|P4a`.
+
+The shipped Korean media-art rows are the fragments `discover()` then `admission_gate` admit (Hangul runs of at least eight characters from `f1_purpose` included). The generator is `data/work/phase0/p4/round4.py`. On the reference ledger (2026-10-08) they add 21 standing CV links and 0 E2 pairs.
+
+```toml
+[resolve.edition_only]
+EXAMPLE-ONLY = 'edition only phrase'
+```
+
 ### `[attach]`
 
 Rule A1. A trailing `-YYYY` is removed, then the first matching prefix, then an exact base, then the base itself. `giye.field.frame_family`. Not inherited.

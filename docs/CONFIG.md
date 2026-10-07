@@ -71,6 +71,17 @@ EXAMPLE-RESIDENCY = "example residency"
 
 The demo puts those phrases in `field.toml` and leaves this table out.
 
+### `[resolve.edition_only]`
+
+Optional table. Key: frame-code prefix. Value: regex. Read only by P4 (`giye.normalize.rules.event_links`), joined after the shared regex for that prefix. E2 (`giye.resolve.evidence.cv_mentions`, `giye.resolve.service`) and `giye.explore.ties` do not read it. `giye.resolve.evidence.pattern_table` merges the field file's `[resolve.edition_only]` first, then this table. A prefix listed here replaces that prefix and keeps the field file's order for the rest. A CV row that matches the shared regex stays `P4`. A row that matches only this regex is `P4|P4a`.
+
+The shipped Korean media-art rows are the fragments `discover()` then `admission_gate` admit, including Hangul runs of at least eight characters from `f1_purpose`. The generator stays in `data/work/phase0/p4/` (not `scripts/`). Regenerate with `/usr/bin/python3 data/work/phase0/p4/round4.py`. On the reference ledger those fragments add 21 standing CV links and 0 E2 events. Sharing them with E2 would add 1,380 pairs.
+
+```toml
+[resolve.edition_only]
+EXAMPLE-ONLY = "edition only phrase"
+```
+
 ## `[normalize]`
 
 | Key | Type | Default | Required | Read by | Example |

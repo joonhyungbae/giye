@@ -9,7 +9,7 @@ medium). Outputs:
                           and K1 activity_kind / activity_channel.
                           venue_rule names the rules that put the row at its entity
                           (V4, V7, V5a…V9); rules names every rule that filled a value
-                          of the row (P2, V1, P3, P4, Y0–Y2, K1 and the kind reason).
+                          of the row (P2, V1, P3, P4, P4a when only the edition-only pattern matched, Y0–Y2, K1 and the kind reason).
   artist_attributes.csv   one row per derived value, with rule and evidence.
                           P6 record_depth (1–4) is one row per published person.
                           It has no ledger cell and is not copied into the site snapshot.
@@ -58,7 +58,8 @@ from giye.normalize.venues import NAME_RULES, BuildResult, build
 from giye.resolve.evidence import event_pattern, pattern_table
 from giye.resolve.teams import team_like
 
-# 2026-10-08 adds K1 activity kind. P1–P6 are unchanged.
+# 2026-10-08 adds K1 activity kind, and P4 reads [resolve.edition_only] (P4a)
+# after the shared regex. Three shared patterns are tightened (P4b). P1–P6 stay.
 RULES_VERSION = "2026-10-08"
 ACT_FIELDS = [
     "activity_id",
@@ -313,18 +314,29 @@ def _flags_and_links(
     by_artist: dict[str, list[dict[str, str]]],
     frames_of: dict[str, list[str]],
     patterns: dict[str, str],
-) -> tuple[dict[str, list[str]], dict[str, str]]:
-    """P1 year flags and P4 edition links, one pass per artist."""
+    edition_patterns: dict[str, str],
+) -> tuple[dict[str, list[str]], dict[str, str], set[str]]:
+    """P1 year flags and P4 edition links, one pass per artist.
 
-    def pattern_for(code: str) -> str | None:
+    ``edition_patterns`` is ``[resolve.edition_only]``. It is joined after the
+    shared regex inside ``event_links`` and is not passed to E2.
+    """
+
+    def shared_for(code: str) -> str | None:
         return event_pattern(code, patterns)
+
+    def edition_for(code: str) -> str | None:
+        return event_pattern(code, edition_patterns)
 
     flags: dict[str, list[str]] = {}
     links: dict[str, str] = {}
+    edition_only_ids: set[str] = set()
     for ledger_id, rows in by_artist.items():
         flags.update(year_flags(rows))  # P1
-        links.update(event_links(rows, frames_of.get(ledger_id, []), pattern_for))  # P4
-    return flags, links
+        linked, only = event_links(rows, frames_of.get(ledger_id, []), shared_for, edition_for)  # P4
+        links.update(linked)
+        edition_only_ids.update(only)
+    return flags, links, edition_only_ids
 
 
 def _places_by_venue(
@@ -340,12 +352,19 @@ def _places_by_venue(
 
 
 def _row_rules(
-    country: str, annotation: dict[str, str], link: str, row_flags: list[str], kind_reason: str
+    country: str,
+    annotation: dict[str, str],
+    link: str,
+    row_flags: list[str],
+    kind_reason: str,
+    edition_only: bool = False,
 ) -> str:
     """N-8: the rule ids behind the derived values of one processed activity row.
 
     K1 is always present. ``kind_reason`` is the clause that chose the kind
     (``private_section``, ``award_grant``, ``roster_token_<word>``, ``roster_session``).
+    A shared-regex edition link is ``P4``. A link that matched only
+    ``[resolve.edition_only]`` is ``P4|P4a``.
     """
     found = ["P2"]
     if country:
@@ -354,6 +373,8 @@ def _row_rules(
         found.append("P3")
     if link:
         found.append("P4")
+        if edition_only:
+            found.append("P4a")
     found.extend(FLAG_RULES.get(flag, flag) for flag in row_flags)
     found.append("K1")
     if kind_reason and kind_reason not in found:
@@ -367,6 +388,7 @@ def _activity_rows(
     venue_result: BuildResult,
     links: dict[str, str],
     flags: dict[str, list[str]],
+    edition_only_ids: set[str] | None = None,
 ) -> list[dict[str, str]]:
     """One processed activity row per ledger row: P2 text, V1 place, entity ids, P4, P1, K1."""
     activity_out: list[dict[str, str]] = []
@@ -399,7 +421,14 @@ def _activity_rows(
                 "flags": "|".join(row_flags),
                 "activity_kind": kind.kind,
                 "activity_channel": kind.channel,
-                "rules": _row_rules(country, annotation, link, row_flags, kind.reason),
+                "rules": _row_rules(
+                    country,
+                    annotation,
+                    link,
+                    row_flags,
+                    kind.reason,
+                    activity_id in (edition_only_ids or ()),
+                ),
             }
         )
     return activity_out
@@ -701,9 +730,12 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
     snippet_path = config.work / "tendency" / "snippets.jsonl"
     snippets = load_snippet_classes(snippet_path, _gy_to_ledger(config, loaded.artists))
 
+    # E2 reads `patterns` only. `edition` is P4: joined after the shared regex
+    # inside event_links, and not passed to resolve or to explore.ties.
     patterns = pattern_table(config.field_config.event_patterns, config.event_patterns)
+    edition = pattern_table(config.field_config.edition_only, config.edition_only)
     tags = config.field_config.resolved()
-    flags, links = _flags_and_links(loaded.by_artist, loaded.frames_of, patterns)
+    flags, links, edition_only_ids = _flags_and_links(loaded.by_artist, loaded.frames_of, patterns, edition)
     venue_places = _places_by_venue(loaded.activities, language)
     venue_result = build(
         loaded.activities,
@@ -713,7 +745,9 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
         frames=_frame_names(config),
         links=links,
     )
-    activity_out = _activity_rows(loaded.activities, venue_places, venue_result, links, flags)
+    activity_out = _activity_rows(
+        loaded.activities, venue_places, venue_result, links, flags, edition_only_ids
+    )
     _stamp_country_fills(activity_out, venue_result.country_fills)
     attributes, filled, depth_counts = _derive_attributes(
         config,

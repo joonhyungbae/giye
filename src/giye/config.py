@@ -35,6 +35,11 @@ Example (see examples/demo/giye.toml)::
     [resolve.event_patterns]
     EXAMPLE-RESIDENCY = "example residency"
 
+    # Optional. P4 only. Merged with the field file's [resolve.edition_only].
+    # E2 does not read it. A prefix here replaces that prefix's edition-only regex.
+    [resolve.edition_only]
+    EXAMPLE-ONLY = "edition only phrase"
+
     [resolve]
     cv_dir = "fixtures/cv"      # local HTML CVs, matched to people by name
     # generic_title_records = 4 # E3: a title this many records use is not evidence; 0 = off
@@ -185,6 +190,8 @@ class Config:
     # Extra E2 event patterns (frame-code prefix → regex). Merged after the field
     # file; a key here replaces that prefix's pattern.
     event_patterns: tuple[tuple[str, str], ...] = ()
+    # P4-only patterns. Merged the same way. E2 does not read this table.
+    edition_only: tuple[tuple[str, str], ...] = ()
     # Local HTML CVs, read by name. Extracted JSON at data/work/cv_extract/<id>.json
     # is preferred when that file exists (see giye.resolve.cv).
     cv_dir: Path | None = None
@@ -432,7 +439,8 @@ def load(path: str | Path) -> Config:
         tls_fallback=_tls_fallback(collect),
         offline_roots=_offline_roots(root, collect),
         collector_modules=_collector_modules(collect),
-        event_patterns=_event_patterns(resolve),
+        event_patterns=_pattern_table(resolve, "event_patterns"),
+        edition_only=_pattern_table(resolve, "edition_only"),
         cv_dir=cv_path,
         generic_title_records=_generic_title_records(resolve.get("generic_title_records", 4)),
         normalize_reference=_optional_path(root, normalize.get("reference")),
@@ -687,8 +695,9 @@ def _language_module(value: object) -> str:
     return value
 
 
-def _event_patterns(resolve: dict) -> tuple[tuple[str, str], ...]:
-    raw = resolve.get("event_patterns") or {}
+def _pattern_table(resolve: dict, key: str) -> tuple[tuple[str, str], ...]:
+    """``[resolve.event_patterns]`` or ``[resolve.edition_only]``: prefix → regex."""
+    raw = resolve.get(key) or {}
     if not isinstance(raw, dict):
-        raise TypeError("[resolve.event_patterns] must be a table of frame prefix = regex")
-    return tuple((str(key), str(pattern)) for key, pattern in raw.items())
+        raise TypeError(f"[resolve.{key}] must be a table of frame prefix = regex")
+    return tuple((str(name), str(pattern)) for name, pattern in raw.items())

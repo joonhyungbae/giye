@@ -10,7 +10,7 @@ prompt, relative to the field file; without it the packaged default is used. The
 programmes into the rules. An empty tag list inherits the shipped Korean
 media-art vocabulary so a small demo file can omit it; ``[tags] inherit = false``
 keeps the lists empty. Event patterns, frame families, and ring aliases are
-never inherited: those are the field's own programmes.
+never inherited, and neither is ``[resolve.edition_only]``: those are the field's own programmes.
 """
 
 from __future__ import annotations
@@ -61,8 +61,11 @@ class Field:
     """One field's constants. ``source`` is the file they were read from."""
 
     source: Path | None = None
-    # E2. Frame-code prefix → regex. Order is first-match order.
+    # E2 and P4. Frame-code prefix → regex. Order is first-match order.
     event_patterns: tuple[tuple[str, str], ...] = ()
+    # P4 only. Same shape as event_patterns. event_links joins this after the
+    # shared regex. E2 does not read it.
+    edition_only: tuple[tuple[str, str], ...] = ()
     # E4 and the ring's team credit. The usual spelling is ``팀: <name>``.
     team_prefix: str = "팀:"
     # T1. Empty means the shipped Korean media-art list, unless inherit_tags is false.
@@ -86,7 +89,7 @@ class Field:
     def resolved(self) -> Field:
         """Copy tag lists from the shipped field when this file left them empty.
 
-        Event patterns, attachment families, and ring aliases stay as written.
+        Event patterns, the edition-only table, attachment families, and ring aliases stay as written.
         The shipped file itself is returned unchanged.
         """
         if not self.inherit_tags:
@@ -156,6 +159,7 @@ def load_field(path: str | Path) -> Field:
     return Field(
         source=path.resolve(),
         event_patterns=_pairs(resolve.get("events") or {}, f"{path}: [resolve.events]"),
+        edition_only=_pairs(resolve.get("edition_only") or {}, f"{path}: [resolve.edition_only]"),
         team_prefix=_text(resolve.get("team_prefix", "팀:"), f"{path}: [resolve] team_prefix"),
         team_words=_text(resolve.get("team_words", ""), f"{path}: [resolve] team_words"),
         family_prefixes=_prefix_pairs(attach.get("prefix") or [], f"{path}: [[attach.prefix]]"),

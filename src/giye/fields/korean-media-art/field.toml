@@ -90,22 +90,28 @@ team_prefix = '팀:'
 # is not a group, while names written glued in capitals ("NoeulCollectiveB", "NOEULLABS") still are.
 team_words = '(컴퍼니|프로젝트|스튜디오|콜렉티브|컬렉티브|무브먼트|프로덕션|그룹|팀|랩\b|연구소|공작소|크루|(?:company|companies|studios?|collectives?|projects?|productions?|movements?|groups?|crews?|\blab|labs|ensembles?)(?-i:(?![a-z])))'
 
-# E2. Frame-code prefix → regex. First matching prefix wins. A code's trailing -YYYY is removed first.
+# E2 and P4. Frame-code prefix → regex. First matching prefix wins. A code's trailing -YYYY is removed first.
 # The institution's name alone is not used where it would not distinguish the programme.
+# P4b (2026-10-08). Three shared tightenings, and not the ones that cut exact-year hits:
+# DAVINCI takes `unfold` only on letter boundaries (Unfolds / Unfolding miss; Unfold X stays).
+# MEDIACITY-SEOUL does not take `media city` followed by `film`.
+# NJP-RANDOMACCESS does not take `random access` followed by `memory`.
+# Paradise is not required to say art lab, ACT is not reduced to the acronym,
+# and Platform-L is not reduced to PLAP.
 [resolve.events]
-DAVINCI = '다빈치|da ?vinci|언폴드|unfold'
+DAVINCI = '다빈치|da ?vinci|언폴드|(?<![A-Za-z])unfold(?![A-Za-z])'
 UNFOLD-X = '언폴드|unfold|서울융합예술'
 APE = '에이프|ape ?camp|apecamp'
 PARADISE-ARTLAB = '파라다이스|paradise'
 AKL = '아트코리아랩|arts? ?korea ?lab|수퍼 ?테스트베드|super ?testbed'
 ARTIENCE = '아티언스|artience'
 ACT = '\bACT\b|아시아문화전당|asia culture center'
-NJP-RANDOMACCESS = '랜덤 ?액세스|random ?access'
+NJP-RANDOMACCESS = '랜덤 ?액세스|random ?access(?!\s*memory)'
 NCA = '뉴 ?콘텐츠 ?아카데미|new ?contents? ?academy|\bNCA\b'
 ARKO-ARTTECH = '예술과 ?기술 ?융합|예술기술융합|아트앤테크|art ?and ?technology'
 ACC-CREATORS = 'ACC ?크리에이터|ACC ?creators|아시아문화전당.{0,20}레지던시|ACC.{0,15}residency'
 GMAF = '광주 ?미디어 ?아트 ?페스티벌|gwangju media ?art ?festival|\bGMAF\b|G\.MAP'
-MEDIACITY-SEOUL = '미디어 ?시티|media ?city'
+MEDIACITY-SEOUL = '미디어 ?시티|media ?city(?!\s*film)'
 NEMAF = '네마프|nemaf|뉴미디어 ?페스티벌|대안영상예술|new ?media ?festival|alt ?cinema'
 ZER01NE = '제로원|zer01ne|zero ?one ?(day|creator)'
 VH-AWARD = 'vh ?award|브이에이치 ?어워드|현대 ?블루 ?프라이즈|hyundai.{0,20}vh'
@@ -113,6 +119,26 @@ ISEA-KOREA = '\bISEA ?20(19|25)\b'
 PLATFORM-L-PLAP = '플랫폼 ?엘|platform[- ]?l\b|\bPLAP\b'
 NJP-AWARD = '백남준 ?(국제)?예술상|nam ?june ?paik ?(art )?award'
 NABI-CREATIVE = '창의 ?인재|creative ?mentoring|creative ?\+|나비.{0,20}멘티|멘티.{0,20}나비|nabi.{0,30}mentee|mentee.{0,30}nabi'
+
+# P4 only. event_links joins this after the shared regex for the same prefix.
+# E2 ([resolve.events] and [resolve.event_patterns]) does not read it.
+# One prefix is one regex: admitted fragments of that prefix are joined with | in admission order.
+# Rule: discover() then admission_gate, including Hangul runs of at least eight
+# characters from f1_purpose. generic_at=3 and the core test stay on. Not filled
+# from ADDITIONS. Not here: ARKO art & tech windows, the APE 80-character window,
+# the ACC residency window, the NJP-AWARD center/prize alternation, the short NEMAF prefix.
+# Generator stays in data/work/phase0/p4/ (not scripts/). Regenerate:
+#   /usr/bin/python3 data/work/phase0/p4/round4.py
+# Admitted lines are the `admit` rows under "admission (discovered fragments with any hit)".
+[resolve.edition_only]
+DAVINCI = 'Vinchi\s*Creative'
+AKL = '슈퍼테스트베드'
+ARTIENCE = '아트언스\s*대전'
+NJP-RANDOMACCESS = '랜덤\s*엑세스|랜덤\s*엑세스\s*프로젝트'
+GMAF = 'Gwangju\s*Media\s*Arts\s*Festival'
+NEMAF = '서울국제뉴미디어아트페스티벌'
+ISEA-KOREA = 'International\s*Symposium\s*on\s*Electronic\s*Art|International\s*Symposium\s*of\s*Electronic\s*Arts|국\s*제\s*전\s*자\s*예\s*술\s*심\s*포\s*지\s*엄'
+OPENCIRCUIT = '오픈서킷\s*부산'
 
 # A1 families. A trailing -YYYY is stripped, then the first matching prefix, then an exact base.
 # APE* is one camp. Unfold X and Davinci are one support-programme lineage.
