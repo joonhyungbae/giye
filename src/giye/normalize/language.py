@@ -110,6 +110,20 @@ def latin_personal_shape(text: str) -> bool:
 
 
 @dataclass(frozen=True)
+class OrgClass:
+    """One organisation class. Hangul words and a Latin pattern name the same class.
+
+    V12 reads this so a bracket with the class on exactly one side is a host
+    beside its funder, not two spellings of one body. A module with an empty
+    tuple makes no class distinction.
+    """
+
+    label: str
+    hangul: tuple[str, ...]
+    latin: str
+
+
+@dataclass(frozen=True)
 class VenueWords:
     """Words and markers of one script pair that the venue spelling rules read.
 
@@ -132,7 +146,13 @@ class VenueWords:
     institutions share one national designation (two cities' national museums
     in one country), so V4n leaves them apart. ``host_roles`` are the V7f role words, removed
     only at a token boundary. ``collaboration_phrases`` name a partner, not the
-    host, and are not removed. Another field supplies its own tuples.
+    host, and are not removed. ``org_classes`` are the V12 organisation classes
+    (재단 = foundation). ``child_nouns`` are the branch and room words V12
+    refuses to treat as an alias (theater, 미술관). ``alias_credits`` are the
+    role words that make a same-row bracket a credit, not an alias (주최,
+    presented by); 협력 is a credit here and is not a V7f host role.
+    ``stem_stops`` are the function words dropped before a V12 rival-stem
+    comparison. Another field supplies its own tuples.
     """
 
     script: str = ""
@@ -149,6 +169,10 @@ class VenueWords:
     national_countries: tuple[str, ...] = ()
     host_roles: tuple[str, ...] = ()
     collaboration_phrases: tuple[str, ...] = ()
+    org_classes: tuple[OrgClass, ...] = ()
+    child_nouns: tuple[str, ...] = ()
+    alias_credits: tuple[str, ...] = ()
+    stem_stops: tuple[str, ...] = ()
     # G7. A Hangul name that starts with one of these is in this module's country.
     # Longest first. A bare national-museum marker (국립) is not in the list: it
     # also begins foreign museums. ``place_suffixes`` are stripped to form a

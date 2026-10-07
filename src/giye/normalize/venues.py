@@ -5,14 +5,14 @@ Deterministic string rules and the language module's gazetteer only: no fuzzy
 matching, no embeddings, no network, no ledger edits. ``build`` writes
 ``venues.csv``, ``venue_merges.csv`` and ``venue_audit.md``. The audit and
 ``venue_merges.csv`` list every merge with its rule id (V5a, V5d, V5f, V7e,
-V8, V9, V4n, V7f, V9u). Each entity in ``venues.csv`` and each activity annotation
-(``venue_rule``) names the rules that put it together (N-8).
+V8, V9, V4n, V7f, V9u, V12, V12i, V12k). Each entity in ``venues.csv`` and each
+activity annotation (``venue_rule``) names the rules that put it together (N-8).
 
-``name_rules`` turns V7–V9 and V4n, V7f, V9u off for an ablation. Leaving it
-unset keeps those rules on, which is what ``giye normalize`` does unless the
+``name_rules`` turns V7–V9, V4n, V7f, V9u and V12 off for an ablation. Leaving
+it unset keeps those rules on, which is what ``giye normalize`` does unless the
 config or ``--venue-name-rules`` says otherwise. V4n runs on the activity row
-after the entities exist; V7f then V9u remap entity ids. A ``funder_id`` follows
-those entity maps only.
+after the entities exist; V7f, V9u, then V12 remap entity ids. The country fill
+runs after those joins. A ``funder_id`` follows the entity maps only.
 """
 
 from __future__ import annotations
@@ -46,7 +46,10 @@ VENUE_FIELDS = [
 MERGE_FIELDS = ["rule", "venue_id", "kept_key", "joined_key"]
 # Order of the rule ids in ``venue_rule`` and ``rules``.
 # G7–G11 fill an empty country (docs/RULES.md). They are not merge rules.
-RULE_ORDER = ("V4", "V4n", "V7", "V5a", "V5d", "V5f", "V7e", "V7f", "V8", "V9", "V9u", "G7", "G8", "G9", "G10", "G11")
+RULE_ORDER = (
+    "V4", "V4n", "V7", "V5a", "V5d", "V5f", "V7e", "V7f", "V8", "V9", "V9u",
+    "V12", "V12i", "V12k", "G7", "G8", "G9", "G10", "G11",
+)
 # V2 separators. The full-width and ideographic commas and semicolon split like
 # their ASCII forms (예시미술관，서울); before 2026-10-06 they did not (audit m1).
 SPLIT_CHARS = {",", "/", "|", "·", ";", "，", "、", "；", "\x1f"}
@@ -72,7 +75,7 @@ QUOTE_CHARS = set("'\"‘’“”‚„‹›«»＇＂")
 
 # V7 spelling (V7a–d) stays on unless build() is asked to ablate V7.
 _V7_SPELLING: contextvars.ContextVar[bool] = contextvars.ContextVar("giye_v7_spelling", default=True)
-NAME_RULES = frozenset({"V7", "V8", "V9", "V4n", "V7f", "V9u"})
+NAME_RULES = frozenset({"V7", "V8", "V9", "V4n", "V7f", "V9u", "V12"})
 
 
 @dataclass(frozen=True)
@@ -599,7 +602,7 @@ def _audit_sample_lines(
     lines = [
         "# Place and institution entity-resolution audit sample",
         "",
-        "Rules G1–G6 · V2–V9, V4n, V7f, V9u · G7–G11 country fill. Random sample seed: `20260925`.",
+        "Rules G1–G6 · V2–V9, V4n, V7f, V9u, V12 · G7–G11 country fill. Random sample seed: `20260925`.",
         "Section 7 lists every merge and the rule that made it. Section 8 lists the country fill.",
         "",
         "## 1. Random sample of activity rows",
@@ -785,11 +788,14 @@ def _audit_merge_lines(merges: list[tuple[str, str, str]], spell_rows: dict) -> 
             "V9 Hangul reading equals the Latin bag, one reading per component · "
             "V4n generic national name, same country and the same display fold · "
             "V7f host-role word removed because the stripped name already exists · "
-            "V9u unique Hangul–Latin pair that passes the spelling gate."
+            "V9u unique Hangul–Latin pair that passes the spelling gate · "
+            "V12 same-row alias (short Hangul name, two people, or one person and two editions) · "
+            "V12i exact initials after the acronym guard and the contradiction screens · "
+            "V12k keeper kind set to the majority venue_kind."
         ),
         "Format: rule · kept spelling (row count) ← joined spelling (row count).",
     ]
-    for rule in ("V5a", "V5d", "V5f", "V9", "V8", "V7e", "V4n", "V7f", "V9u"):
+    for rule in ("V5a", "V5d", "V5f", "V9", "V8", "V7e", "V4n", "V7f", "V9u", "V12", "V12i"):
         items = [
             (_audit_spelling(left, spell_rows), _audit_spelling(right, spell_rows))
             for found, left, right in merges
@@ -802,6 +808,14 @@ def _audit_merge_lines(merges: list[tuple[str, str, str]], spell_rows: dict) -> 
         lines.extend(
             f"- {rule} · `{left}`({n_left}) ← `{right}`({n_right})" for (left, n_left), (right, n_right) in items
         )
+    # V12k is a kind vote on the keeper, not a second name. The third field is "old -> new".
+    kind_changes = [(left, right) for found, left, right in merges if found == "V12k"]
+    lines.extend(["", f"### V12k — {len(kind_changes)} cases", ""])
+    if not kind_changes:
+        lines.append("- none")
+    for left, change in kind_changes:
+        spelling, _rows = _audit_spelling(left, spell_rows)
+        lines.append(f"- V12k · `{spelling}` {change}")
     return lines
 
 
@@ -1036,13 +1050,16 @@ def build(
     write: bool = True,
     lang: LanguageModule | None = None,
     frames: list[tuple[str, str, str]] | None = None,
+    links: dict[str, str] | None = None,
 ) -> BuildResult:
     """Build venue entities from activity rows.
 
-    ``name_rules=None`` applies V7 (spelling and V7e), V8, V9, V4n, V7f and V9u.
+    ``name_rules=None`` applies V7 (spelling and V7e), V8, V9, V4n, V7f, V9u and V12.
     ``write=False`` skips ``venues.csv`` and ``venue_audit.md``. ``lang`` defaults
     to the Korean–English module. ``frames`` is ``(code, name_ko, name_en)`` from
-    the registry; G8 reads those names and nothing else on the frame.
+    the registry; G8 reads those names and nothing else on the frame. ``links``
+    is activity id → edition (P4). A row's own ``event_link`` is used when
+    ``links`` has no entry. V12c counts those editions.
     """
     rules = NAME_RULES if name_rules is None else frozenset(name_rules)
     unknown = rules - NAME_RULES
@@ -1053,7 +1070,7 @@ def build(
     language = lang or load_language("giye.normalize.lang.ko_en:KoEn")
     token = _V7_SPELLING.set("V7" in rules)
     try:
-        return _resolve(activity_rows, out_dir, rules, write, language, frames or [])
+        return _resolve(activity_rows, out_dir, rules, write, language, frames or [], links or {})
     finally:
         _V7_SPELLING.reset(token)
 
@@ -1926,6 +1943,135 @@ def _apply_stacked_entity_rules(
     return merges, absorbed, redirect, kept
 
 
+def _apply_v12(
+    activity_rows: list[dict],
+    parsed: list[ParsedVenue],
+    annotations: dict[str, dict[str, str]],
+    venue_rows: list[dict],
+    entity_by_root: dict[str, dict],
+    row_roots: dict[str, list[tuple[str, str, str, str]]],
+    redirect: dict[str, str],
+    lang: LanguageModule,
+    links: dict[str, str],
+) -> tuple[list[tuple[str, str, str]], set[str], dict[str, str], list[dict]]:
+    """V12 on the entities V9u left separate, then V12k on those components.
+
+    The country fill has not run. Activity countries are the V1 country of the
+    venue string. ``funder_id`` follows the entity map. Returns the new joins
+    (V12, V12i, and V12k), the ids removed from ``venues.csv``, the redirect
+    extended with those ids, and the venue rows that remain.
+    """
+    from giye.normalize.rules import venue_place
+    from giye.normalize.venue_alias import plan_v12
+
+    by_activity = {row.get("activity_id", ""): row for row in activity_rows}
+    entity_of = {entity["venue_id"]: entity for entity in entity_by_root.values()}
+    current = {
+        row["venue_id"]: {
+            "name": row["name"],
+            "aliases": [part for part in (row.get("aliases") or "").split("|") if part],
+            "kind": row["kind"],
+            "city": row.get("city") or "",
+            "n_artists": int(row["n_artists"]),
+            "n_rows": int(row["n_rows"]),
+        }
+        for row in venue_rows
+    }
+    evidence = []
+    for item in parsed:
+        raw = by_activity.get(item.activity_id, {})
+        if raw.get("publishable") != "yes":
+            continue
+        annotation = annotations[item.activity_id]
+        evidence.append(
+            {
+                "ledger_id": item.ledger_id,
+                "venue_id": annotation["venue_id"],
+                "funder_id": annotation["funder_id"],
+                "venue_kind": annotation["venue_kind"],
+                "venue_norm": item.norm,
+                "alias_pairs": item.alias_pairs,
+                "venue_country": venue_place(item.norm, lang.gazetteer)[0],
+                "event_link": links.get(item.activity_id) or raw.get("event_link") or "",
+            }
+        )
+    plan = plan_v12(current, evidence, lang)
+    rules_for: dict[str, set[str]] = defaultdict(set)
+    merges: list[tuple[str, str, str]] = []
+    for rule, keeper_id, dropped_id in plan.joins:
+        rules_for[dropped_id].add(rule)
+        merges.append((rule, entity_of[keeper_id]["_name_key"], entity_of[dropped_id]["_name_key"]))
+    for keeper_id, (old, new) in plan.kinds.items():
+        merges.append(("V12k", entity_of[keeper_id]["_name_key"], f"{old} -> {new}"))
+    for annotation in annotations.values():
+        added: set[str] = set()
+        for column in ("venue_id", "funder_id"):
+            venue_id = annotation[column]
+            if not venue_id:
+                continue
+            nxt = plan.redirect.get(venue_id, venue_id)
+            if nxt != venue_id:
+                added |= rules_for.get(venue_id, set())
+                annotation[column] = nxt
+            if nxt in plan.kinds:
+                added.add("V12k")
+        if added:
+            annotation["venue_rule"] = _add_rules(annotation["venue_rule"], added)
+    for source, target in list(redirect.items()):
+        redirect[source] = plan.redirect.get(target, target)
+    redirect.update(plan.redirect)
+    for source, target in plan.redirect.items():
+        if source in entity_of and target in entity_of:
+            _remember_alias(entity_of[target], entity_of[source])
+    id_of = {root: entity["venue_id"] for root, entity in entity_by_root.items()}
+    rows_of: dict[str, set[str]] = defaultdict(set)
+    artists_of: dict[str, set[str]] = defaultdict(set)
+    for item in parsed:
+        roots = row_roots.get(item.activity_id, [])
+        chosen = _chosen_root(roots)
+        seen: set[str] = set()
+        for kind, root, _key, _text in roots:
+            if kind not in {"institution", "funder"}:
+                continue
+            base = id_of[root]
+            if root == chosen:
+                venue_id = annotations[item.activity_id]["venue_id"] or base
+            else:
+                mapped = redirect.get(base, base)
+                venue_id = mapped
+            if not venue_id or venue_id in seen:
+                continue
+            seen.add(venue_id)
+            rows_of[venue_id].add(item.activity_id)
+            artists_of[venue_id].add(item.ledger_id)
+    referenced = {annotation["venue_id"] for annotation in annotations.values() if annotation["venue_id"]} | {
+        annotation["funder_id"] for annotation in annotations.values() if annotation["funder_id"]
+    }
+    absorbed = {venue_id for venue_id in plan.redirect if venue_id not in referenced}
+    rules_on: dict[str, set[str]] = defaultdict(set)
+    for rule, keeper_id, _dropped in plan.joins:
+        rules_on[keeper_id].add(rule)
+    for keeper_id in plan.kinds:
+        rules_on[keeper_id].add("V12k")
+        entity_of[keeper_id]["kind"] = plan.kinds[keeper_id][1]
+        entity_of[keeper_id]["_v12k"] = plan.kinds[keeper_id]
+    touched = set(rules_on) | set(plan.redirect.values())
+    for row in venue_rows:
+        venue_id = row["venue_id"]
+        if venue_id in absorbed or venue_id not in touched:
+            continue
+        entity = entity_of[venue_id]
+        entity["n_rows"] = len(rows_of.get(venue_id, ()))
+        entity["n_artists"] = len(artists_of.get(venue_id, ()))
+        row["n_rows"] = entity["n_rows"]
+        row["n_artists"] = entity["n_artists"]
+        row["kind"] = entity["kind"]
+        row["aliases"] = "|".join(entity["_aliases"])
+        row["rules"] = _add_rules(row["rules"], rules_on.get(venue_id, set()))
+    kept = [row for row in venue_rows if row["venue_id"] not in absorbed]
+    return merges, absorbed, redirect, kept
+
+
 def _resolve(
     activity_rows: list[dict],
     out_dir: Path | None,
@@ -1933,6 +2079,7 @@ def _resolve(
     write: bool,
     lang: LanguageModule,
     frames: list[tuple[str, str, str]],
+    links: dict[str, str],
 ) -> BuildResult:
     """V2–V6, then whichever of V7e/V8/V9 are in ``rules``. The caller sets V7 spelling.
 
@@ -1991,6 +2138,12 @@ def _resolve(
     extra, absorbed, redirect, venue_rows = _apply_stacked_entity_rules(
         parsed, annotations, venue_rows, entity_by_root, row_roots, lang, rules
     )
+    if "V12" in rules:
+        v12_merges, v12_absorbed, redirect, venue_rows = _apply_v12(
+            activity_rows, parsed, annotations, venue_rows, entity_by_root, row_roots, redirect, lang, links
+        )
+        extra = [*extra, *v12_merges]
+        absorbed |= v12_absorbed
     all_merges = [*all_merges, *extra]
     rule_merges = [*rule_merges, *extra]
     # Imported here: country fill reads venue rows this function has just built.

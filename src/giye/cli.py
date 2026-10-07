@@ -541,7 +541,7 @@ def _add_stage_parsers(sub: argparse._SubParsersAction) -> None:
                 "--venue-name-rules",
                 default=None,
                 help=(
-                    "Ablation: comma-separated subset of V7,V8,V9,V4n,V7f,V9u, or 'none'. "
+                    "Ablation: comma-separated subset of V7,V8,V9,V4n,V7f,V9u,V12, or 'none'. "
                     "Default: the config, else all of them."
                 ),
             )

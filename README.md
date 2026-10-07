@@ -117,7 +117,7 @@ not to the process. See `examples/demo/giye.toml`.
 - `[collect]` — contact user agent, delay, timeouts, collector modules, offline fixtures
 - `[extract]` — `provider` (`anthropic` or `openai_compatible`), `model`, `base_url`, `api_key_env`, `chunk_chars`, `reasoning_effort`, replay cache, CV locations
 - `[resolve]` — local CV directory, extra event patterns for rule E2 (they replace a field-file key of the same code)
-- `[normalize]` — `language_module` (default `giye.normalize.lang.ko_en:KoEn`), glossary, gazetteer, GeoNames tree, which of V7, V8, V9, V4n, V7f, V9u to apply
+- `[normalize]` — `language_module` (default `giye.normalize.lang.ko_en:KoEn`), glossary, gazetteer, GeoNames tree, which of V7, V8, V9, V4n, V7f, V9u, V12 to apply
 - `[publish]` — `site_url` (required for `giye publish`), `dataset_version` (default `0.2`), `dataset_title`, `citation_author`, `data_license`
 
 The default citation author is `기예 Giye`, matching the reference deployment. There is no default

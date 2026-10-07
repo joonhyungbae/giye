@@ -593,7 +593,7 @@ def _report_text(
             f"- Activities whose venue yielded a country: {manifest['counts']['venue_country']} / {activities}"
             " (V1, G1–G6, then G7–G11 when the V1 country is empty)"
         ),
-        f"- Institution entities: {venue_result.stats['entities']} (V2–V9, then V4n, V7f, V9u)",
+        f"- Institution entities: {venue_result.stats['entities']} (V2–V9, then V4n, V7f, V9u, V12)",
         f"- Institution entities shared by two or more distinct artists: {venue_result.stats['shared_entities']}",
         "- venue_kind: "
         + " · ".join(
@@ -680,7 +680,7 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
     """Write the processed layer for ``config``. Does not change the ledger.
 
     ``venue_name_rules`` overrides ``[normalize] venue_name_rules`` when it is
-    not ``None``. An empty config value applies every name rule (V7, V8, V9, V4n, V7f, V9u).
+    not ``None``. An empty config value applies every name rule (V7, V8, V9, V4n, V7f, V9u, V12).
     """
     raw_rules = venue_name_rules if venue_name_rules is not None else config.venue_name_rules
     name_rules = parse_name_rules(raw_rules if raw_rules else None)
@@ -706,7 +706,12 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
     flags, links = _flags_and_links(loaded.by_artist, loaded.frames_of, patterns)
     venue_places = _places_by_venue(loaded.activities, language)
     venue_result = build(
-        loaded.activities, out, name_rules=name_rules, lang=language, frames=_frame_names(config)
+        loaded.activities,
+        out,
+        name_rules=name_rules,
+        lang=language,
+        frames=_frame_names(config),
+        links=links,
     )
     activity_out = _activity_rows(loaded.activities, venue_places, venue_result, links, flags)
     _stamp_country_fills(activity_out, venue_result.country_fills)

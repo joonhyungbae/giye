@@ -170,7 +170,10 @@ def test_demo_v7_v8_v9_and_false_merges(tmp_path: Path) -> None:
     section = audit.split("## 7. Merges")[1].split("\n## ")[0]
     bullets = [line for line in section.splitlines() if line.startswith("- ") and not line.startswith("- none")]
     assert len(bullets) == len(result.merges)
-    assert all(line.split()[1] in {"V5a", "V5d", "V5f", "V7e", "V8", "V9", "V4n", "V7f", "V9u"} for line in bullets)
+    assert all(
+        line.split()[1] in {"V5a", "V5d", "V5f", "V7e", "V8", "V9", "V4n", "V7f", "V9u", "V12", "V12i", "V12k"}
+        for line in bullets
+    )
 
 
 def test_v3c_place_v8_branch_and_v8b_office(tmp_path: Path) -> None:
@@ -794,3 +797,200 @@ def test_v4n_v7f_v9u_ablation_leaves_the_entities_apart() -> None:
     # V9 still joins the clean bilingual pair. V9u does not add a second join.
     assert off.annotations["h"]["venue_id"] == off.annotations["l"]["venue_id"]
     assert not any(rule in {"V4n", "V7f", "V9u"} for rule, _kept, _joined in off.merges)
+
+
+def _v12(activity_id: str, venue: str, ledger_id: str = "p1", link: str = "") -> dict:
+    row = _row(activity_id, venue, ledger_id)
+    if link:
+        row["event_link"] = link
+    return row
+
+
+def _same(result, *activity_ids: str) -> str:
+    ids = {result.annotations[activity_id]["venue_id"] for activity_id in activity_ids}
+    assert len(ids) == 1, {activity_id: result.annotations[activity_id]["venue_id"] for activity_id in activity_ids}
+    return ids.pop()
+
+
+def test_v12_joins_an_attested_triple(tmp_path: Path) -> None:
+    """A foundation, its English name, and its acronym are one entity. A short Hangul name is too.
+
+    The English and Hangul names are funders, so V5 does not take the bracket.
+    One person wrote both, and the two names share two editions (V12c). Two people
+    wrote the acronym beside the English name (V12b and V12i: the initials are exact).
+    """
+    rows = [
+        _v12("alias", "Example Foundation for Arts and Culture (예시문화재단)", "p1"),
+        _v12("ko-a", "예시문화재단", "p2", "edition-a"),
+        _v12("en-a", "Example Foundation for Arts and Culture", "p3", "edition-a"),
+        _v12("ko-b", "예시문화재단", "p4", "edition-b"),
+        _v12("en-b", "Example Foundation for Arts and Culture", "p5", "edition-b"),
+        _v12("ac-1", "Example Foundation for Arts and Culture (EFAC)", "p6"),
+        _v12("ac-2", "EFAC (Example Foundation for Arts and Culture)", "p7"),
+        _v12("nick-1", "예시국제대안영상예술축제 (예시프)", "p8"),
+        _v12("nick-2", "예시프 (예시국제대안영상예술축제)", "p9"),
+    ]
+    result = build(rows, tmp_path, write=True)
+    kept = _same(result, "alias", "ko-a", "en-a", "ac-1", "ac-2")
+    keeper = next(row for row in result.venues if row["venue_id"] == kept)
+    spellings = {keeper["name"], *(part for part in keeper["aliases"].split("|") if part)}
+    assert {"예시문화재단", "Example Foundation for Arts and Culture", "EFAC"} <= spellings
+    assert any(rule == "V12" for rule, _left, _right in result.merges)
+    assert any(rule == "V12i" for rule, _left, _right in result.merges)
+    assert "V12" in result.annotations["ko-a"]["venue_rule"] or "V12" in keeper["rules"]
+    assert "V12i" in keeper["rules"]
+    nick = _same(result, "nick-1", "nick-2")
+    assert nick != kept
+    assert any(rule == "V12" and "예시프" in joined for rule, _kept, joined in result.merges)
+    audit = (tmp_path / "venue_audit.md").read_text(encoding="utf-8")
+    merges = (tmp_path / "venue_merges.csv").read_text(encoding="utf-8")
+    assert "### V12 — " in audit
+    assert "### V12i — " in audit
+    assert "V12," in merges
+    assert "V12i," in merges
+
+
+def test_v12_screens_reject_the_contradicted_pair() -> None:
+    """Each V12i screen, the acronym guard, and a letter subsequence leave the pair apart.
+
+    A shared edition with no same-row alias is not a join.
+    """
+    # Exact initials would join; a letter subsequence of a longer name does not.
+    subsequence = build(
+        [_v12("full", "National Example Museum of Modern Art (EMMA)", "p1")],
+        write=False,
+    )
+    assert subsequence.annotations["full"]["venue_id"]
+    assert len({row["name"] for row in subsequence.venues if row["name"] in {
+        "National Example Museum of Modern Art", "EMMA"
+    }}) == 2
+    assert not any(rule in {"V12", "V12i"} for rule, _a, _b in subsequence.merges)
+
+    # Two support-1 partners: the acronym joins neither.
+    guarded = build(
+        [
+            _v12("one", "Example Art Pavilion (EAP)", "p1"),
+            _v12("two", "Example Archive Project (EAP)", "p2"),
+        ],
+        write=False,
+    )
+    assert len({guarded.annotations[key]["venue_id"] for key in ("one", "two")}) == 2
+    assert not any(rule in {"V12", "V12i"} for rule, _a, _b in guarded.merges)
+
+    # Activity countries are disjoint, so the initials match is not enough.
+    abroad = build(
+        [
+            _v12("exp", "Example Xenon Archive (EXA), Seoul", "p1"),
+            _v12("acr", "EXA, New York", "p2"),
+        ],
+        write=False,
+    )
+    assert abroad.annotations["exp"]["venue_id"] != abroad.annotations["acr"]["venue_id"]
+
+    # The acronym's own string names a rival stem. The two expansions share no stem.
+    polluted = build(
+        [
+            _v12("exp", "Alpha Beta Gamma Delta (ABGD)", "p1"),
+            _v12("text", "ABGD, Bitter", "p2"),
+            _v12("alt", "Alpine Bitter Great Dane", "p3"),
+        ],
+        write=False,
+    )
+    assert polluted.annotations["exp"]["venue_id"] != polluted.annotations["text"]["venue_id"]
+
+    # A generic expansion with no city lock.
+    generic = build([_v12("gen", "Museum of Modern Art (MMA)", "p1")], write=False)
+    assert len(generic.venues) == 2
+    assert not any(rule == "V12i" for rule, _a, _b in generic.merges)
+
+    # Another expansion shares a content stem. Nothing on the acronym names it.
+    rival = build(
+        [
+            _v12("exp", "Alpha Beta Gamma Delta (ABGD)", "p1"),
+            _v12("alt", "Alpha Beta Great Dane", "p2"),
+        ],
+        write=False,
+    )
+    assert rival.annotations["exp"]["venue_id"] != rival.annotations["alt"]["venue_id"]
+    assert not any(rule == "V12i" for rule, _a, _b in rival.merges)
+
+    # The acronym already writes the expansion, and another string is a second script.
+    residue = build(
+        [
+            _v12("link", "EMMA (Example Museum of Media Art)", "p1"),
+            _v12("other", "EMMA, 派對空間", "p2"),
+        ],
+        write=False,
+    )
+    assert len({row["venue_id"] for row in residue.venues}) == 2
+    names = {row["name"] for row in residue.venues}
+    assert "EMMA" in names
+    assert "Example Museum of Media Art" in names
+
+    # Two editions and no same-row alias stay two entities.
+    editions = build(
+        [
+            _v12("ko-a", "예시문화재단", "p1", "edition-a"),
+            _v12("en-a", "Example Foundation for Arts and Culture", "p2", "edition-a"),
+            _v12("ko-b", "예시문화재단", "p1", "edition-b"),
+            _v12("en-b", "Example Foundation for Arts and Culture", "p2", "edition-b"),
+        ],
+        write=False,
+    )
+    assert editions.annotations["ko-a"]["venue_id"] != editions.annotations["en-a"]["venue_id"]
+    assert not any(rule in {"V12", "V12i"} for rule, _a, _b in editions.merges)
+
+
+def test_v12_ablation_leaves_the_triple_apart() -> None:
+    """``--venue-name-rules`` without V12 does not join the attested triple."""
+    rows = [
+        _v12("alias", "Example Foundation for Arts and Culture (예시문화재단)", "p1"),
+        _v12("ko-a", "예시문화재단", "p2", "edition-a"),
+        _v12("en-a", "Example Foundation for Arts and Culture", "p3", "edition-a"),
+        _v12("ko-b", "예시문화재단", "p4", "edition-b"),
+        _v12("en-b", "Example Foundation for Arts and Culture", "p5", "edition-b"),
+        _v12("ac-1", "Example Foundation for Arts and Culture (EFAC)", "p6"),
+        _v12("ac-2", "EFAC (Example Foundation for Arts and Culture)", "p7"),
+    ]
+    off = build(rows, name_rules=_without("V12"), write=False)
+    # ac-2 is the row whose venue is the acronym. ac-1's venue is the foundation.
+    assert len({off.annotations[key]["venue_id"] for key in ("ko-a", "en-a", "ac-2")}) == 3
+    assert not any(rule in {"V12", "V12i", "V12k"} for rule, _a, _b in off.merges)
+
+
+def test_v12k_keeper_kind_follows_the_majority_vote(tmp_path: Path) -> None:
+    """The keeper's kind is the majority venue_kind. A tie would keep the richer kind.
+
+    The foundation is the richer entity and is labelled funder. The alias row
+    counts as a funder vote on both columns, because the venue and the funder
+    are that entity. Three institution rows outvote it. Turning V12 off leaves
+    the funder. The gallery is a separate entity.
+    """
+    rows = [
+        _v12("both", "Qxville Foundation for Art (QFA)", "p1"),
+        _v12("g1", "Example Gallery, Qxville Foundation for Art", "p2"),
+        _v12("g2", "Example Gallery, Qxville Foundation for Art", "p3"),
+        _v12("g3", "Example Gallery, Qxville Foundation for Art", "p4"),
+    ]
+    result = build(rows, tmp_path, write=True)
+    kept = result.annotations["both"]["venue_id"]
+    assert result.annotations["g1"]["funder_id"] == kept
+    assert result.annotations["g1"]["venue_id"] != kept
+    assert not any(row["name"] == "QFA" for row in result.venues)
+    keeper = next(row for row in result.venues if row["venue_id"] == kept)
+    assert keeper["kind"] == "institution"
+    assert "V12k" in keeper["rules"]
+    assert any(rule == "V12k" and change == "funder -> institution" for rule, _key, change in result.merges)
+    assert "V12k" in result.annotations["g1"]["venue_rule"]
+    assert result.annotations["g2"]["venue_id"] != kept
+    audit = (tmp_path / "venue_audit.md").read_text(encoding="utf-8")
+    assert "### V12k — " in audit
+    assert "funder -> institution" in (tmp_path / "venue_merges.csv").read_text(encoding="utf-8")
+
+    off = build(rows, name_rules=_without("V12"), write=False)
+    assert off.annotations["both"]["venue_id"] != next(
+        row["venue_id"] for row in off.venues if row["name"] == "QFA"
+    )
+    funder = next(row for row in off.venues if row["name"] == "Qxville Foundation for Art")
+    assert funder["kind"] == "funder"
+    assert not any(rule == "V12k" for rule, _a, _b in off.merges)
