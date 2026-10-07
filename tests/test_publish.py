@@ -14,8 +14,10 @@ from pathlib import Path
 import pytest
 
 from giye.config import load
+from giye.ledger.io import write_csv
 from giye.ledger.ledger import Ledger
 from giye.ledger.schemas import ACTIVITIES_FIELDS, ARTISTS_FIELDS, LINKS_FIELDS, MEMBERSHIP_FIELDS, empty_row
+from giye.normalize.kinds import ActivityKind, classify
 from giye.publish.cite import citation_texts
 from giye.publish.html import render
 from giye.publish.snapshot import guess_medium, parse_year, publish, region_tags, resolve_frame_edition
@@ -357,6 +359,215 @@ def test_background_keeps_education_and_drops_scholarship_titles(tmp_path: Path)
     sections = [row["title"] for row in site["background.json"]]
     assert sections == ["서울예시대학교 미술학 학사"]
     assert all(row["title"] != "예시 장학금" for row in site["activities.json"])
+
+
+def test_private_kinds_stay_off_the_activity_list(tmp_path: Path):
+    """Education, teaching, employment, and service are not practice rows.
+
+    A roster teaching post moves to the background block. A numbered session
+    stays on the activity list even when the stored channel says background:
+    that is the roster_session guard.
+    """
+    artists = [_artist("LED-haneul", "김하늘", gy_id="GY-000001")]
+    membership = [
+        empty_row(
+            MEMBERSHIP_FIELDS,
+            ledger_id="LED-haneul",
+            frame_code="EXAMPLE-RESIDENCY",
+            source_url="https://example.org/residency/alumni",
+            collected_at="2026-01-15",
+        )
+    ]
+    activities = [
+        _activity("LED-haneul", activity_id="act-show", title="Open Studio", activity_type="group_exhibition"),
+        *[
+            _activity(
+                "LED-haneul",
+                activity_id=f"act-cv-lect-{i}",
+                title=f"Post {i}",
+                year=str(2010 + i),
+                role="Lecturer",
+                publishable="no",
+                origin="cv:CV-DEMO",
+                source_url="https://cv.example.org/haneul",
+                reviewer_note="cv_section=teaching",
+            )
+            for i in range(10)
+        ],
+        _activity(
+            "LED-haneul",
+            activity_id="act-edu",
+            title="Example College BFA",
+            year="2014",
+            publishable="no",
+            origin="cv:CV-DEMO",
+            source_url="https://cv.example.org/haneul",
+            reviewer_note="cv_section=education",
+        ),
+        _activity(
+            "LED-haneul",
+            activity_id="act-teach",
+            title="Example College seminar",
+            year="2016",
+            publishable="no",
+            origin="cv:CV-DEMO",
+            source_url="https://cv.example.org/haneul",
+            reviewer_note="cv_section=teaching",
+        ),
+        _activity(
+            "LED-haneul",
+            activity_id="act-job",
+            title="Example Studio staff",
+            year="2017",
+            publishable="no",
+            origin="cv:CV-DEMO",
+            source_url="https://cv.example.org/haneul",
+            reviewer_note="cv_section=employment",
+        ),
+        _activity(
+            "LED-haneul",
+            activity_id="act-service",
+            title="Example board",
+            year="2018",
+            publishable="no",
+            origin="cv:CV-DEMO",
+            source_url="https://cv.example.org/haneul",
+            reviewer_note="cv_section=service",
+        ),
+        _activity(
+            "LED-haneul",
+            activity_id="act-edu-public",
+            title="Example College MFA",
+            year="2015",
+            publishable="yes",
+            origin="cv:CV-DEMO",
+            source_url="https://cv.example.org/haneul",
+            reviewer_note="cv_section=education",
+        ),
+        _activity(
+            "LED-haneul",
+            activity_id="act-job-public",
+            title="Example Museum post",
+            year="2018",
+            publishable="yes",
+            origin="cv:CV-DEMO",
+            source_url="https://cv.example.org/haneul",
+            reviewer_note="cv_section=employment",
+        ),
+        _activity(
+            "LED-haneul",
+            activity_id="act-teach-public",
+            title="Example adjunct year",
+            year="2019",
+            publishable="yes",
+            origin="cv:CV-DEMO",
+            source_url="https://cv.example.org/haneul",
+            reviewer_note="cv_section=teaching",
+        ),
+        _activity(
+            "LED-haneul",
+            activity_id="act-service-public",
+            title="Example committee",
+            year="2020",
+            publishable="yes",
+            origin="cv:CV-DEMO",
+            source_url="https://cv.example.org/haneul",
+            reviewer_note="cv_section=service",
+        ),
+        _activity(
+            "LED-haneul",
+            activity_id="act-mentor",
+            title="Example Programme 2024",
+            year="2024",
+            role="Lecturer",
+            origin="EXAMPLE-RESIDENCY",
+        ),
+        _activity(
+            "LED-haneul",
+            activity_id="act-session",
+            title="Example Programme 3회차",
+            year="2024",
+            role="Lecturer",
+            origin="EXAMPLE-RESIDENCY",
+        ),
+        _activity(
+            "LED-haneul",
+            activity_id="act-session-off",
+            title="Example Programme 4회차",
+            year="2024",
+            role="Lecturer",
+            publishable="no",
+            origin="EXAMPLE-RESIDENCY",
+            reviewer_note="예정",
+        ),
+        _activity(
+            "LED-haneul",
+            activity_id="act-consultant",
+            title="Example support",
+            year="2022",
+            role="컨설턴트 (창작)",
+            origin="EXAMPLE-RESIDENCY",
+        ),
+    ]
+    assigned = {row["activity_id"]: kind for row, kind in zip(activities, classify(activities), strict=True)}
+    assert assigned["act-mentor"].channel == "background"
+    assert assigned["act-session"].reason == "roster_session"
+    assert assigned["act-session"].channel == "activity"
+    # The snapshot must keep the session off background even if the stored channel is wrong.
+    assigned["act-session"] = ActivityKind("talk_workshop", "roster_session", "background")
+    cfg = load(_config(tmp_path))
+    ledger = Ledger.open(cfg)
+    ledger.write("artists", artists, task="test")
+    ledger.write("activities", activities, task="test")
+    ledger.write("frame_membership", membership, task="test")
+    cfg.processed.mkdir(parents=True, exist_ok=True)
+    write_csv(
+        path=cfg.processed / "activities.csv",
+        fields=["activity_id", "activity_kind", "activity_channel", "rules"],
+        rows=[
+            {
+                "activity_id": activity_id,
+                "activity_kind": kind.kind,
+                "activity_channel": kind.channel,
+                "rules": f"K1|{kind.reason}",
+            }
+            for activity_id, kind in assigned.items()
+        ],
+    )
+    publish(cfg, now=NOW)
+    site = {path.name: json.loads(path.read_text(encoding="utf-8")) for path in sorted(cfg.site.glob("*.json"))}
+    listed = {row["title"] for row in site["activities.json"]}
+    background = {row["title"]: row["section"] for row in site["background.json"]}
+    assert listed == {"Open Studio", "Example Programme 3회차", "Example support"}
+    for title in (
+        "Example College BFA",
+        "Example College seminar",
+        "Example Studio staff",
+        "Example board",
+        "Example College MFA",
+        "Example Museum post",
+        "Example adjunct year",
+        "Example committee",
+        "Example Programme 2024",
+        "Example Programme 4회차",
+    ):
+        assert title not in listed
+    assert background["Example Programme 2024"] == "teaching"
+    assert background["Example College BFA"] == "education"
+    assert background["Example College seminar"] == "teaching"
+    assert background["Example Studio staff"] == "employment"
+    assert background["Example College MFA"] == "education"
+    assert background["Example Museum post"] == "employment"
+    assert background["Example adjunct year"] == "teaching"
+    for title in (
+        "Example board",
+        "Example committee",
+        "Example Programme 3회차",
+        "Example Programme 4회차",
+        "Example support",
+        "Open Studio",
+    ):
+        assert title not in background
 
 
 def test_year_flag_and_duplicate_link(tmp_path: Path):

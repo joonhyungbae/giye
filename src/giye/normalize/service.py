@@ -5,10 +5,11 @@ The ledger is not modified. Derived rows name the rule that produced them.
 A value already on the artist row wins over P5 (country, region, active_since,
 medium). Outputs:
 
-  activities.csv          title/venue normalisation, place, venue id, P1 flags, P4 link.
+  activities.csv          title/venue normalisation, place, venue id, P1 flags, P4 link,
+                          and K1 activity_kind / activity_channel.
                           venue_rule names the rules that put the row at its entity
                           (V4, V7, V5a…V9); rules names every rule that filled a value
-                          of the row (P2, V1, P3, P4, Y0–Y2).
+                          of the row (P2, V1, P3, P4, Y0–Y2, K1 and the kind reason).
   artist_attributes.csv   one row per derived value, with rule and evidence.
                           P6 record_depth (1–4) is one row per published person.
                           It has no ledger cell and is not copied into the site snapshot.
@@ -34,6 +35,7 @@ from giye.extract.paths import verified_cv_text
 from giye.field import Field
 from giye.ledger.io import read_csv, write_csv, write_text_atomic
 from giye.ledger.ledger import without_hidden
+from giye.normalize.kinds import KINDS, classify
 from giye.normalize.language import LanguageModule, language_for, packaged_dir
 from giye.normalize.rules import (
     FLAG_RULES,
@@ -56,8 +58,8 @@ from giye.normalize.venues import NAME_RULES, BuildResult, build
 from giye.resolve.evidence import event_pattern, pattern_table
 from giye.resolve.teams import team_like
 
-# 2026-10-05 adds P6 record depth. The earlier rules are unchanged.
-RULES_VERSION = "2026-10-05"
+# 2026-10-08 adds K1 activity kind. P1–P6 are unchanged.
+RULES_VERSION = "2026-10-08"
 ACT_FIELDS = [
     "activity_id",
     "ledger_id",
@@ -77,6 +79,8 @@ ACT_FIELDS = [
     "venue_rule",
     "event_link",
     "flags",
+    "activity_kind",
+    "activity_channel",
     "rules",
 ]
 ATTR_FIELDS = ["ledger_id", "field", "value", "rule", "evidence", "evidence_url"]
@@ -295,8 +299,14 @@ def _places_by_venue(
     return venue_places
 
 
-def _row_rules(country: str, annotation: dict[str, str], link: str, row_flags: list[str]) -> str:
-    """N-8: the rule ids behind the derived values of one processed activity row."""
+def _row_rules(
+    country: str, annotation: dict[str, str], link: str, row_flags: list[str], kind_reason: str
+) -> str:
+    """N-8: the rule ids behind the derived values of one processed activity row.
+
+    K1 is always present. ``kind_reason`` is the clause that chose the kind
+    (``private_section``, ``award_grant``, ``roster_token_<word>``, ``roster_session``).
+    """
     found = ["P2"]
     if country:
         found.append("V1")
@@ -305,6 +315,9 @@ def _row_rules(country: str, annotation: dict[str, str], link: str, row_flags: l
     if link:
         found.append("P4")
     found.extend(FLAG_RULES.get(flag, flag) for flag in row_flags)
+    found.append("K1")
+    if kind_reason and kind_reason not in found:
+        found.append(kind_reason)
     return "|".join(found)
 
 
@@ -315,9 +328,10 @@ def _activity_rows(
     links: dict[str, str],
     flags: dict[str, list[str]],
 ) -> list[dict[str, str]]:
-    """One processed activity row per ledger row: P2 text, V1 place, entity ids, P4, P1."""
+    """One processed activity row per ledger row: P2 text, V1 place, entity ids, P4, P1, K1."""
     activity_out: list[dict[str, str]] = []
-    for row in activities:
+    assigned = classify(activities)
+    for row, kind in zip(activities, assigned, strict=True):
         venue = norm_text(row.get("venue"))
         country, region = venue_places.get(venue, ("", ""))
         activity_id = row.get("activity_id", "")
@@ -343,7 +357,9 @@ def _activity_rows(
                 **annotation,
                 "event_link": link,
                 "flags": "|".join(row_flags),
-                "rules": _row_rules(country, annotation, link, row_flags),
+                "activity_kind": kind.kind,
+                "activity_channel": kind.channel,
+                "rules": _row_rules(country, annotation, link, row_flags, kind.reason),
             }
         )
     return activity_out
@@ -517,6 +533,7 @@ def _report_text(
     published: int,
     snippet_state: str,
     medium_artists: int,
+    kind_counts: Counter[str],
 ) -> str:
     """``report.md``: what each rule filled and flagged. Nothing here edits the ledger."""
     applied = ", ".join(manifest["venue_name_rules"]) or "(none)"
@@ -604,6 +621,17 @@ def _report_text(
             f"Snippets file `work/tendency/snippets.jsonl`: {snippet_state}. "
             "When it is absent, level 2 is the M1 rows only. A later run of this script reads the file if it is there."
         ),
+        "",
+        "## K1 activity kind",
+        "",
+        (
+            "activity_kind refines activity_type by cv_section. A private section wins, "
+            "except two bare-prize titles. Roster words are discovered from this run's "
+            "roster `other` rows, not taken from a fixed list. The ledger is not edited. "
+            "Counts below are CV rows only (`origin` starts with `cv:`)."
+        ),
+        "",
+        *[f"- {kind}: {kind_counts[kind]}" for kind in KINDS if kind_counts[kind]],
     ]
     return "\n".join(lines) + "\n"
 
@@ -679,6 +707,9 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
     )
     write_text_atomic(out / "manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
     medium_artists = len({row["ledger_id"] for row in attributes if row["field"] == "medium"})
+    kind_counts: Counter[str] = Counter(
+        row["activity_kind"] for row in activity_out if str(row.get("origin") or "").startswith("cv:")
+    )
     report = _report_text(
         manifest,
         len(loaded.artists),
@@ -691,6 +722,7 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
         len(published),
         snippet_state,
         medium_artists,
+        kind_counts,
     )
     (out / "report.md").write_text(report, encoding="utf-8")
     venue_merges = dict(sorted(Counter(rule for rule, _left, _right in venue_result.merges).items()))

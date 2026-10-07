@@ -56,6 +56,7 @@ from giye.ledger.ids import activity_id_for, activity_id_key, gy_number, mint_id
 from giye.ledger.io import write_text_atomic
 from giye.ledger.ledger import Ledger
 from giye.ledger.schemas import split_pipe
+from giye.normalize.kinds import OFF_ACTIVITY_LIST, SESSION_REASON
 from giye.normalize.rules import admitted_memberships, published_ids, roster_source_urls
 from giye.publish.cite import citation_texts
 
@@ -151,7 +152,9 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
     ledger_to_gy = _assign_gy_ids(ledger, artists_in, publishable, prefix)
     _warn_gy_gaps(artists_in, ledger.read("gy_retired"), prefix)
     derived = _load_derived(config.processed / "artist_attributes.csv")
-    flags = _load_activity_flags(config.processed / "activities.csv")
+    processed_activities = config.processed / "activities.csv"
+    flags = _load_activity_flags(processed_activities)
+    kinds = _load_activity_kinds(processed_activities)
     cv_status = _cv_status(ledger.read("cv_sources"))
     same_name = _same_name(ledger.read("review_queue"), ledger_to_gy)
     tags = config.field_config.resolved()
@@ -179,10 +182,10 @@ def publish(config: Config, *, now: datetime | None = None) -> PublishResult:
     ]
     page_ids = {row["id"] for row in artists_out}
     stubs = _stubs(artists_in, page_ids)
-    activities_out = _activities(acts_in, ledger_to_gy, flags, stamp)
+    activities_out = _activities(acts_in, ledger_to_gy, flags, stamp, kinds)
     links_out = _links(links_in, ledger_to_gy, stamp)
     collaborations_out = _collaborations(ledger, ledger_to_gy)
-    background_out = _background(acts_in, ledger_to_gy, clock.year)
+    background_out = _background(acts_in, ledger_to_gy, clock.year, kinds)
     frames_out = _frames(frame_rows, public_membership, edition_of, ledger_to_gy, scope)
     _refuse_unpublished_roster(mem_by_ledger, ledger_to_gy, scope, hidden)
     active = _active_frame_count(frame_rows)
@@ -720,6 +723,55 @@ def _derived_value(derived: dict, name: str, cast=str):
     return cast(value) if value not in (None, "") else None
 
 
+@dataclass(frozen=True)
+class _KindRow:
+    """K1 columns of one processed activity. ``session`` is the ``roster_session`` guard."""
+
+    kind: str
+    channel: str
+    session: bool
+
+
+def _load_activity_kinds(path: Path) -> dict[str, _KindRow]:
+    """``activity_kind`` / ``activity_channel`` written by K1, keyed by activity id.
+
+    A file from before K1 has neither column. Those rows are left out of the
+    dict, and the activity list keeps the decision it had then.
+    """
+    from giye.ledger.io import read_csv
+
+    out: dict[str, _KindRow] = {}
+    for row in read_csv(path) if path.exists() else []:
+        kind = (row.get("activity_kind") or "").strip()
+        channel = (row.get("activity_channel") or "").strip()
+        if not kind and not channel:
+            continue
+        rules = {part for part in (row.get("rules") or "").split("|") if part}
+        out[row.get("activity_id") or ""] = _KindRow(kind, channel, SESSION_REASON in rules)
+    out.pop("", None)
+    return out
+
+
+def _listed_activity(kind: _KindRow | None, origin: str) -> bool:
+    """Whether K1 lets this row onto the activity list.
+
+    Missing K1 keeps the pre-K1 decision (the caller still requires
+    ``publishable=yes``). Education, teaching, employment, and service stay
+    off the list. A CV row of any other kind stays, so a press or funding
+    line still follows ``publishable`` as it did before K1. A roster row
+    leaves only when its channel is not ``activity``. A numbered session
+    stays: the background block does not read ``publishable``, so dropping
+    ``roster_session`` would publish rows the activity list had held back.
+    """
+    if kind is None or kind.session:
+        return True
+    if kind.kind in OFF_ACTIVITY_LIST:
+        return False
+    if origin.startswith("cv:") or not kind.channel:
+        return True
+    return kind.channel == "activity"
+
+
 def _load_activity_flags(path: Path) -> dict[str, list[str]]:
     """Flags a reader is shown. Only ``year_from_title`` (P1) is copied onto the row."""
     from giye.ledger.io import read_csv
@@ -851,11 +903,19 @@ def _row_activity_id(row: dict) -> str:
     return activity_id_for(key, 0)
 
 
-def _activities(rows: list[dict], ledger_to_gy: dict[str, str], flags: dict[str, list[str]], stamp: str) -> list[dict]:
+def _activities(
+    rows: list[dict],
+    ledger_to_gy: dict[str, str],
+    flags: dict[str, list[str]],
+    stamp: str,
+    kinds: dict[str, _KindRow],
+) -> list[dict]:
     out = []
     for row in rows:
         gy = ledger_to_gy.get(row.get("ledger_id") or "")
         if not gy or row.get("publishable") != "yes":
+            continue
+        if not _listed_activity(kinds.get(row.get("activity_id") or ""), row.get("origin") or ""):
             continue
         title = (row.get("title") or "").strip()
         year = parse_year(row.get("year"))
@@ -954,15 +1014,37 @@ def _collaborations(ledger: Ledger, ledger_to_gy: dict[str, str]) -> list[dict]:
     return out
 
 
-def _background(rows: list[dict], ledger_to_gy: dict[str, str], year_now: int) -> list[dict]:
-    """CV education, employment, teaching, and press. Scholarship-like titles and a future upcoming year stay off."""
+def _background(
+    rows: list[dict], ledger_to_gy: dict[str, str], year_now: int, kinds: dict[str, _KindRow]
+) -> list[dict]:
+    """CV education, employment, teaching, and press, plus roster teaching posts.
+
+    Scholarship-like titles and a future upcoming year stay off. A roster row
+    is added only when K1 says ``background`` and ``teaching``. ``roster_session``
+    is not that row: a numbered session stays on the activity channel, because
+    this path does not read ``publishable`` and does not treat ``예정`` as
+    ``upcoming``. ``publishable`` is not a gate for either path.
+    """
     out = []
     seen: set[tuple] = set()
     for row in rows:
         gy = ledger_to_gy.get(row.get("ledger_id") or "")
         match = re.search(r"cv_section=(\w+)", row.get("reviewer_note") or "")
         origin = row.get("origin") or ""
-        if not gy or not match or match.group(1) not in BACKGROUND_SECTIONS or not origin.startswith("cv:"):
+        kind = kinds.get(row.get("activity_id") or "")
+        section = ""
+        if gy and match and match.group(1) in BACKGROUND_SECTIONS and origin.startswith("cv:"):
+            section = match.group(1)
+        elif (
+            gy
+            and kind is not None
+            and not kind.session
+            and not origin.startswith("cv:")
+            and kind.channel == "background"
+            and kind.kind == "teaching"
+        ):
+            section = "teaching"
+        if not section:
             continue
         # Apply sets publishable=no on every background row as a section
         # marker, so publishable cannot carry these two decisions here: a row
@@ -980,7 +1062,7 @@ def _background(rows: list[dict], ledger_to_gy: dict[str, str], year_now: int) -
             continue
         if PRIVATE_TITLE.search(f"{title} {row.get('role') or ''}"):
             continue
-        key = (gy, match.group(1), year, re.sub(r"[\W_]+", "", title.lower()))
+        key = (gy, section, year, re.sub(r"[\W_]+", "", title.lower()))
         if key in seen:
             continue
         seen.add(key)
@@ -988,7 +1070,7 @@ def _background(rows: list[dict], ledger_to_gy: dict[str, str], year_now: int) -
             {
                 "id": _row_activity_id(row),
                 "artist_id": gy,
-                "section": match.group(1),
+                "section": section,
                 "title": title[:500],
                 "venue": row.get("venue") or None,
                 "year": year,
