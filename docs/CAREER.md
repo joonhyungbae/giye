@@ -39,13 +39,21 @@ knowledge under its own name.
 1. **Descriptive, never prescriptive or causal.** The archive shows that selection is not followed
    by a measurable change in CV activity once a placebo baseline is used, and that the CV layer is
    the people who are still publishing CVs. So: "careers like yours did X" is allowed;
-   "do X to advance", "X increases your chances", "the successful path" are not. Every response
-   carries `must_say` and `forbidden_paraphrase` (section 5) so this holds without relying on the
-   client's prompt.
+   "do X to advance", "X increases your chances", "the successful path" are not. Models are
+   trained to distrust instructions found inside tool results (Wallace et al. 2024,
+   arXiv:2404.13208), and LLM summaries drop qualifiers (Peters & Chin-Yee 2025, arXiv:2504.00025).
+   So the first text of every result is the finished descriptive sentence, with layer and
+   denominator, which is the cheapest thing for a client to quote; the same rules are carried in
+   the server instructions, every tool description and a user-selected prompt (section 5), and
+   `must_say` / `forbidden_paraphrase` remain as data.
 2. **Aggregates only.** The server holds only the career bundle (section 4): tables of counts and
    distributions. It holds no ledger row, no `gy_id`, no name, no title, no URL of any person.
-   Every cell below the suppression threshold `k` (default 10 distinct people) is withheld and
-   reported as suppressed, so no answer can describe one identifiable career.
+   Disclosure control follows the output-checking conventions of statistical agencies (section 4):
+   `k = 10` distinct people per cell, quantiles only with at least `k` people on each side, no
+   minimum or maximum, a bound instead of a share when 90% of a group share one value, counts
+   rounded to 5, and a build test for recovery by differencing. No answer can describe one
+   identifiable career. The user's career only selects a pre-built cell, so repeated queries can
+   reveal at most the bundle itself; protection therefore lives in the build.
 3. **No person is named, compared to or recommended.** There is no "artists like you" tool.
    Programmes and institutions are public bodies and may be named.
 4. **The input career is not stored.** A request's entries live only for that request. Optional
@@ -67,7 +75,7 @@ home machine (private)                                     VPS (public edge)
               rule ids, manifest)                                       giye MCP server 
                                                                         (streamable HTTP, 127.0.0.1)
                                                                                   │
-                                                       cloudflared ── mcp.giye.org (or another host)
+                                                       cloudflared ── https://mcp.giye.org/mcp
                                                                                   │
                                                        the practitioner's MCP client (Claude, Cursor, …)
 ```
@@ -84,8 +92,15 @@ home machine (private)                                     VPS (public edge)
   not ship in a package, unlike Tekneh). `giye mcp serve --stdio --bundle <demo bundle>` for development and
   tests on the demo bundle.
 - **Deployment**: a second systemd unit (`deploy/giye-mcp.service`) beside `giye-web.service`, same
-  hardening (`ProtectSystem=strict`, read-only bundle), its own hostname on the existing tunnel,
-  a request-rate limit like the scrape guard.
+  hardening (`ProtectSystem=strict`, read-only bundle), its own hostname on the existing tunnel.
+- **Endpoint and access**: `https://mcp.giye.org/mcp`, HTTPS without redirect, `Origin` checked,
+  speaking MCP revisions 2025-11-25 and 2026-07-28 (stateless) during the transition. Open and
+  authless: the MCP specification makes authorization optional, and authless is the only mode that
+  reaches claude.ai custom connectors and ChatGPT without running an OAuth server (static API-key
+  headers are a limited beta in claude.ai). A global budget and a per-IP limit protect load; the
+  per-IP limit allows for Anthropic's shared outbound range, which every claude.ai user comes from.
+  An optional key header only raises limits for clients that can send one. Access control protects
+  load, not secrecy: the bundle must be safe to read in full.
 
 ## 4. The career bundle
 
@@ -95,7 +110,7 @@ a population and a layer.
 
 | Table | Grain | Layer | Content |
 |---|---|---|---|
-| `reference_position` | career age (0–30, 1-year) × generation (5-year) × measure | CV | Quantiles (10/25/50/75/90) and weighted quantiles of: activity-kind shares, overseas share, Seoul share among domestic, funding share, art-tech institution share, distinct institutions per year |
+| `reference_position` | career age (0–30, 1-year) × generation (5-year) × measure | CV | Quantiles (those the quantile rule allows) and weighted quantiles of: activity-kind shares, overseas share, Seoul share among domestic, funding share, art-tech institution share, distinct institutions per year |
 | `next_window` | career age band × generation × current-mix bucket × outcome kind | CV | Share of reference careers whose next 3 years contain each activity kind, institution kind, region; right-censored careers excluded and counted |
 | `programme_profile` | programme | roster + CV | Access mode, years, edition sizes, returners share, team share, non-entrant comparisons |
 | `programme_entry` | programme × measure | CV | Quantiles at entry: career age, activity mix before entry, overseas share before entry, institutions before entry |
@@ -125,13 +140,31 @@ Definitions (each becomes a rule id in `giye.career.rules`):
 - **Funding**: `venue_kind=funder` or the funding kinds above.
 - **Programme entry**: the first dated roster edition of that programme.
 
-Every cell carries `n_people`; cells with `n_people < k` are written as suppressed. A build test
-fails when any cell under `k` carries a value, or when any column could hold an identifier.
+Disclosure control (rule ids `D1`–`D5`), after the output-checking guidelines of the ESSnet /
+Eurostat (≥ 10 units per cell, percentiles treated as one respondent's value, no min/max, group
+disclosure above 90%), UK secure-research practice (threshold 10) and published-outcome statistics
+such as HESA's (rounding to 5):
+
+- `D1` every cell carries `n_people`; a cell with `n_people < k` (`k = 10`) is written as suppressed,
+  never as 0;
+- `D2` a quantile q is published only when at least `k` people lie on each side of it
+  (`n ≥ k / min(q, 1 − q)`: the median needs 20, the quartiles 40, P10 and P90 100); otherwise the
+  cell reports fewer quantiles; minimum and maximum are never published;
+- `D3` when 90% or more of a group share one value, the cell reports that bound instead of quantiles
+  or an exact share;
+- `D4` published counts are rounded to the nearest 5 and percentages to whole numbers, computed
+  from unrounded counts;
+- `D5` a build test fails when a suppressed cell can be recovered from published margins or
+  overlapping tables, when any cell under `k` carries a value, or when any column could hold an
+  identifier.
 
 ## 5. Tools
 
-All tools take `lang` (`en` | `ko`, default from `GIYE_LANG`). Every success response carries
-the reading contract:
+All tools take `lang` (`en` | `ko`, default from `GIYE_LANG`). The first `content` text of every
+result is the finished descriptive sentence (`claim_template` filled in). Every tool declares an
+`outputSchema`. The reading rules are in the server instructions, in each tool description, and in
+an MCP prompt `read_my_career` that the user selects (prompts are a user-level channel; tool-result
+text is not). Every success response also carries the reading contract as data:
 
 ```
 layer            "roster" | "cv" | "both"
@@ -151,7 +184,7 @@ bundle_version   ledger version the bundle was built from
 | `about` | — | Boundary of the evidence, populations, bundle version, reading rules. Call first |
 | `career_schema` | — | The `CareerEntry` schema and instructions for the client to structure a CV (year, kind, venue name, city/country, programme if any). The client's model does the structuring; the server never sees the CV document |
 | `position` | `entries: list[CareerEntry]` | Career age, generation, and for each measure the user's value beside the reference quantiles at the same career age and generation. Bands, not scores |
-| `programme_fit` | `entries` | For each programme with an unsuppressed entry profile: whether the user's measures fall inside the central 50% / 80% of that programme's entrants at entry. Ordered by programme code, not by fit, so it is not a ranking |
+| `programme_fit` | `entries` | Only if the author keeps it (section 10). For each programme with an unsuppressed entry profile: whether the user's measures fall inside the central 50% / 80% of that programme's entrants at entry. Ordered by programme code, not by fit, so it is not a ranking |
 | `programme_profile` | `programme` | The programme's profile and entry profile, transitions to and from it |
 | `next_steps` | `entries` or `career_age` + `generation` | Base rates of what followed in reference careers at the same career age and mix |
 | `field_trend` | `measure` | Generation-level trend with intervals |
@@ -184,29 +217,25 @@ count). Never the entries or the question text unless the user opts into that se
 
 ## 8. Data work before the first bundle
 
-Found during the 2026-10-07 exploration of the processed data. There is one preprocessing for
-everything: these fixes go into the shared layer (`giye.normalize` in the package, the reference
-instance's `scripts/preprocess/`), so the site, the research analyses and the career bundle all
-read the same corrected values. The career builder adds no preprocessing of its own; it only
-aggregates `data/processed/`.
+One preprocessing serves everything: the fixes went into the shared layer (`giye.normalize`), so
+the site, the research analyses and the career bundle read the same values. The career builder
+aggregates `data/processed/` and adds no preprocessing of its own. Each rule was agreed in an
+adversarial critic/author review before it was implemented (rules and counts in docs/RULES.md).
 
-1. Venue entities split across languages and abbreviations (funders especially; some major
-   institutions and festivals appear as several entities). Extend V9 bilingual matching and the
-   alias rules.
-2. Korean institutions with an empty country. Fill from the gazetteer and the frame registry.
-3. City names standing as institutions. A rule to classify bare place names as `place_only`.
-4. Split of `activity_type=other` by `cv_section` (section 4). K1 now writes `activity_kind` on the
-   processed row; the section is already recorded on
-   every CV row, so no re-extraction is needed.
-5. P4 event patterns miss common English and programme-specific wordings; widen them so programme
-   entry and "listed on own CV" are measured consistently.
-6. Recompute the record-depth IPW model on the corrected data.
+| Item | Status (2026-10-09) |
+|---|---|
+| Venue entities split across names, languages, acronyms | V4n, V7f, V9u (`3622283`), V12 same-row alias attestation (`bea38ec`); a Wikidata-based rule for pairs with no in-data evidence is under review |
+| Institutions with an empty country | G7–G11 (`76e613c`); Korean-language CV rows unresolved 44.2% → 35.9% |
+| City names standing as institutions | one case found; gazetteer alternate names |
+| `activity_type=other` | K1 `activity_kind` (`2681ddb`); `other` 30.9% → 4.7% of CV rows |
+| P4 edition links | `[resolve.edition_only]` and three tighter shared patterns (`a3dba8a`); 110 misses need re-extraction, not patterns |
+| Record-depth IPW model | to be recomputed with the first bundle |
 
 ## 9. Phases
 
 | Phase | Output | Done when |
 |---|---|---|
-| 0 | Data fixes of section 8 | preprocess and site rebuild pass; before/after counts reported |
+| 0 | Data fixes of section 8 (done 2026-10-08, deployed) | preprocess and site rebuild pass; before/after counts reported |
 | 1 | `giye.career` builder, rules, demo bundle, privacy tests | `pytest -q` and `ruff` pass; demo bundle has no cell under `k` |
 | 2 | `giye mcp` server (stdio) with `about`, `career_schema`, `position`, `programme_profile`, `map_question`, `list_vocab` | scenario set passes on the demo bundle |
 | 3 | `programme_fit`, `next_steps`, `field_trend`; reference bundle | holdout check reported |
@@ -216,14 +245,20 @@ aggregates `data/processed/`.
 The bundle tables are the same aggregates the second paper (field analysis) reports, so phase 1
 also gives that paper its tables.
 
-## 10. Open questions for the author
+## 10. Decisions
 
-1. Hostname: `mcp.giye.org` (proposed) or a path under giye.org.
-2. Access: open with a rate limit, or a key issued on request.
-3. Suppression threshold `k` (default proposed: 10 people).
-4. Whether `programme_fit` should exist at all, or only `programme_profile` (fit is closer to a
-   recommendation even when unordered).
-5. Whether the art-tech institution rule may use the frame registry only, or also a declared list
-   of foreign art-tech venues (which would be a hand list unless it is a written rule).
-6. Notice on giye.org that public CVs feed aggregate career evidence, and its wording.
-7. Whether usage logging is offered at all on the remote server.
+Settled by published evidence (sources in sections 2–5; web research of 2026-10-09):
+hostname `https://mcp.giye.org/mcp`; open, authless, rate-limited access; `k = 10` with rules
+D1–D5; descriptive sentence first, rules in instructions, descriptions and a user prompt.
+
+Still the author's value judgement:
+
+1. Whether a fully readable bundle through an open endpoint is compatible with "no bulk export".
+   If not, only OAuth prevents reading it all.
+2. Whether percentages need a higher threshold than counts (graduate-outcome statistics use about 20).
+3. Whether `programme_fit` exists at all, or only `programme_profile`.
+4. Whether people may opt out of the aggregates while staying in the archive, whether people with a
+   listed contact are told directly, and the legal-basis wording of the notice (a Korean and English
+   draft exists; Korean PIPA art. 20 and Supreme Court 2014다235080, GDPR art. 14(5)(b)).
+5. Whether usage logging is offered at all on the remote server.
+6. The compliance rate below which the public launch waits (section 6).
