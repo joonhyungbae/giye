@@ -45,10 +45,10 @@ VENUE_FIELDS = [
 # N-8: every join, machine-readable (the audit's section 7 is Markdown).
 MERGE_FIELDS = ["rule", "venue_id", "kept_key", "joined_key"]
 # Order of the rule ids in ``venue_rule`` and ``rules``.
-# G7–G11 fill an empty country (docs/RULES.md). They are not merge rules.
+# G7, G8, G13, and G9–G11 fill an empty country (docs/RULES.md). They are not merge rules.
 RULE_ORDER = (
     "V4", "V4n", "V7", "V5a", "V5d", "V5f", "V7e", "V7f", "V8", "V9", "V9u",
-    "V12", "V12i", "V12k", "G7", "G8", "G9", "G10", "G11",
+    "V12", "V12i", "V12k", "G7", "G8", "G13", "G9", "G10", "G11",
 )
 # V2 separators. The full-width and ideographic commas and semicolon split like
 # their ASCII forms (예시미술관，서울); before 2026-10-06 they did not (audit m1).
@@ -602,7 +602,7 @@ def _audit_sample_lines(
     lines = [
         "# Place and institution entity-resolution audit sample",
         "",
-        "Rules G1–G6 · V2–V9, V4n, V7f, V9u, V12 · G7–G11 country fill. Random sample seed: `20260925`.",
+        "Rules G1–G6 · V2–V9, V4n, V7f, V9u, V12 · G7–G11, G13 country fill. Random sample seed: `20260925`.",
         "Section 7 lists every merge and the rule that made it. Section 8 lists the country fill.",
         "",
         "## 1. Random sample of activity rows",
@@ -1051,15 +1051,18 @@ def build(
     lang: LanguageModule | None = None,
     frames: list[tuple[str, str, str]] | None = None,
     links: dict[str, str] | None = None,
+    operators: list[tuple[str, str, str]] | None = None,
 ) -> BuildResult:
     """Build venue entities from activity rows.
 
     ``name_rules=None`` applies V7 (spelling and V7e), V8, V9, V4n, V7f, V9u and V12.
     ``write=False`` skips ``venues.csv`` and ``venue_audit.md``. ``lang`` defaults
     to the Korean–English module. ``frames`` is ``(code, name_ko, name_en)`` from
-    the registry; G8 reads those names and nothing else on the frame. ``links``
-    is activity id → edition (P4). A row's own ``event_link`` is used when
-    ``links`` has no entry. V12c counts those editions.
+    the registry; G8 reads those names and nothing else on the frame.
+    ``operators`` is ``(name_ko, name_en, role)`` from the same registry; G13
+    reads organiser and operator names. ``links`` is activity id → edition (P4).
+    A row's own ``event_link`` is used when ``links`` has no entry. V12c counts
+    those editions.
     """
     rules = NAME_RULES if name_rules is None else frozenset(name_rules)
     unknown = rules - NAME_RULES
@@ -1070,7 +1073,9 @@ def build(
     language = lang or load_language("giye.normalize.lang.ko_en:KoEn")
     token = _V7_SPELLING.set("V7" in rules)
     try:
-        return _resolve(activity_rows, out_dir, rules, write, language, frames or [], links or {})
+        return _resolve(
+            activity_rows, out_dir, rules, write, language, frames or [], links or {}, operators or []
+        )
     finally:
         _V7_SPELLING.reset(token)
 
@@ -2080,6 +2085,7 @@ def _resolve(
     lang: LanguageModule,
     frames: list[tuple[str, str, str]],
     links: dict[str, str],
+    operators: list[tuple[str, str, str]],
 ) -> BuildResult:
     """V2–V6, then whichever of V7e/V8/V9 are in ``rules``. The caller sets V7 spelling.
 
@@ -2158,6 +2164,7 @@ def _resolve(
         entity_by_root,
         lang,
         frames,
+        operators=operators,
         key_of=lambda text: institution_key(text, lang),
         pairs_of=bracketed_pairs,
         rule_order=RULE_ORDER,

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Fill an empty institution country, and the same fill on an empty CV venue country.
 
-Four steps, first match, on an empty stored country. A stored country and a
+First match, on an empty stored country. A stored country and a
 stored V1 country are not replaced. The steps:
 
 G7   A Hangul name starts with a Korean place stem of two or more syllables,
@@ -17,6 +17,11 @@ G8   A spelling equals a frame ``name_ko`` or ``name_en``, or a Hangul string
      prefix of the spelling. No event pattern, no parenthetical operator, no
      short token inside a frame name. The country does not need placed rows.
      The region is copied only when those rows are already unanimous KR.
+G13  An organiser or operator name on a frame equals exactly one venue
+     spelling, and that entity is an institution. The country is KR. A
+     funder-kind credit is stored on the frame and is not a fill. The region
+     is the same unanimous placed KR as G8. G13 runs after G8, so a frame-name
+     hit stays G8.
 G9   A place run sticks to the neighbouring institution. Two countries in the
      run abstain. An empty country is filled only when every placed row is KR
      and there are at least ten. A solo majority is not a fill, and a placed
@@ -31,7 +36,7 @@ G10  An empty institution written in parentheses copies a unanimous KR host
      when at least five pair-rows agree. A host that G7 or G8 will fill still
      votes. The region is copied only when every vote carries the same
      non-blank tag.
-G11  The region written by G7–G10. Recorded only when the region is not blank.
+G11  The region written by G7, G8, G13, G9, and G10. Recorded only when the region is not blank.
 
 The hall histogram is the stored snapshot, taken before any fill. A later
 entity must not be tagged from a region this pass has just written.
@@ -246,6 +251,50 @@ def _spellings(row: dict[str, str]) -> list[str]:
     return [row.get("name") or "", *aliases]
 
 
+def _operator_key(text: str) -> str:
+    """G13 spelling equality: NFC, spaces collapsed, case-folded.
+
+    Parentheses stay, so ``Asia Culture Institute (ACI)`` is not
+    ``Asia Culture Institute``. The registry stores the spelling that
+    already equalled one venue.
+    """
+    folded = unicodedata.normalize("NFC", text or "")
+    return re.sub(r"\s+", " ", folded).strip().casefold()
+
+
+def _g13_ids(snapshot: dict[str, dict[str, str]], operators: list[tuple[str, str, str]]) -> set[str]:
+    """Institution ids G13 may fill.
+
+    Each operator is ``(name_ko, name_en, role)``. Organiser and operator
+    count. A name that equals two venue entities, or one entity whose kind
+    is not institution, is not a fill. The caller still keeps a funder-kind
+    credit on the frame.
+    """
+    names: list[str] = []
+    for name_ko, name_en, role in operators:
+        if role not in {"organiser", "operator"}:
+            continue
+        for raw in (name_ko, name_en):
+            key = _operator_key(raw)
+            if key:
+                names.append(key)
+    hits: dict[str, set[str]] = defaultdict(set)
+    for venue_id, row in snapshot.items():
+        for spelling in _spellings(row):
+            key = _operator_key(spelling)
+            if key:
+                hits[key].add(venue_id)
+    chosen: set[str] = set()
+    for name in names:
+        ids = hits.get(name) or set()
+        if len(ids) != 1:
+            continue
+        venue_id = next(iter(ids))
+        if snapshot[venue_id]["kind"] == "institution":
+            chosen.add(venue_id)
+    return chosen
+
+
 def _countries(run: list[Any]) -> set[str]:
     return {fragment.place.country for fragment in run if fragment.place and fragment.place.country}
 
@@ -387,11 +436,12 @@ def apply_country_fill(
     lang: LanguageModule,
     frames: list[tuple[str, str, str]] | None,
     *,
+    operators: list[tuple[str, str, str]] | None = None,
     key_of: Callable[[str], str],
     pairs_of: Callable[[str], list[tuple[str, str]]],
     rule_order: tuple[str, ...],
 ) -> dict[str, Any]:
-    """Write G7–G11 onto empty institution countries. Return the CV fill map and the audit.
+    """Write G7–G11 and G13 onto empty institution countries. Return the CV fill map and the audit.
 
     ``cv_fills`` is only entities whose stored country was empty. A correction
     of a stored country is not copied onto a CV row.
@@ -430,6 +480,7 @@ def apply_country_fill(
         reason = _g8_hit(_spellings({"name": row["name"], "aliases": row["aliases"]}), korean_frames, english_frames)
         if reason:
             g8[venue_id] = reason
+    g13 = _g13_ids(snapshot, operators or [])
 
     id_of = {root: entity["venue_id"] for root, entity in entity_by_root.items()}
     adj_country: dict[str, Counter[str]] = defaultdict(Counter)
@@ -608,6 +659,8 @@ def apply_country_fill(
             rule, region = "G7", g7[venue_id][0]
         elif venue_id in g8:
             rule, region = "G8", placed_region(venue_id)
+        elif venue_id in g13:
+            rule, region = "G13", placed_region(venue_id)
         elif placed_kr(venue_id):
             rule, region = "G9", placed_region(venue_id)
         elif venue_id in paren_country:
@@ -618,7 +671,7 @@ def apply_country_fill(
         if region:
             rules.add("G11")
         write(venue_id, "KR", region, rules, city=None)
-        token = "|".join(item for item in ("G7", "G8", "G9", "G10", "G11") if item in rules)
+        token = "|".join(item for item in ("G7", "G8", "G13", "G9", "G10", "G11") if item in rules)
         cv_fills[venue_id] = ("KR", region, token)
         counts[rule] += 1
         if region:
@@ -629,13 +682,14 @@ def apply_country_fill(
         "",
         (
             "Empty institution countries only, except the G9 corrections listed below. "
-            "A stored country is not replaced by G7, G8, a solo majority, or a placed majority that is not unanimous KR. "
+            "A stored country is not replaced by G7, G8, G13, a solo majority, or a placed majority that is not unanimous KR. "
             "G11 is the region, written only when it is not blank. The hall guard uses the stored snapshot from before this fill."
         ),
         "",
         (
             f"- G7 place prefix: {counts['G7']} institutions"
             f" · G8 frame name: {counts['G8']}"
+            f" · G13 programme operator: {counts['G13']}"
             f" · G9 neighbour, unanimous KR: {counts['G9']}"
             f" · G10 parenthetical host: {counts['G10']}"
             f" · G11 region: {counts['G11']}"

@@ -181,11 +181,28 @@ def _frame_names(config: Config) -> list[tuple[str, str, str]]:
     return [(frame.code, frame.name_ko, frame.name_en) for frame in load_frames(config.frames).frames]
 
 
+def _frame_operators(config: Config) -> list[tuple[str, str, str]]:
+    """``(name_ko, name_en, role)`` for G13. A missing registry is an empty list.
+
+    The same loader as G8. A funder-kind credit is included when its role is
+    organiser or operator; country fill drops it by kind.
+    """
+    if not config.frames.is_file():
+        return []
+    from giye.collect.frames import load_frames
+
+    return [
+        (item.name_ko, item.name_en, item.role)
+        for frame in load_frames(config.frames).frames
+        for item in frame.operators
+    ]
+
+
 def _stamp_country_fills(activity_out: list[dict[str, str]], fills: dict[str, tuple[str, str, str]]) -> None:
     """Write a country fill onto a CV row whose V1 country is empty.
 
     A stored V1 country, and its region, stay as they are. The fill is the
-    entity's own G7–G10 result, not a copy of a country the entity already had.
+    entity's own G7–G10 or G13 result, not a copy of a country the entity already had.
     """
     for row in activity_out:
         if not str(row.get("origin") or "").startswith("cv:"):
@@ -620,7 +637,7 @@ def _report_text(
         "",
         (
             f"- Activities whose venue yielded a country: {manifest['counts']['venue_country']} / {activities}"
-            " (V1, G1–G6, then G7–G11 when the V1 country is empty)"
+            " (V1, G1–G6, then G7–G11 and G13 when the V1 country is empty)"
         ),
         f"- Institution entities: {venue_result.stats['entities']} (V2–V9, then V4n, V7f, V9u, V12)",
         f"- Institution entities shared by two or more distinct artists: {venue_result.stats['shared_entities']}",
@@ -744,6 +761,7 @@ def normalize(config: Config, *, venue_name_rules: str | None = None) -> Normali
         lang=language,
         frames=_frame_names(config),
         links=links,
+        operators=_frame_operators(config),
     )
     activity_out = _activity_rows(
         loaded.activities, venue_places, venue_result, links, flags, edition_only_ids

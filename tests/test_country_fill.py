@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-"""Country and region fill (G7–G11). Institutions are fictitious. No person is named."""
+"""Country and region fill (G7–G11, G13). Institutions are fictitious. No person is named."""
 
 from __future__ import annotations
 
@@ -27,8 +27,12 @@ def _row(index: int, venue: str, origin: str = "") -> dict[str, str]:
     }
 
 
-def _venues(rows: list[dict[str, str]], frames: list[tuple[str, str, str]] | None = None) -> dict[str, dict]:
-    result = build(rows, write=False, lang=LANG, frames=frames)
+def _venues(
+    rows: list[dict[str, str]],
+    frames: list[tuple[str, str, str]] | None = None,
+    operators: list[tuple[str, str, str]] | None = None,
+) -> dict[str, dict]:
+    result = build(rows, write=False, lang=LANG, frames=frames, operators=operators)
     return {row["name"]: row for row in result.venues}
 
 
@@ -129,6 +133,72 @@ def test_g8_is_equality_or_a_long_prefix_not_a_short_token() -> None:
     assert "G8" in _rules(found["예시문화회"])
     assert found["예시문화"]["country"] == ""
     assert found["회관"]["country"] == ""
+
+
+def test_g13_fills_one_institution_and_leaves_a_funder_credit() -> None:
+    """An organiser name fills one empty institution. A funder-kind credit does not."""
+    found = _venues(
+        [
+            _row(1, "Example Institute"),
+            _row(2, "예시문화재단"),
+        ],
+        operators=[
+            ("", "Example Institute", "organiser"),
+            ("예시문화재단", "", "operator"),
+        ],
+    )
+    institute = found["Example Institute"]
+    assert institute["country"] == "KR"
+    assert institute["kr_region"] == ""
+    assert "G13" in _rules(institute)
+    assert "G8" not in _rules(institute)
+    assert "G11" not in _rules(institute)
+    funder = found["예시문화재단"]
+    assert funder["kind"] == "funder"
+    assert funder["country"] == ""
+    assert "G13" not in _rules(funder)
+
+
+def test_g8_wins_when_the_frame_name_equals_the_operator() -> None:
+    """G13 runs after G8. A spelling that is the frame name stays G8."""
+    frames = [("EX", "", "Example Institute")]
+    found = _venues(
+        [_row(1, "Example Institute")],
+        frames,
+        [("", "Example Institute", "organiser")],
+    )
+    row = found["Example Institute"]
+    assert row["country"] == "KR"
+    assert "G8" in _rules(row)
+    assert "G13" not in _rules(row)
+
+
+def test_g13_does_not_replace_a_stored_country() -> None:
+    """Japan on the row stays Japan. The operator name does not overwrite it."""
+    found = _venues(
+        [_row(1, "Example Institute, Japan")],
+        operators=[("", "Example Institute", "operator")],
+    )
+    row = found["Example Institute"]
+    assert row["country"] == "JP"
+    assert "G13" not in _rules(row)
+
+
+def test_g13_abstains_when_the_name_equals_two_entities() -> None:
+    """Exactly one venue entity is the gate. Two entities that share the spelling stay empty."""
+    from giye.normalize.country import _g13_ids
+
+    snapshot = {
+        "a": {"name": "예시공통연구소", "aliases": "", "kind": "institution", "country": ""},
+        "b": {"name": "다른예시연구소", "aliases": "예시공통연구소", "kind": "institution", "country": ""},
+        "c": {"name": "단독예시연구소", "aliases": "", "kind": "institution", "country": ""},
+        "d": {"name": "예시문화재단", "aliases": "", "kind": "funder", "country": ""},
+    }
+    shared = _g13_ids(snapshot, [("", "예시공통연구소", "organiser")])
+    assert shared == set()
+    unique = _g13_ids(snapshot, [("단독예시연구소", "", "operator"), ("예시문화재단", "", "operator")])
+    assert unique == {"c"}
+    assert _g13_ids(snapshot, [("", "단독예시연구소", "host")]) == set()
 
 
 def test_g9_unanimous_placed_kr_has_a_floor_and_a_second_country_abstains() -> None:

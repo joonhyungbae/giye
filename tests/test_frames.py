@@ -22,6 +22,7 @@ def test_valid_frame_coverage_and_optional_korean_name():
     assert frame.eligibility.f1_purpose
     assert frame.eligibility.f3_territory == "Held in the configured territory."
     assert frame.coverage() == 0.5
+    assert frame.operators == ()
     assert coverage(2, 4) == 0.5
     assert coverage(1, 0) is None
 
@@ -148,6 +149,48 @@ def test_only_included_and_adjacent_are_admitted():
     assert is_admitted("adjacent")
     for decision in ("excluded", "planned", "no_public_roster", "maybe", ""):
         assert not is_admitted(decision)
+
+
+OPERATOR = """    operators:
+      - name_ko: ""
+        name_en: Example Institute
+        role: organiser
+        source_url: https://example.org/programme
+        snapshot_path: data/raw/example/page.html
+        quote: Organised by Example Institute
+"""
+
+
+def _with_operator(tmp_path: Path, block: str = OPERATOR) -> Path:
+    text = (FIXTURES / "frames_valid.yml").read_text(encoding="utf-8")
+    text = text.replace("    eligibility:\n", block + "    eligibility:\n", 1)
+    path = tmp_path / "frames.yml"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_operators_are_loaded_when_the_quote_contains_the_name(tmp_path: Path):
+    frame = load_frames(_with_operator(tmp_path)).frames[0]
+    assert len(frame.operators) == 1
+    credit = frame.operators[0]
+    assert credit.name_en == "Example Institute"
+    assert credit.name_ko == ""
+    assert credit.role == "organiser"
+    assert credit.source_url == "https://example.org/programme"
+    assert credit.snapshot_path == "data/raw/example/page.html"
+    assert "Example Institute" in credit.quote
+
+
+def test_operator_role_quote_and_source_are_checked(tmp_path: Path):
+    host = OPERATOR.replace("role: organiser", "role: host", 1)
+    with pytest.raises(ValueError, match="role"):
+        load_frames(_with_operator(tmp_path, host))
+    missing = OPERATOR.replace("Organised by Example Institute", "Organised by someone else", 1)
+    with pytest.raises(ValueError, match="quote does not contain"):
+        load_frames(_with_operator(tmp_path, missing))
+    bare = OPERATOR.replace("https://example.org/programme", "example.org/programme", 1)
+    with pytest.raises(ValueError, match="source_url"):
+        load_frames(_with_operator(tmp_path, bare))
 
 
 def test_unknown_decision_is_rejected(tmp_path: Path):

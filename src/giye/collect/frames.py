@@ -49,6 +49,11 @@ maps an edition (the year in a membership code such as ``CODE-2024``) to
 max(declared, recorded). Edition sizes are not summed into the frame-level
 size: the frame counts each person once across editions, while edition sizes
 count a returning person in every edition, so the sum is a different unit.
+
+``operators`` records an organiser or operator named on the programme's own
+archived page. The loader checks the role, the http(s) source, and that the
+quote contains the name. Country fill (G13) reads the names; this module
+does not decide a country.
 """
 
 from __future__ import annotations
@@ -91,6 +96,27 @@ class DeclaredSize:
     source: str
 
 
+# G13 reads these roles. A host line, a funder role, and the other rejected
+# gates are not programme operators (docs/RULES.md).
+OPERATOR_ROLES = frozenset({"organiser", "operator"})
+
+
+@dataclass(frozen=True)
+class FrameOperator:
+    """One organiser or operator named on the programme's own archived page.
+
+    ``name_ko`` and ``name_en`` are the spelling that equalled one venue.
+    Either may be empty. The quote is the page text that contains the name.
+    """
+
+    name_ko: str
+    name_en: str
+    role: str
+    source_url: str
+    snapshot_path: str
+    quote: str
+
+
 @dataclass(frozen=True)
 class Frame:
     """One programme in ``frames.yml``: names, source, and the recorded F1–F5 judgement."""
@@ -114,6 +140,8 @@ class Frame:
     # ``transcribed`` means the roster was copied by hand. The frame may then
     # have no single source page; each membership row carries its own.
     collector: str = ""
+    # Organiser and operator credits from the programme's own page (G13).
+    operators: tuple[FrameOperator, ...] = ()
 
     def coverage(self, members_recorded: int | None = None) -> float | None:
         """Members recorded / max(declared size, members recorded), or ``None``.
@@ -242,6 +270,7 @@ def _frame(entry: object, path: Path) -> Frame:
         years_covered=str(entry.get("years_covered") or ""),
         status=str(entry.get("status") or ""),
         collector=collector,
+        operators=_operators(code, entry.get("operators")),
     )
 
 
@@ -313,6 +342,56 @@ def _registry_code(mem_code: str, codes: list[str]) -> str | None:
         if mem_code.startswith(code + "-") and len(code) > len(best):
             best = code
     return best or None
+
+
+def _operators(code: str, raw: object) -> tuple[FrameOperator, ...]:
+    """Parse ``operators``. Absent is an empty list. A bad credit is refused.
+
+    The quote has to contain each name that is set: the credit is the page
+    sentence, not a name written beside it. ``snapshot_path`` is a relative
+    archive path. The file is not opened here.
+    """
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise TypeError(f"{code}: operators must be a list")
+    out: list[FrameOperator] = []
+    for index, item in enumerate(raw, start=1):
+        where = f"{code} operators item {index}"
+        if not isinstance(item, dict):
+            raise TypeError(f"{where} must be a mapping")
+        name_ko = _text(item.get("name_ko"))
+        name_en = _text(item.get("name_en"))
+        role = _text(item.get("role"))
+        source_url = _text(item.get("source_url"))
+        snapshot_path = _text(item.get("snapshot_path"))
+        quote = _text(item.get("quote"))
+        if role not in OPERATOR_ROLES:
+            allowed = ", ".join(sorted(OPERATOR_ROLES))
+            raise ValueError(f"{where}: role must be one of {allowed}")
+        if not name_ko and not name_en:
+            raise ValueError(f"{where}: name_ko or name_en is required")
+        if not source_url.startswith(("http://", "https://")):
+            raise ValueError(f"{where}: source_url must be an http(s) URL")
+        parts = Path(snapshot_path).parts
+        if not snapshot_path or snapshot_path.startswith(("/", "\\")) or ".." in parts:
+            raise ValueError(f"{where}: snapshot_path must be a relative archive path")
+        if not quote:
+            raise ValueError(f"{where}: quote is required")
+        for name in (name_ko, name_en):
+            if name and name not in quote:
+                raise ValueError(f"{where}: quote does not contain the name")
+        out.append(
+            FrameOperator(
+                name_ko=name_ko,
+                name_en=name_en,
+                role=role,
+                source_url=source_url,
+                snapshot_path=snapshot_path,
+                quote=quote,
+            )
+        )
+    return tuple(out)
 
 
 def _eligibility(code: str, raw: object) -> Eligibility:
