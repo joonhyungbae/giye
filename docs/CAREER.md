@@ -1,6 +1,6 @@
 # Giye career evidence (MCP): design draft
 
-Status: draft for the author's review, 2026-10-07. Nothing here is implemented yet.
+Status: design under the author's review. Phase 0 and phase 1 are implemented (section 9); the rest is not.
 Open questions are collected in the last section; none of them is decided in this document.
 
 ## 1. What it is
@@ -110,12 +110,12 @@ a population and a layer.
 
 | Table | Grain | Layer | Content |
 |---|---|---|---|
-| `reference_position` | career age (0–30, 1-year) × generation (5-year) × measure | CV | Quantiles (those the quantile rule allows) and weighted quantiles of: activity-kind shares, overseas share, Seoul share among domestic, funding share, art-tech institution share, distinct institutions per year |
+| `reference_position` | career age (0–30, 1-year) × generation (5-year) × measure | CV | Quantiles (those the quantile rule allows) and weighted quantiles of: activity-kind shares, country-group shares (home, abroad, unresolved), region shares among home rows (C4r), funding share, art-tech institution share, distinct institutions per year |
 | `next_window` | career age band × generation × current-mix bucket × outcome kind | CV | Share of reference careers whose next 3 years contain each activity kind, institution kind, region; right-censored careers excluded and counted |
-| `programme_profile` | programme | roster + CV | Access mode, years, edition sizes, returners share, team share, non-entrant comparisons |
+| `programme_profile` | programme | roster + CV | Access mode, years, edition sizes, returners share, team share (non-entrant comparisons: a later phase) |
 | `programme_entry` | programme × measure | CV | Quantiles at entry: career age, activity mix before entry, overseas share before entry, institutions before entry |
 | `programme_transitions` | programme × programme | roster | Movers, at-risk denominator, median gap, right-censoring note |
-| `field_trend` | generation × measure | CV (+ roster where possible) | Generation-level trends with intervals |
+| `field_trend` | generation × measure | CV | Generation-level trends with bootstrap intervals, weighted and unweighted |
 | `vocab` | — | — | Activity kinds, institution kinds, regions, programmes, generations, rule ids, `not_covered` topics |
 
 Definitions (each becomes a rule id in `giye.career.rules`):
@@ -131,7 +131,7 @@ Definitions (each becomes a rule id in `giye.career.rules`):
   `programme_transitions` count a person in a programme edition and do not read `activity_kind` or
   `activity_type` (`career_roster_membership`). `list_vocab` publishes the 18 kind names and the
   three channel names.
-- **Career age**: years since the first public activity, education rows excluded. Generation:
+- **Career age**: years since the A1 first public practice year (`active_since`; a CV-layer person without it is counted and left out). Generation:
   5-year bin of that first year (the same bins as the site's rim).
 - **Overseas / domestic / region**: `venue_country` and `venue_region` from P3 (V1, G1–G6).
   Rows with an unresolved country are a separate bucket, never dropped silently.
@@ -152,8 +152,10 @@ such as HESA's (rounding to 5):
   cell reports fewer quantiles; minimum and maximum are never published;
 - `D3` when 90% or more of a group share one value, the cell reports that bound instead of quantiles
   or an exact share;
-- `D4` published counts are rounded to the nearest 5 and percentages to whole numbers, computed
-  from unrounded counts;
+- `D4` published counts are rounded to the nearest 5 and percentages to whole numbers (shares are written
+  as proportions with two decimals), computed from unrounded counts; a share, percentage or mean of a share
+  is published only when the cell has at least 20 people (`PCT_MIN`, decided 2026-10-10, after graduate-outcome
+  statistics); counts keep `k`;
 - `D5` a build test fails when a suppressed cell can be recovered from published margins or
   overlapping tables, when any cell under `k` carries a value, when any column could hold an
   identifier, or when a suppressed cell equals a staff-adjusted group-by of published `roster_facts`.
@@ -236,9 +238,9 @@ adversarial critic/author review before it was implemented (rules and counts in 
 | Phase | Output | Done when |
 |---|---|---|
 | 0 | Data fixes of section 8 (done 2026-10-08, deployed) | preprocess and site rebuild pass; before/after counts reported |
-| 1 | `giye.career` builder, rules, demo bundle, privacy tests | `pytest -q` and `ruff` pass; demo bundle has no cell under `k` |
-| 2 | `giye mcp` server (stdio) with `about`, `career_schema`, `position`, `programme_profile`, `map_question`, `list_vocab` | scenario set passes on the demo bundle |
-| 3 | `programme_fit`, `next_steps`, `field_trend`; reference bundle | holdout check reported |
+| 1 | `giye.career` builder, rules C0–C12 (`src/giye/career/rules.py`), synthetic and demo bundles, privacy tests. Done 2026-10-10: `python -m giye.career build --config <giye.toml> --out <dir> [--weights <ipw.csv>] [--roster-facts <open roster_facts.csv>]` | `pytest -q` and `ruff` pass; no published cell under `k`; the D5 scans pass |
+| 2 | `giye mcp serve` (stdio, `--http` for streamable HTTP) with `about`, `career_schema`, `position`, `programme_profile`, `next_steps`, `field_trend`, `map_question`, `list_vocab`, the prompt `read_my_career` and the reading contract on every result | scenario set and contract tests pass on a synthetic bundle and on the demo bundle |
+| 3 | Reference bundle from the production ledger with the record-depth weights; holdout check of `next_window` | holdout check reported |
 | 4 | Remote deployment, rate limit, opt-in logging | smoke test from a real MCP client |
 | 5 | Contract-compliance study | report in `docs/` |
 
@@ -255,8 +257,9 @@ Still the author's value judgement:
 
 1. Whether a fully readable bundle through an open endpoint is compatible with "no bulk export".
    If not, only OAuth prevents reading it all.
-2. Whether percentages need a higher threshold than counts (graduate-outcome statistics use about 20).
-3. Whether `programme_fit` exists at all, or only `programme_profile`.
+2. Settled 2026-10-10: percentages and shares need 20 people (`PCT_MIN`); counts keep `k = 10`.
+3. Settled 2026-10-10: no `programme_fit` tool in phases 1–2; `programme_profile` and `programme_entry` carry the
+   entry profile, listed by programme code. Whether a fit tool is added later stays the author's call.
 4. Whether people may opt out of the aggregates while staying in the archive, whether people with a
    listed contact are told directly, and the legal-basis wording of the notice (a Korean and English
    draft exists; Korean PIPA art. 20 and Supreme Court 2014다235080, GDPR art. 14(5)(b)).
