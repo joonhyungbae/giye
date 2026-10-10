@@ -56,8 +56,9 @@ report. Do not decide it yourself.
 - Dataset paper target: Journal of Open Humanities Data. Release is tiered: open aggregate tables and roster facts
   (Zenodo, DOI); pseudonymised person-level CV rows restricted under a published data-use agreement; original evidence
   bytes and private CV sections never released. Decided 2026-10-10: no commercial use of the restricted tier; the
-  author reviews every access request personally (no automatic approval); no embargo. Still open: names in the open
-  roster facts, CC BY vs CC0 for the open tier.
+  author reviews every access request personally (no automatic approval); no embargo; the open roster facts carry
+  gy_id, programme, year and source URL but no names (names only in the restricted tier, so a later hide request can
+  still be honoured). Licence of the open tier: CC BY 4.0 unless the author chooses CC0.
 - The dataset paper describes the data (dataset-level validation) and cites the SoftwareX paper for the pipeline;
   it does not repeat that paper's audits as its own contribution.
 
