@@ -125,6 +125,7 @@ cells. `cv_rows_published_rounded` is the sum of the rounded published cells.
 
 - `people.csv` — pseudonym, entry year, entry generation, record depth,
   programme codes, team flag. No names, no `gy_id`, no URLs.
+  With `[release] ipw_path` set, it also has `cv_weight`, the inverse-probability weight of a person with CV rows (empty otherwise); `ipw_method` describes the model in the codebook.
 - `activities.csv` — activity-channel rows: pseudonym, year, kind, channel,
   venue id and funder id only when that entity is in `institutions.csv`,
   country, region, venue kind, event-link frame code, `cv` or `roster`.

@@ -164,6 +164,10 @@ class ReleaseSettings:
     use. ``open_names`` stays false so a later hide request can still be
     honoured. ``pseudonym_secret`` is read only when ``pseudonym`` is
     ``stable_hmac``, and that file must not live inside the release directory.
+    ``ipw_path`` is optional and relative to the data directory. When set,
+    the restricted person file gains a CV weight column. Empty means no column.
+    ``ipw_method`` is the archive's own description of how those weights were
+    made (model, clipping, remaining imbalance), copied into the codebook.
     """
 
     open_names: bool = False
@@ -172,6 +176,9 @@ class ReleaseSettings:
     licence: str = "CC-BY-4.0"
     commercial_use: bool = False
     k: int = 10
+    # Relative to the data directory, not to the config file. Empty omits the column.
+    ipw_path: str = ""
+    ipw_method: str = ""
     # Neutral stand-ins. The reference archive sets its own creator in its
     # config; the package does not name that person.
     creator_family: str = "Example"
@@ -373,6 +380,8 @@ RELEASE_KEYS = frozenset(
         "creator_orcid",
         "repository_url",
         "site_url",
+        "ipw_path",
+        "ipw_method",
     }
 )
 # Keys of ``[collect]``. A misspelt key (``user-agent``, ``min_delay``) would
@@ -536,6 +545,27 @@ def _release_text(table: dict, key: str, default: str) -> str:
     return value.strip()
 
 
+def _release_ipw_path(table: dict) -> str:
+    """``[release] ipw_path``. Omitted or empty stays empty.
+
+    The path is relative to the data directory. An absolute path would point
+    outside that tree, so it is refused here rather than resolved later.
+    """
+    if "ipw_path" not in table:
+        return ""
+    value = table["ipw_path"]
+    if value is None or value == "":
+        return ""
+    if not isinstance(value, str):
+        raise TypeError("[release] ipw_path must be a path relative to the data directory")
+    value = value.strip()
+    if not value:
+        return ""
+    if Path(value).is_absolute():
+        raise ValueError("[release] ipw_path must be relative to the data directory")
+    return value
+
+
 def _release_settings(root: Path, table: dict, publish_site_url: str) -> ReleaseSettings:
     """``[release]``. An omitted table keeps the defaults.
 
@@ -578,6 +608,8 @@ def _release_settings(root: Path, table: dict, publish_site_url: str) -> Release
         creator_orcid=_release_text(table, "creator_orcid", ""),
         repository_url=_release_text(table, "repository_url", "").rstrip("/"),
         site_url=site_url.rstrip("/"),
+        ipw_path=_release_ipw_path(table),
+        ipw_method=str(table.get("ipw_method", "") or ""),
     )
 
 

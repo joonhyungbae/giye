@@ -181,6 +181,8 @@ Read by `giye release`. An omitted table keeps the defaults. `license` is an ali
 | `pseudonym_secret` | path | unset | yes, for `stable_hmac` | A file outside `<data>/release/`. Not read for `per_release`. | `"../data/work/release/pseudonym.key"` |
 | `licence` | string | `"CC-BY-4.0"` | no | Written into the manifest, the datasheet and the agreement. The open tier is CC BY 4.0. | `"CC-BY-4.0"` |
 | `commercial_use` | bool | `false` | no | The data-use agreement. False says commercial use of the restricted tier is not allowed. | `false` |
+| `ipw_path` | path | unset | no | Relative to the data directory: a CSV of `ledger_id,weight` (inverse-probability weights for people with CV rows). When set, `restricted/people.csv` gains `cv_weight`, joined through the private key. | `"work/record_depth/ipw.csv"` |
+| `ipw_method` | string | `""` | no | The archive's own description of how the weights were made (model, clipping, remaining imbalance); copied into both codebooks. | `"Logistic model of having CV rows on …"` |
 | `k` | integer ≥ 1 | `10` | no | Disclosure threshold (D1). Distinct people. Cells under `k` are suppressed. | `10` |
 | `creator_family` | string | `"Example"` | no | Family name in `LICENSE`, `CITATION.cff`, the README citation and the Zenodo `creators` entry. | `"Example"` |
 | `creator_given` | string | `"Archive"` | no | Given name, written after the family name in the citation and before it in the licence line. | `"Archive"` |

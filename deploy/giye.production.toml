@@ -75,6 +75,11 @@ pseudonym = "per_release"
 licence = "CC-BY-4.0"
 commercial_use = false
 k = 10
+# Relative to [paths].data. When set, restricted/people.csv gains cv_weight
+# for people with a CV row. The join uses the private ledger id and does not write it.
+ipw_path = "work/record_depth/ipw.csv"
+# Written from research/record-depth/out/bias.json of the run that made ipw.csv (2026-10-10).
+ipw_method = "The weights come from a logistic model of having extracted CV rows (record depth 4) on programme membership, entry cohort, team, Korean-named and host region (research/record-depth/bias.py). The fitted probability is clipped to [0.05, 0.95]; the weight is the marginal share of CV-extracted people divided by that probability. 582 people are weighted. Weighted balance is imperfect: 8 covariates keep an absolute standardised mean difference of at least 0.1."
 # The deposit's author. Empty creator_orcid is omitted from CITATION.cff;
 # the Zenodo metadata keeps the placeholder TODO until an identifier is set.
 creator_family = "Bae"

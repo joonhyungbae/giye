@@ -426,6 +426,15 @@ def test_fictitious_release_suppresses_small_cells_and_keeps_identifiers_out(tmp
 
     people = _rows(output / "restricted" / "people.csv")
     activities = _rows(output / "restricted" / "activities.csv")
+    assert list(people[0]) == [
+        "pseudonym",
+        "entry_year",
+        "entry_generation",
+        "record_depth",
+        "programmes",
+        "team",
+    ]
+    assert "cv_weight" not in _text(output)
     assert len(people) == 15
     assert all(row["pseudonym"].startswith("ps") for row in people)
     assert {row["team"] for row in people} == {"0", "1"}
@@ -468,6 +477,7 @@ def test_fictitious_release_suppresses_small_cells_and_keeps_identifiers_out(tmp
     assert "orcid:" not in citation
     stats = json.loads((output / "open" / "stats.json").read_text(encoding="utf-8"))
     assert stats["people"] == 15
+    assert "ipw" not in stats
     assert stats["programmes"] == 2
     open_zenodo = json.loads((output / "zenodo" / "open.zenodo.json").read_text(encoding="utf-8"))
     restricted_zenodo = json.loads((output / "zenodo" / "restricted.zenodo.json").read_text(encoding="utf-8"))
@@ -580,6 +590,7 @@ def test_production_config_reads_the_release_table():
     assert config.release.licence == "CC-BY-4.0"
     assert config.release.commercial_use is False
     assert config.release.k == 10
+    assert config.release.ipw_path == "work/record_depth/ipw.csv"
 
 
 def _append(path: Path, extra: list[dict[str, str]]) -> None:
@@ -913,3 +924,125 @@ def test_open_name_check_rejects_a_name_in_prose(tmp_path: Path):
         assert "published name" in str(exc)
     else:
         raise AssertionError("a published name in the programme sentence was accepted")
+
+
+def test_ipw_weight_joins_through_the_key_and_stays_off_the_open_record(tmp_path: Path):
+    """cv_weight is filled only for a person with a CV row.
+
+    The weight file is joined on the private ledger id. That id is not
+    written. A person the file names, but who has no CV row, stays empty.
+    The open record gets the count and the path, not the weights.
+    """
+    _write_ledger(tmp_path)
+    processed = tmp_path / "data" / "processed" / "activities.csv"
+    activities = _rows(processed)
+    for row in activities:
+        if row["ledger_id"] == "LED-0015" and row["origin"].startswith("cv:"):
+            row["origin"] = "EXAMPLE-ALPHA-2021"
+    write_csv(path=processed, fields=list(activities[0]), rows=activities)
+    ipw_rel = "work/record_depth/ipw.csv"
+    write_csv(
+        path=tmp_path / "data" / ipw_rel,
+        fields=["ledger_id", "weight", "p_hat", "p_clipped"],
+        rows=[
+            {"ledger_id": "LED-0001", "weight": "1.23451", "p_hat": "0.20", "p_clipped": "0.20"},
+            {"ledger_id": "LED-0002", "weight": "2.34562", "p_hat": "0.10", "p_clipped": "0.10"},
+            {"ledger_id": "LED-0015", "weight": "8.88881", "p_hat": "0.30", "p_clipped": "0.30"},
+            {"ledger_id": "LED-0099", "weight": "9.87653", "p_hat": "0.40", "p_clipped": "0.40"},
+        ],
+    )
+    result = build_release(
+        load(
+            _config(
+                tmp_path,
+                f"""
+open_names = false
+pseudonym = "per_release"
+licence = "CC-BY-4.0"
+commercial_use = false
+k = 10
+ipw_path = "{ipw_rel}"
+ipw_method = "Example model of having CV rows on programme and cohort; 3 covariates stay unbalanced."
+""",
+            )
+        ),
+        "ipw1",
+        rng=random.Random(1),
+    )
+    output = result.output
+    people = _rows(output / "restricted" / "people.csv")
+    assert list(people[0]) == [
+        "pseudonym",
+        "entry_year",
+        "entry_generation",
+        "record_depth",
+        "programmes",
+        "team",
+        "cv_weight",
+    ]
+    key = {row["ledger_id"]: row["pseudonym"] for row in _rows(result.key_path)}
+    by_pseudo = {row["pseudonym"]: row for row in people}
+    assert by_pseudo[key["LED-0001"]]["cv_weight"] == "1.23451"
+    assert by_pseudo[key["LED-0002"]]["cv_weight"] == "2.34562"
+    assert by_pseudo[key["LED-0015"]]["cv_weight"] == ""
+    assert by_pseudo[key["LED-0003"]]["cv_weight"] == ""
+    assert "LED-0099" not in key
+    assert sum(bool(row["cv_weight"]) for row in people) == 2
+    release_text = _text(output)
+    assert "ledger_id" not in release_text
+    assert "LED-" not in release_text
+    assert "p_hat" not in release_text
+    assert "9.87653" not in release_text
+    assert "8.88881" not in release_text
+    open_text = _text(output / "open")
+    assert "1.23451" not in open_text
+    assert "2.34562" not in open_text
+    for name in (
+        "roster_facts.csv",
+        "programmes.csv",
+        "edition_year.csv",
+        "entry_generation.csv",
+        "activity_kind_year.csv",
+        "venue_country_period.csv",
+        "record_depth.csv",
+        "institutions.csv",
+    ):
+        header = (output / "open" / name).read_text(encoding="utf-8").splitlines()[0]
+        assert "cv_weight" not in header
+    activity_header = (output / "restricted" / "activities.csv").read_text(encoding="utf-8").splitlines()[0]
+    assert "cv_weight" not in activity_header
+    stats = json.loads((output / "open" / "stats.json").read_text(encoding="utf-8"))
+    assert stats["ipw"] == {"people_weighted": 2, "source": ipw_rel}
+    assert result.stats["ipw"] == stats["ipw"]
+    # The method text is the instance's own ([release] ipw_method), copied verbatim.
+    phrase = "Example model of having CV rows on programme and cohort; 3 covariates stay unbalanced."
+    for codebook_path in (output / "open" / "CODEBOOK.md", output / "restricted" / "CODEBOOK.md"):
+        codebook = codebook_path.read_text(encoding="utf-8")
+        assert "`cv_weight`" in codebook
+        assert phrase in codebook
+    readme = (output / "restricted" / "README.md").read_text(encoding="utf-8")
+    assert "cv_weight" in readme
+    assert "person-level CV weight" in (output / "open" / "README.md").read_text(encoding="utf-8")
+
+
+def test_missing_ipw_file_stops_the_release(tmp_path: Path):
+    _write_ledger(tmp_path)
+    config = load(
+        _config(
+            tmp_path,
+            """
+open_names = false
+pseudonym = "per_release"
+licence = "CC-BY-4.0"
+commercial_use = false
+k = 10
+ipw_path = "work/record_depth/missing.csv"
+""",
+        )
+    )
+    try:
+        build_release(config, "noipw", rng=random.Random(1))
+    except ReleaseError as exc:
+        assert "ipw" in str(exc)
+    else:
+        raise AssertionError("a missing ipw file was accepted")

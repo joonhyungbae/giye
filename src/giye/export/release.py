@@ -10,6 +10,9 @@ activity-channel rows, and ``roster_names.csv``). ``zenodo/`` holds deposit
 metadata and is not part of either record. ``open/stats.json`` is the count
 file a paper cites. The pseudonym map is written to
 ``<data>/work/release/<version>_key.csv``, never inside the release directory.
+When ``[release] ipw_path`` is set (a path relative to the data directory),
+``restricted/people.csv`` gains ``cv_weight`` for people with a CV row. The
+open record does not carry that weight.
 
 Why: the open tier is what can be deposited. Person-level CV rows leave the
 machine only under a data-use agreement. Who is included is the same set the
@@ -66,6 +69,13 @@ CODE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 CV_ORIGIN_RE = re.compile(r"cv:\S+")
 URL_RE = re.compile(r"https?://", re.IGNORECASE)
+# A weight cell is a decimal, so the leak scan can treat it as this column's
+# own value. The file from bias.py uses a fixed-point string; that is what is copied.
+IPW_WEIGHT_RE = re.compile(r"^(?:\d+\.\d+|\d+)$")
+# research/record-depth/BIAS.md, balance section, weighted depth 4: covariates
+# whose absolute standardised mean difference stays at or above 0.1. The line
+# is a reading aid. The weights were not tuned to clear it. Unweighted, the
+# same note reports 22 covariates at or above 0.1.
 
 RULE_IDS = (
     "D1",
@@ -926,6 +936,20 @@ def _measure_rows(first_cells: dict[tuple, Cell], k: int) -> list[dict[str, str]
     return rows
 
 
+def _kept_cv_row(row: Mapping[str, str]) -> bool:
+    """A CV activity row the open tables and ``cv_weight`` both count.
+
+    ``origin`` starts with ``cv:``, the channel is ``activity``, and
+    ``publishable`` is not ``no``. A missing ``publishable`` is kept, the
+    same rule as ``_publishable_dropped``.
+    """
+    if not str(row.get("origin") or "").startswith("cv:"):
+        return False
+    if (row.get("activity_channel") or "") != "activity":
+        return False
+    return not _publishable_dropped(row)
+
+
 def _publishable_dropped(row: Mapping[str, str]) -> bool:
     """True when ``publishable`` is ``no``.
 
@@ -955,11 +979,7 @@ def _cv_tables(
     kind_rows_all: dict[str, int] = defaultdict(int)
     cv_people: set[str] = set()
     for row in read_csv(config.processed / "activities.csv"):
-        if not str(row.get("origin") or "").startswith("cv:"):
-            continue
-        if (row.get("activity_channel") or "") != "activity":
-            continue
-        if _publishable_dropped(row):
+        if not _kept_cv_row(row):
             continue
         ledger_id = row.get("ledger_id") or ""
         if ledger_id not in population.published:
@@ -1361,6 +1381,8 @@ def _structural(column: str, value: str, *, frame_codes: set[str], venue_ids: se
         return value in {"1", "2", "3", "4"}
     if column == "team":
         return value in {"0", "1"}
+    if column == "cv_weight":
+        return bool(IPW_WEIGHT_RE.fullmatch(value))
     if column == "activity_kind":
         return value in _KIND_SET
     if column == "activity_channel":
@@ -1759,6 +1781,72 @@ def _find_external(config: Config) -> Path | None:
     return None
 
 
+def _read_ipw(path: Path) -> dict[str, str]:
+    """``ledger_id`` → weight string from the IPW file. The string is copied, not reformatted.
+
+    A missing file, a missing column, a repeated id, or a weight that is not a
+    finite non-negative decimal is a ``ReleaseError``. ``p_hat`` and
+    ``p_clipped`` are not returned: they stay in the private file.
+    """
+    if not path.is_file():
+        raise ReleaseError(f"ipw file not found ({path.name}); [release] ipw_path is relative to the data directory")
+    with path.open(encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        fields = reader.fieldnames or []
+        if "ledger_id" not in fields or "weight" not in fields:
+            raise ReleaseError("ipw file needs ledger_id and weight columns")
+        weights: dict[str, str] = {}
+        for row in reader:
+            ledger_id = (row.get("ledger_id") or "").strip()
+            raw = (row.get("weight") or "").strip()
+            if not ledger_id:
+                raise ReleaseError("ipw file has a row with an empty ledger_id")
+            if ledger_id in weights:
+                raise ReleaseError("ipw file repeats a ledger_id")
+            if not IPW_WEIGHT_RE.fullmatch(raw):
+                raise ReleaseError("ipw file has a weight that is not a finite non-negative decimal")
+            value = float(raw)
+            if not math.isfinite(value):
+                raise ReleaseError("ipw file has a weight that is not a finite non-negative decimal")
+            weights[ledger_id] = raw
+    return weights
+
+
+def _cv_ledger_ids(config: Config, population: _Population) -> set[str]:
+    """Published people who have a kept CV activity row (``_kept_cv_row``)."""
+    found: set[str] = set()
+    for row in read_csv(config.processed / "activities.csv"):
+        if not _kept_cv_row(row):
+            continue
+        ledger_id = row.get("ledger_id") or ""
+        if ledger_id in population.published:
+            found.add(ledger_id)
+    return found
+
+
+def _attach_cv_weights(
+    people: list[dict[str, str]],
+    pseudonym: Mapping[str, str],
+    cv_ids: set[str],
+    weights: Mapping[str, str],
+) -> int:
+    """Write ``cv_weight`` on each person row. Return how many cells are filled.
+
+    The join is ledger id → pseudonym → row. A person with no CV row stays
+    empty even when the weight file names them. The ledger id is not stored
+    on the row.
+    """
+    by_token = {token: ledger_id for ledger_id, token in pseudonym.items()}
+    filled = 0
+    for row in people:
+        ledger_id = by_token[row["pseudonym"]]
+        weight = weights.get(ledger_id, "") if ledger_id in cv_ids else ""
+        row["cv_weight"] = weight
+        if weight:
+            filled += 1
+    return filled
+
+
 def _stats(
     *,
     population: _Population,
@@ -1770,13 +1858,14 @@ def _stats(
     kind_cells: dict[tuple, Cell],
     k: int,
     config: Config,
+    ipw: dict[str, object] | None = None,
 ) -> dict:
     people = len(population.published)
     editions = len({(row["programme"], row["year"]) for row in roster if row.get("year")})
     cv_people, cv_rows = by_kind.get("__cv_people__", (0, 0))
     publish_people = people >= k
     cv_rows_suppressed, cv_rows_published_rounded = _cv_disclosure_gap(kind_cells)
-    return {
+    payload = {
         "people": people if publish_people else SUPPRESSED,
         "editions": editions,
         "programmes": len(programmes),
@@ -1794,6 +1883,9 @@ def _stats(
         "record_depth": {row["record_depth"]: {"n_people": row["n_people"], "suppressed": row["suppressed"]} for row in depth_rows},
         "record_depth_levels_present": sorted(set(depths.values())),
     }
+    if ipw is not None:
+        payload["ipw"] = ipw
+    return payload
 
 
 def _sha256(path: Path) -> str:
@@ -1824,6 +1916,14 @@ def _datasheet(stats: dict, settings: ReleaseSettings, version: str, ledger_vers
         if commercial
         else "Commercial use of the restricted record is not granted."
     )
+    weight_cell = ""
+    weight_composition = ""
+    if settings.ipw_path:
+        weight_cell = " `cv_weight` is the inverse-probability weight for a person with a CV row, empty otherwise."
+        weight_composition = (
+            " `people.csv` may also carry `cv_weight`. The open record does not carry that weight,"
+            " or any other person-level CV weight."
+        )
     return f"""# Giye dataset {version}
 
 ## What this is
@@ -1882,7 +1982,7 @@ without a source URL and a collection date is not published.
 | `record_depth.csv` | open | How full each published person's record is. |
 | `institutions.csv` | open | Venues with at least {settings.k} people. The count is rounded to 5. |
 | `stats.json` | open | Headline counts for a paper. |
-| `people.csv` | restricted | One pseudonym per published person. No name and no `gy_id`. |
+| `people.csv` | restricted | One pseudonym per published person. No name and no `gy_id`.{weight_cell} |
 | `activities.csv` | restricted | Activity-channel rows. No title and no source URL. |
 | `roster_names.csv` | restricted | `gy_id`, Korean name, English name, aliases. The exception to "no names". |
 | `roster_sources_withheld.csv` | restricted | The per-person source URL removed from the open roster because it embeds a name. |
@@ -1944,7 +2044,7 @@ about the Korean media art field. It was not collected to train a model.
 `people.csv` and `activities.csv` carry no names and no published ids.
 `roster_names.csv` is the exception: it pairs `gy_id` with names for people
 who are still published. Background and hidden activity channels are not in
-the restricted activity file. The open record does not contain CV rows.
+the restricted activity file. The open record does not contain CV rows.{weight_composition}
 
 ### Preprocessing
 
@@ -1974,8 +2074,8 @@ releases are not silently rewritten.
 """
 
 
-def _codebook_rows() -> list[tuple[str, str, str, str, str]]:
-    return [
+def _codebook_rows(ipw: bool) -> list[tuple[str, str, str, str, str]]:
+    rows = [
         ("open/roster_facts.csv", "gy_id", "string", "published id", "Kept on the open roster, which omits names. Absent from people.csv and activities.csv. Present on roster_names.csv."),
         ("open/roster_facts.csv", "name_ko", "string", "open_names", "Omitted entirely, header included, when release.open_names is false."),
         ("open/roster_facts.csv", "name_en", "string", "open_names", "Same switch as name_ko."),
@@ -2042,6 +2142,24 @@ def _codebook_rows() -> list[tuple[str, str, str, str, str]]:
         ("restricted/people.csv", "record_depth", "string", "P6", "1–4."),
         ("restricted/people.csv", "programmes", "string", "F1–F5", "Admitted programme codes, sorted, joined by `|`."),
         ("restricted/people.csv", "team", "string", "T1", "1 when the roster row is a team or group, else 0."),
+    ]
+    if ipw:
+        # The method note in _codebook_text is the long description. This cell
+        # only says who receives the number.
+        rows.append(
+            (
+                "restricted/people.csv",
+                "cv_weight",
+                "string",
+                "IPW",
+                (
+                    "Stabilized inverse-probability weight for a person with a CV activity row. "
+                    "Empty when the person has no such row. Joined on the private ledger id, which is not a column."
+                ),
+            )
+        )
+    rows.extend(
+        [
         ("restricted/activities.csv", "pseudonym", "string", "release.pseudonym", "Same token as people.csv."),
         ("restricted/activities.csv", "year", "string", "K1", "Four-digit year, or empty."),
         ("restricted/activities.csv", "activity_kind", "string", "K1", "Kind. The file has only channel activity, so education, employment and the other off-list kinds appear only when K1 left them on that channel."),
@@ -2053,10 +2171,33 @@ def _codebook_rows() -> list[tuple[str, str, str, str, str]]:
         ("restricted/activities.csv", "funder_id", "string", "P3, D1", "Empty unless that funder entity is in institutions.csv."),
         ("restricted/activities.csv", "event_link", "string", "P4", "Frame or edition code, or empty. Not a URL."),
         ("restricted/activities.csv", "origin_type", "string", "K1", "cv or roster. The source id inside a cv: origin is not copied."),
+        ]
+    )
+    return rows
+
+
+def _ipw_codebook_note(method: str) -> list[str]:
+    """How ``cv_weight`` was made: the instance's own method text (``[release] ipw_method``).
+
+    The package does not know the model that produced the weight file, so the
+    description and its balance figures come from the configuration of the
+    archive that made them.
+    """
+    return [
+        "",
+        "`cv_weight` on `restricted/people.csv` is the stabilized inverse-probability",
+        "weight for a person who has a CV activity row (`origin` starting with `cv:`,",
+        "channel `activity`, `publishable` not `no`), and empty otherwise. The weight",
+        "file is joined on the private ledger id and written on the pseudonym. The",
+        "ledger id is not in either record. The open record has no person-level weight.",
+        "`stats.json` key `ipw` holds `people_weighted` (how many people received a",
+        "weight) and `source` (the weight-file path, relative to the data directory).",
+        "",
+        method or "The weight file's own documentation describes how the weights were made.",
     ]
 
 
-def _codebook_text(rows: Sequence[tuple[str, str, str, str, str]], preamble: str) -> str:
+def _codebook_text(rows: Sequence[tuple[str, str, str, str, str]], preamble: str, *, ipw: bool, ipw_method: str = "") -> str:
     lines = [
         "# Codebook",
         "",
@@ -2070,10 +2211,16 @@ def _codebook_text(rows: Sequence[tuple[str, str, str, str, str]], preamble: str
         "`restricted/activities.csv` use one `publishable` rule. A row whose",
         "`publishable` is `no` is dropped from all three. A missing or blank",
         "`publishable` is not treated as `no` and is kept in all three.",
+    ]
+    if ipw:
+        lines.extend(_ipw_codebook_note(ipw_method))
+    lines.extend(
+        [
         "",
         "| File | Column | Type | Rule | Meaning |",
         "|---|---|---|---|---|",
-    ]
+        ]
+    )
     for file, column, kind, rule, meaning in rows:
         lines.append(f"| `{file}` | `{column}` | {kind} | {rule} | {meaning} |")
     lines.append("")
@@ -2084,19 +2231,23 @@ def _codebook_text(rows: Sequence[tuple[str, str, str, str, str]], preamble: str
     return "\n".join(lines)
 
 
-def _codebook() -> str:
+def _codebook(ipw: bool, ipw_method: str = "") -> str:
     return _codebook_text(
-        _codebook_rows(),
+        _codebook_rows(ipw),
         "Every column written by `giye release`.",
+        ipw=ipw,
+        ipw_method=ipw_method,
     )
 
 
-def _restricted_codebook() -> str:
-    rows = [row for row in _codebook_rows() if row[0].startswith("restricted/")]
+def _restricted_codebook(ipw: bool, ipw_method: str = "") -> str:
+    rows = [row for row in _codebook_rows(ipw) if row[0].startswith("restricted/")]
     return _codebook_text(
         rows,
         "Column definitions for the open record are in that record's `CODEBOOK.md`. "
         "This file repeats the columns of the restricted files.",
+        ipw=ipw,
+        ipw_method=ipw_method,
     )
 
 
@@ -2136,10 +2287,10 @@ The author reviews every access request. There is no automatic approval and no e
 """
 
 
-def _column_index() -> dict[str, set[str]]:
+def _column_index(ipw: bool) -> dict[str, set[str]]:
     """Columns the codebook claims, so a new field cannot ship undocumented."""
     found: dict[str, set[str]] = defaultdict(set)
-    for line in _codebook().splitlines():
+    for line in _codebook(ipw).splitlines():
         if not line.startswith("| `"):
             continue
         parts = [part.strip(" `") for part in line.strip("|").split("|")]
@@ -2148,8 +2299,8 @@ def _column_index() -> dict[str, set[str]]:
     return found
 
 
-def _check_codebook(written: Mapping[str, list[str]]) -> None:
-    documented = _column_index()
+def _check_codebook(written: Mapping[str, list[str]], *, ipw: bool) -> None:
+    documented = _column_index(ipw)
     for name, fields in written.items():
         missing = [field_name for field_name in fields if field_name not in documented.get(name, set())]
         if missing:
@@ -2210,11 +2361,16 @@ keywords:
 
 def _restricted_readme(version: str, settings: ReleaseSettings) -> str:
     request = f"{settings.site_url}/request" if settings.site_url else ""
+    weight_line = ""
+    if settings.ipw_path:
+        weight_line = (
+            " `cv_weight` is the inverse-probability weight for a person with a CV row, and is empty otherwise."
+        )
     return f"""# Giye restricted record {version}
 
 This record holds person-level rows from the Giye census.
 
-- `people.csv` — one pseudonym per published person, with entry year, entry generation, record depth, programme codes and a team flag. No names and no `gy_id`.
+- `people.csv` — one pseudonym per published person, with entry year, entry generation, record depth, programme codes and a team flag. No names and no `gy_id`.{weight_line}
 - `activities.csv` — activity-channel rows: year, kind, institution ids when the institution is in the open list, and whether the row came from a CV or a roster. No titles and no source URLs.
 - `roster_names.csv` — `gy_id`, `name_ko`, `name_en` and aliases for published people. This is the file that pairs the public id with a name. People hidden by request are not listed.
 - `roster_sources_withheld.csv` — `gy_id`, `frame_code` and the per-person `source_url` removed from the open roster because the URL embeds a published name. The open row keeps the programme page instead, with `source_withheld` = yes.
@@ -2368,6 +2524,12 @@ def build_release(
         rng=rng,
     )
     people = _restricted_people(population, pseudonym, depths, config)
+    ipw_on = bool(settings.ipw_path)
+    ipw_stats: dict[str, object] | None = None
+    if ipw_on:
+        weights = _read_ipw(config.data / settings.ipw_path)
+        weighted = _attach_cv_weights(people, pseudonym, _cv_ledger_ids(config, population), weights)
+        ipw_stats = {"people_weighted": weighted, "source": settings.ipw_path}
     activities = _restricted_activities(config, population, pseudonym, institution_ids)
     roster_names = _restricted_roster_names(population)
     _check_roster_names(roster_names, population)
@@ -2378,6 +2540,8 @@ def build_release(
     country_fields = ["venue_country", "period", "n_people", "n_rows", "share", "suppressed"]
     depth_fields = ["record_depth", "n_people", "share", "suppressed"]
     people_fields = ["pseudonym", "entry_year", "entry_generation", "record_depth", "programmes", "team"]
+    if ipw_on:
+        people_fields.append("cv_weight")
     activity_fields = [
         "pseudonym",
         "year",
@@ -2444,7 +2608,8 @@ def build_release(
             "restricted/activities.csv": activity_fields,
             "restricted/roster_names.csv": ROSTER_NAME_FIELDS,
             "restricted/roster_sources_withheld.csv": ["gy_id", "frame_code", "source_url"],
-        }
+        },
+        ipw=ipw_on,
     )
     stats = _stats(
         population=population,
@@ -2456,18 +2621,19 @@ def build_release(
         kind_cells=kind_cells,
         k=k,
         config=config,
+        ipw=ipw_stats,
     )
     ledger_version = _ledger_version(config)
     open_texts = {
         "README.md": _datasheet(stats, settings, version, ledger_version),
         "LICENSE": _license_notice(version, settings),
         "CITATION.cff": _citation_cff(version, settings),
-        "CODEBOOK.md": _codebook(),
+        "CODEBOOK.md": _codebook(ipw_on, settings.ipw_method),
         "DUA.md": _dua(settings),
     }
     restricted_texts = {
         "README.md": _restricted_readme(version, settings),
-        "CODEBOOK.md": _restricted_codebook(),
+        "CODEBOOK.md": _restricted_codebook(ipw_on, settings.ipw_method),
     }
     open_zenodo, restricted_zenodo = _zenodo_records(version, settings)
     published_name_tokens: set[str] = set()
