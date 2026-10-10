@@ -168,9 +168,10 @@ TREND_COLUMNS = [
 ]
 
 _QUANTILE_NAMES = ["q10", "q25", "q50", "q75", "q90"]
-_COUNT_COLUMNS = frozenset(
-    {"n_people", "n_censored", "n_at_risk", "n_movers", "n_editions", "n_people_cv_layer"}
-)
+# Person counts. ``n_editions`` is not here: it counts a public programme's
+# editions, and D4 does not round it. ``first_year`` and ``last_year`` are
+# years of that programme, already written as plain integers.
+_COUNT_COLUMNS = frozenset({"n_people", "n_censored", "n_at_risk", "n_movers", "n_people_cv_layer"})
 
 
 class CareerBuildError(Exception):
@@ -443,8 +444,21 @@ def _reference(population: Population, k: int, current_year: int, weighted: bool
 
 
 def _next_window(
-    population: Population, k: int, pct_min: int, current_year: int, weighted: bool
+    population: Population,
+    k: int,
+    pct_min: int,
+    current_year: int,
+    weighted: bool,
+    *,
+    opened_after: int | None = None,
 ) -> tuple[list[dict], int, int, int]:
+    """Next-window base rates as of ``current_year``.
+
+    A person is in a band when ``first_year + band start + 3 <= current_year``.
+    ``opened_after`` drops windows that had already closed by that year. The
+    holdout realisation uses ``opened_after=T`` and ``current_year=T + 3``, so
+    a cell holds only careers whose window ends in ``(T, T + 3]``.
+    """
     by_gen: dict[str, list] = defaultdict(list)
     for person in population.cv_ready:
         by_gen[person.generation].append(person)
@@ -469,6 +483,11 @@ def _next_window(
             grouped = {bucket: {"in": [], "out": []} for bucket in buckets}
             country_ids: dict[str, list] = {group: [] for group in COUNTRY_GROUPS}
             for person in by_gen[generation]:
+                # A window that closed at or before ``opened_after`` was in the
+                # prediction (C10: end year <= T). The realisation counts only
+                # windows that end in (opened_after, current_year].
+                if opened_after is not None and person.first_year + start + 3 <= opened_after:
+                    continue
                 vector = _vector(person, start, population)
                 # C12. The cell window is year <= first_year + band start.
                 if vector["n_rows"] < 1:
@@ -572,6 +591,11 @@ def _next_window(
 def _profile(
     population: Population, k: int, pct_min: int
 ) -> tuple[list[dict], int, dict[tuple[str, int], int]]:
+    """programme_profile: one row per admitted programme that has an edition.
+
+    Counts of editions, years and programmes are facts about public bodies and are not disclosure-controlled.
+    Edition-size quantiles and ``n_people`` stay under D1, D2 and D4.
+    """
     edition_members: dict[tuple[str, int], set[str]] = defaultdict(set)
     for person in population.people.values():
         for programme, year in person.editions:
@@ -649,7 +673,7 @@ def _profile(
                 "access_mode": frame.access_mode if frame else "",
                 "first_year": str(years[0]),
                 "last_year": str(years[-1]),
-                "n_editions": _round_count(n_editions) if n_editions else "0",
+                "n_editions": str(n_editions),
                 "n_people": count,
                 "edition_size_q25": q25,
                 "edition_size_q50": q50,

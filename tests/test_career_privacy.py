@@ -59,7 +59,11 @@ def test_identifiers_counts_and_share_gate(tmp_path: Path) -> None:
                     number = int(value)
                     assert number >= 10
                     assert number % 5 == 0
-                count_columns = {"n_censored", "n_at_risk", "n_movers", "n_editions", "n_people_cv_layer"}
+                # n_editions counts a public programme's editions. It is a plain
+                # integer, not a rounded person count.
+                if column == "n_editions":
+                    assert value.isdigit()
+                count_columns = {"n_censored", "n_at_risk", "n_movers", "n_people_cv_layer"}
                 if column in count_columns and value not in {"suppressed", ">=90", ""}:
                     assert int(value) % 5 == 0
             if "share" in row and row["share"] not in {"", "suppressed", ">=90"}:

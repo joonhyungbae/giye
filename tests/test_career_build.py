@@ -271,3 +271,12 @@ def test_smaller_current_year_increases_censoring(tmp_path: Path) -> None:
         return sum(seen.values())
 
     assert censored(earlier) > censored(later)
+
+
+def test_one_edition_is_a_plain_integer(tmp_path: Path) -> None:
+    config_path = synthetic_archive(tmp_path / "arch", n_people=1, seed=1)
+    out = tmp_path / "bundle"
+    build(load(config_path), out)
+    _header, rows = _rows(out / "programme_profile.csv")
+    assert rows
+    assert all(row["n_editions"] == "1" for row in rows)

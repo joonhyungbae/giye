@@ -11,9 +11,10 @@ Why: the archive site records; the career service interprets. Disclosure
 reading the bundle cannot recover one career. Rules and their reasons are
 ``giye.career.rules``.
 
-How to run (the venv interpreter, from a checkout):
+How to run (the venv interpreter, from a checkout). Two sub-commands:
 
   .venv/bin/python -m giye.career build --config <giye.toml> --out <directory>
+  .venv/bin/python -m giye.career holdout --config <giye.toml> --split-year T --out <directory>
 """
 
 from giye.career.build import CareerBuildError, build
