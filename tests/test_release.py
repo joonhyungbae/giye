@@ -525,6 +525,14 @@ k = 10
     assert _rows(again.key_path) != _rows(other.key_path)
 
 
+def test_quantile_allowed_thresholds():
+    assert quantile_allowed(100, 0.9, 10)
+    assert quantile_allowed(100, 0.1, 10)
+    assert quantile_allowed(20, 0.5, 10)
+    assert quantile_allowed(99, 0.9, 10) is False
+    assert quantile_allowed(19, 0.5, 10) is False
+
+
 def test_quantile_rule_and_secondary_suppression():
     assert quantile_allowed(19, 0.5, 10) is False
     assert quantile_allowed(20, 0.5, 10) is True
