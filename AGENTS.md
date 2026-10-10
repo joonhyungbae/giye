@@ -41,8 +41,24 @@ report. Do not decide it yourself.
   and its reason.
 - Never fetch hosts that robots.txt disallows or platforms whose terms forbid collection (e.g. Instagram).
   No public API and no bulk export on the website (`src/server.ts` scrape guard). Person-level data are shared
-  only on request under a data-use agreement.
+  only under a data-use agreement (see "Ethics and release" below).
 - `data/`, `research/` data folders and `ref/` are never committed (see `.gitignore`).
+
+## Ethics and release (author decisions, 2026-10-10; do not reopen)
+- **No ethics-committee (IRB) review is sought.** Giye recruits no participants and contacts no one; it uses only
+  information that programmes and artists published themselves. Do not propose an IRB application, an exemption
+  request, or ask about it again; the author decided this after checking the target journal's rules and precedents.
+- Because there is no IRB confirmation, never write "exempt", "exemption" or "approved by an ethics committee" in a
+  paper, a data card or the site. State the facts instead: no recruited participants; published information only;
+  robots.txt and platform terms respected; person-level CV rows are pseudonymised and released only under a data-use
+  agreement, for the stated legal reason that they combine many published facts into career profiles of living
+  people; correction and withdrawal through giye.org/request.
+- Dataset paper target: Journal of Open Humanities Data. Release is tiered: open aggregate tables and roster facts
+  (Zenodo, DOI); pseudonymised person-level CV rows restricted under a published data-use agreement; original evidence
+  bytes and private CV sections never released. Still open for the author: names in the open roster facts, automatic
+  vs reviewed approval of requests, commercial use, CC BY vs CC0, embargo.
+- The dataset paper describes the data (dataset-level validation) and cites the SoftwareX paper for the pipeline;
+  it does not repeat that paper's audits as its own contribution.
 
 ## Code
 - Follow the surrounding style. Python scripts start with a docstring saying what, why and how to run; comments
