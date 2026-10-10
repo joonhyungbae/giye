@@ -73,6 +73,7 @@ giye run --config examples/demo/giye.toml
 giye export warc --config examples/demo/giye.toml
 giye export warc --config examples/demo/giye.toml --wacz
 giye export ro-crate --config examples/demo/giye.toml
+giye release --config deploy/giye.production.toml --version 2026-10-10
 ```
 
 `giye explore` writes `<data>/site/rim_order.json`; `giye publish` rewrites it when it is already there, so a person hidden or unpublished since drops out of the ring without a new `explore`. With `--assignment` (a JSON object of person id to group) it also prints coverage, group count, lift, AUC, and stability against `--ties` (a JSON list of pairs), or, when `--ties` is omitted, against the roster-independent co-presence ties computed from the ledger. `giye explore ties` writes those ties (`--out`, a JSON list of ledger-id pairs; `--kind cv-listing` for the CV-listing definition) and, with `--layers [PATH]`, prints the institution entities and both tie counts with V7–V9 off and cumulatively on, plus the ties each rule added (V7a–d, V7e, V8, V9); a path also writes them as JSON. See [docs/EXPLORE.md](docs/EXPLORE.md). `giye run` runs collect, extract, resolve, normalize, publish, and explore. The ledger command only prints counts, so it is not one of those steps. Extract with no API key reads the replay cache. `giye extract --replay-only --strict` exits 1 when a CV was not reproduced from the cache (`replay_miss`, `unknown_sources`, `empty_reading`, `invalid` or `provider_errors` above zero).
@@ -103,6 +104,11 @@ validator's RECOMMENDED level.
 A file entity's `@id` is a path inside the crate directory: files outside it are copied in
 (`data/<path under the data directory>`, `config/<config file>`), so the crate is
 self-contained and carries no local absolute path.
+
+`giye release` writes `<data>/release/<version>/` as two deposits: `open/` (CC BY 4.0; roster
+facts without names, programmes, aggregates, institutions) and `restricted/` (pseudonymised rows
+and `roster_names.csv`, access on request). `zenodo/` holds the deposit metadata. The pseudonym
+key stays in `<data>/work/release/`. See [docs/RELEASE.md](docs/RELEASE.md).
 
 `giye collect` on the demo config writes under `examples/demo/data/`. `giye demo` does not: it
 uses a separate output directory so the fixtures stay clean.

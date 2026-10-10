@@ -170,6 +170,25 @@ Optional table. Key: a label. Value: a string saying what runs. `giye.publish.sn
 weekly = "link check, site rebuild"
 ```
 
+## `[release]`
+
+Read by `giye release`. An omitted table keeps the defaults. `license` is an alias of `licence`.
+
+| Key | Type | Default | Required | Read by | Example |
+|---|---|---|---|---|---|
+| `open_names` | bool | `false` | no | `giye.export.release`. When false, `roster_facts.csv` is written without `name_ko` and `name_en`. | `false` |
+| `pseudonym` | string | `"per_release"` | no | `per_release` draws a new token each build. `stable_hmac` is HMAC-SHA256 of the ledger id, truncated, and needs `pseudonym_secret`. | `"per_release"` |
+| `pseudonym_secret` | path | unset | yes, for `stable_hmac` | A file outside `<data>/release/`. Not read for `per_release`. | `"../data/work/release/pseudonym.key"` |
+| `licence` | string | `"CC-BY-4.0"` | no | Written into the manifest, the datasheet and the agreement. The open tier is CC BY 4.0. | `"CC-BY-4.0"` |
+| `commercial_use` | bool | `false` | no | The data-use agreement. False says commercial use of the restricted tier is not allowed. | `false` |
+| `k` | integer ≥ 1 | `10` | no | Disclosure threshold (D1). Distinct people. Cells under `k` are suppressed. | `10` |
+| `creator_family` | string | `"Example"` | no | Family name in `LICENSE`, `CITATION.cff`, the README citation and the Zenodo `creators` entry. | `"Example"` |
+| `creator_given` | string | `"Archive"` | no | Given name, written after the family name in the citation and before it in the licence line. | `"Archive"` |
+| `creator_affiliation` | string | `""` | no | Affiliation in `CITATION.cff` and the Zenodo creators entry. | `"Example Institute"` |
+| `creator_orcid` | string | `""` | no | When empty, `CITATION.cff` has no `orcid` line and Zenodo creators keep `orcid` = `TODO`. | `""` |
+| `repository_url` | string | `""` | no | Software repository in the README, `CITATION.cff` `repository-code` and Zenodo related identifiers. | `"https://example.org/archive"` |
+| `site_url` | string | `[publish] site_url` | no | Public origin in the citation, `CITATION.cff` `url` and Zenodo. Omitted means the publish origin. | `"https://example.org"` |
+
 ## Re-check
 
 Keys below are the `.get("…")` names in `src/giye/config.py`, plus the five keys tested with `in` / `not in` (`name`, `url`, `lang`, `chunk_chars`, `temperature`). Re-run:

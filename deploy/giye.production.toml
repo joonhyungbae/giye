@@ -63,3 +63,23 @@ citation_author = "기예 Giye"
 [publish.cadence]
 weekly = "link check, evidence capture, changed CVs, requests, site rebuild"
 new_editions = "collected by the maintainer when an edition is published; ended editions are not re-collected"
+
+# Dataset deposit for the data paper. `giye release` reads this table.
+# The open tier is CC BY 4.0. commercial_use stays false (no commercial use of
+# the restricted tier). open_names stays false: the open roster has no names.
+# per_release draws a new pseudonym each build; the map is written under
+# data/work/release/, not into the deposit.
+[release]
+open_names = false
+pseudonym = "per_release"
+licence = "CC-BY-4.0"
+commercial_use = false
+k = 10
+# The deposit's author. Empty creator_orcid is omitted from CITATION.cff;
+# the Zenodo metadata keeps the placeholder TODO until an identifier is set.
+creator_family = "Bae"
+creator_given = "Joonhyung"
+creator_affiliation = "KAIST"
+creator_orcid = ""
+repository_url = "https://github.com/joonhyungbae/giye"
+site_url = "https://giye.org"

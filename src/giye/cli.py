@@ -276,6 +276,15 @@ def _export(args: argparse.Namespace) -> int:
     return 2
 
 
+def _release(args: argparse.Namespace) -> int:
+    from giye.export.release import build_release
+
+    result = build_release(_open_config(args.config), args.release_version)
+    print(f"giye release: {result.output}")
+    print(f"giye release: key {result.key_path}")
+    return 0
+
+
 def _explore_ties(args: argparse.Namespace) -> int:
     """``giye explore ties``: write the co-presence ties, and with ``--layers`` the rule layers."""
     import json
@@ -655,6 +664,17 @@ def _add_tool_parsers(sub: argparse._SubParsersAction) -> None:
         help="include people hidden by request (default: left out; the crate says which)",
     )
     crate.add_argument("--leave-out-shared-pages", action="store_true", help=SHARED_PAGES_HELP)
+    release = sub.add_parser(
+        "release",
+        help="build the dataset release (open deposit and restricted tier)",
+    )
+    release.add_argument("--config", default="giye.toml", help=CONFIG_HELP)
+    release.add_argument(
+        "--version",
+        required=True,
+        dest="release_version",
+        help="directory name under <data>/release/, for example 2026-10-10",
+    )
     queue = sub.add_parser("queue", help="list or close a review-queue item")
     queue_sub = queue.add_subparsers(dest="queue_cmd", required=True)
     queue_list = queue_sub.add_parser("list", help="list review items")
@@ -774,6 +794,8 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _demo(args)
     if args.cmd == "export":
         return _export(args)
+    if args.cmd == "release":
+        return _release(args)
     if args.cmd == "explore":
         return _explore(args)
     if args.cmd == "run":

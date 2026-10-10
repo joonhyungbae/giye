@@ -155,8 +155,8 @@ such as HESA's (rounding to 5):
 - `D4` published counts are rounded to the nearest 5 and percentages to whole numbers, computed
   from unrounded counts;
 - `D5` a build test fails when a suppressed cell can be recovered from published margins or
-  overlapping tables, when any cell under `k` carries a value, or when any column could hold an
-  identifier.
+  overlapping tables, when any cell under `k` carries a value, when any column could hold an
+  identifier, or when a suppressed cell equals a staff-adjusted group-by of published `roster_facts`.
 
 ## 5. Tools
 

@@ -156,6 +156,34 @@ class ExtractSource:
 
 
 @dataclass(frozen=True)
+class ReleaseSettings:
+    """``[release]``: the dataset deposit written by ``giye release``.
+
+    Defaults match the data-paper build. The open tier is CC BY 4.0.
+    ``commercial_use`` stays false: the restricted tier is not for commercial
+    use. ``open_names`` stays false so a later hide request can still be
+    honoured. ``pseudonym_secret`` is read only when ``pseudonym`` is
+    ``stable_hmac``, and that file must not live inside the release directory.
+    """
+
+    open_names: bool = False
+    pseudonym: str = "per_release"
+    pseudonym_secret: Path | None = None
+    licence: str = "CC-BY-4.0"
+    commercial_use: bool = False
+    k: int = 10
+    # Neutral stand-ins. The reference archive sets its own creator in its
+    # config; the package does not name that person.
+    creator_family: str = "Example"
+    creator_given: str = "Archive"
+    creator_affiliation: str = ""
+    creator_orcid: str = ""
+    repository_url: str = ""
+    # Empty here means "use [publish] site_url", applied in ``_release_settings``.
+    site_url: str = ""
+
+
+@dataclass(frozen=True)
 class Config:
     """One archive's ``giye.toml``: paths, field file, collectors, extraction, and publish.
 
@@ -252,6 +280,8 @@ class Config:
     # Days of ledger backups to keep ([ledger] keep_backups_days). None keeps
     # every backup. The newest backup of each file is never pruned.
     keep_backups_days: int | None = None
+    # Dataset deposit (giye release). Defaults apply when the table is absent.
+    release: ReleaseSettings = field(default_factory=ReleaseSettings)
     extra: dict = field(default_factory=dict)
 
     @property
@@ -325,7 +355,25 @@ def checked_frames(config: Config) -> FrameRegistry:
 
 # Tables ``load`` reads. Another top-level name is warned about (ConfigWarning).
 KNOWN_TABLES = frozenset(
-    {"archive", "paths", "collect", "evidence", "resolve", "normalize", "extract", "publish", "ledger"}
+    {"archive", "paths", "collect", "evidence", "resolve", "normalize", "extract", "publish", "ledger", "release"}
+)
+# Keys of ``[release]``. ``license`` is accepted as an alias of ``licence``.
+RELEASE_KEYS = frozenset(
+    {
+        "open_names",
+        "pseudonym",
+        "pseudonym_secret",
+        "licence",
+        "license",
+        "commercial_use",
+        "k",
+        "creator_family",
+        "creator_given",
+        "creator_affiliation",
+        "creator_orcid",
+        "repository_url",
+        "site_url",
+    }
 )
 # Keys of ``[collect]``. A misspelt key (``user-agent``, ``min_delay``) would
 # otherwise leave the default in force without a word.
@@ -370,11 +418,13 @@ def _user_agent(collect: dict) -> str:
     return value.strip()
 
 
-def _warn_unknown(raw: dict, collect: dict, path: Path) -> None:
+def _warn_unknown(raw: dict, collect: dict, release: dict, path: Path) -> None:
     for name in sorted(set(raw) - KNOWN_TABLES):
         warnings.warn(f"{path}: unknown table or key [{name}] is ignored", ConfigWarning, stacklevel=3)
     for key in sorted(set(collect) - COLLECT_KEYS):
         warnings.warn(f"{path}: unknown key [collect] {key} is ignored", ConfigWarning, stacklevel=3)
+    for key in sorted(set(release) - RELEASE_KEYS):
+        warnings.warn(f"{path}: unknown key [release] {key} is ignored", ConfigWarning, stacklevel=3)
 
 
 def load(path: str | Path) -> Config:
@@ -388,7 +438,8 @@ def load(path: str | Path) -> Config:
     raw = tomllib.loads(path.read_text(encoding="utf-8"))
     root = path.parent
     archive, paths, collect = _table(raw, "archive", path), _table(raw, "paths", path), _table(raw, "collect", path)
-    _warn_unknown(raw, collect, path)
+    release = _table(raw, "release", path)
+    _warn_unknown(raw, collect, release, path)
     # archive_fallback_for_disallowed is not a setting. A disallowed host is
     # link-only (giye.collect.evidence). A leftover key in this table is ignored.
     evidence = raw.get("evidence") or {}
@@ -466,7 +517,67 @@ def load(path: str | Path) -> Config:
         citation_author_type=_citation_author_type(publish.get("citation_author_type", "Organization")),
         cadence=_cadence(publish.get("cadence")),
         keep_backups_days=_keep_backups_days(ledger.get("keep_backups_days")),
+        release=_release_settings(root, release, _site_url(publish.get("site_url", ""))),
         extra={k: v for k, v in raw.items() if k not in KNOWN_TABLES},
+    )
+
+
+def _release_flag(table: dict, key: str, default: bool) -> bool:
+    value = table.get(key, default)
+    if not isinstance(value, bool):
+        raise TypeError(f"[release] {key} must be true or false")
+    return value
+
+
+def _release_text(table: dict, key: str, default: str) -> str:
+    value = table.get(key, default)
+    if not isinstance(value, str):
+        raise TypeError(f"[release] {key} must be a string")
+    return value.strip()
+
+
+def _release_settings(root: Path, table: dict, publish_site_url: str) -> ReleaseSettings:
+    """``[release]``. An omitted table keeps the defaults.
+
+    ``site_url`` falls back to ``[publish] site_url`` when the release table
+    does not set it. ``creator_orcid`` stays empty until the archive sets it.
+    """
+    pseudonym = table.get("pseudonym", "per_release")
+    if not isinstance(pseudonym, str) or pseudonym not in ("per_release", "stable_hmac"):
+        raise ValueError('[release] pseudonym must be "per_release" or "stable_hmac"')
+    secret_key = table.get("pseudonym_secret")
+    secret: Path | None = None
+    if secret_key not in (None, ""):
+        if not isinstance(secret_key, str):
+            raise TypeError("[release] pseudonym_secret must be a path")
+        secret = Path(secret_key)
+        if not secret.is_absolute():
+            secret = (root / secret).resolve()
+        else:
+            secret = secret.resolve()
+    licence = table.get("licence", table.get("license", "CC-BY-4.0"))
+    if not isinstance(licence, str) or not licence.strip():
+        raise TypeError("[release] licence must be a non-empty string")
+    k = table.get("k", 10)
+    if isinstance(k, bool) or not isinstance(k, int) or k < 1:
+        raise TypeError("[release] k must be a whole number, at least 1")
+    if "site_url" in table:
+        site_url = _release_text(table, "site_url", "")
+    else:
+        site_url = publish_site_url
+    return ReleaseSettings(
+        open_names=_release_flag(table, "open_names", False),
+        pseudonym=pseudonym,
+        pseudonym_secret=secret,
+        licence=licence.strip(),
+        commercial_use=_release_flag(table, "commercial_use", False),
+        k=k,
+        creator_family=_release_text(table, "creator_family", "Example"),
+        creator_given=_release_text(table, "creator_given", "Archive"),
+        creator_affiliation=_release_text(table, "creator_affiliation", ""),
+        creator_orcid=_release_text(table, "creator_orcid", ""),
+        repository_url=_release_text(table, "repository_url", "").rstrip("/"),
+        site_url=site_url.rstrip("/"),
     )
 
 
