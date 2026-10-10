@@ -355,11 +355,15 @@ def build_server(bundle_dir: str | Path, lang: str = "en") -> MCPServer:
             cell = quantile_cell(row)
             if row is None or _withheld(cell.n_people):
                 suppressed += 1
+            # The bundle's quantiles are two decimals. Publish the same
+            # precision; keep the band on the unrounded share so a cut that
+            # sits between the two does not move.
+            raw = derived.values.get(name, 0.0)
             item = MeasureRow(
                 measure=name,
-                value=derived.values.get(name, 0.0),
+                value=round(raw, 2),
                 reference=cell,
-                band=assign_band(derived.values.get(name, 0.0), cell.model_dump()),
+                band=assign_band(raw, cell.model_dump()),
             )
             measures.append(item)
             if cited is None and item.band != "no_reference":

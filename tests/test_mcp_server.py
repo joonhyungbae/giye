@@ -146,6 +146,27 @@ def test_position_bands_and_long_career(bundle_dir: Path) -> None:
     assert "beyond_reference" in late["notes"]
 
 
+def test_position_values_use_two_decimals(bundle_dir: Path) -> None:
+    """Four of seven rows is 4/7. The published value is 0.57; the band used 4/7."""
+    entries = [{"year": 2018, "kind": "solo_exhibition", "country": "KR"} for _ in range(4)]
+    entries += [{"year": 2018, "kind": "group_exhibition", "country": "KR"} for _ in range(3)]
+    server = build_server(bundle_dir)
+
+    async def run() -> object:
+        async with Client(server) as client:
+            return await client.call_tool("position", {"entries": entries})
+
+    result = asyncio.run(run())
+    body = result.structured_content
+    solo = next(item for item in body["measures"] if item["measure"] == "kind_share:solo_exhibition")
+    assert solo["value"] == 0.57
+    assert all(item["value"] == round(item["value"], 2) for item in body["measures"])
+    reported = body["report_value"]
+    assert reported == {
+        key: next(item["value"] for item in body["measures"] if item["measure"] == key) for key in reported
+    }
+
+
 def test_next_steps_matches_the_bundle(bundle_dir: Path) -> None:
     with (bundle_dir / "next_window.csv").open(encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))

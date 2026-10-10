@@ -178,6 +178,20 @@ def test_routing_rules_in_both_languages() -> None:
     for text, rule_id in cases:
         found = route_question(text)
         assert found.id == rule_id, text
+    # A Latin alternative is a whole word. Inflections are listed; a longer
+    # word that merely contains the stem is not a match.
+    boundaries = [
+        ("the kinetic movement in 2010s", "Q9"),
+        ("I met her in the afternoon", "Q9"),
+        ("how do people move between programmes", "Q8"),
+        ("what came after the residency", "Q6"),
+        ("people moved and are moving through transitions", "Q8"),
+        ("fees, salaries, contracts, paid, payment", "Q1"),
+        ("afterwards", "Q6"),
+    ]
+    for text, rule_id in boundaries:
+        found = route_question(text)
+        assert found.id == rule_id, text
     assert route_question("Which programmes took people like me?").status == "partially_covered"
     assert route_question("Which programmes took people like me?").tools == ("position", "programme_profile")
     assert "rephrase as one of" in (route_question("hello").ask_instead or "")

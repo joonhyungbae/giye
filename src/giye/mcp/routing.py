@@ -20,7 +20,12 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class QuestionRule:
-    """One routing rule. Patterns are searched, not anchored: the spec gives them that way."""
+    """One routing rule. Latin alternatives are whole words; Korean stays a substring.
+
+    Korean endings attach to the stem, so a Korean pattern is not given a
+    letter boundary. Plurals and other inflections are listed in the Latin
+    pattern itself.
+    """
 
     id: str
     pattern_en: str
@@ -37,7 +42,7 @@ class QuestionRule:
 RULES: tuple[QuestionRule, ...] = (
     QuestionRule(
         "Q1",
-        r"fee|salary|contract|pay",
+        r"fee|fees|salary|salaries|contract|contracts|pay|paid|payment",
         r"계약|수수료|보수|급여",
         "not_covered",
         (),
@@ -83,7 +88,7 @@ RULES: tuple[QuestionRule, ...] = (
     ),
     QuestionRule(
         "Q6",
-        r"next|after|following",
+        r"after|afterwards|following|next",
         r"다음|이후",
         "covered",
         ("next_steps",),
@@ -99,7 +104,7 @@ RULES: tuple[QuestionRule, ...] = (
     ),
     QuestionRule(
         "Q8",
-        r"move|transition",
+        r"move|moves|moved|moving|transition|transitions",
         r"이동|옮기",
         "covered",
         ("programme_profile",),
@@ -117,10 +122,25 @@ FALLTHROUGH = QuestionRule(
 )
 
 
+def _bounded_latin(pattern: str) -> re.Pattern[str]:
+    """Compile one Latin pattern so each alternative is a whole word.
+
+    An unanchored search reads ``move`` inside ``movement`` and ``after``
+    inside ``afternoon``. The boundary is ASCII letters only, and the search
+    stays case-insensitive, matching the alternatives as they are written.
+    """
+    parts = [rf"(?<![a-z])(?:{part})(?![a-z])" for part in pattern.split("|")]
+    return re.compile("|".join(parts), re.IGNORECASE)
+
+
+_EN: dict[str, re.Pattern[str]] = {rule.id: _bounded_latin(rule.pattern_en) for rule in RULES if rule.pattern_en}
+
+
 def route_question(text: str) -> QuestionRule:
     """The first matching rule, or Q9 when nothing matches."""
     for rule in RULES:
-        if rule.pattern_en and re.search(rule.pattern_en, text, re.IGNORECASE):
+        compiled = _EN.get(rule.id)
+        if compiled is not None and compiled.search(text):
             return rule
         if rule.pattern_ko and re.search(rule.pattern_ko, text):
             return rule
