@@ -39,6 +39,8 @@ dependencies = [
 # AnthropicProvider streams through client.beta.messages with output_config and
 # betas; anthropic 0.40 has no client.beta.messages.stream, so the floor is 1.0.
 llm = ["anthropic>=1.0"]
+# Career-evidence MCP server. Only giye.mcp imports it, so the rest of the package does not.
+mcp = ["mcp>=2.0"]
 # Only `python -m giye.audit splink`, the comparison with a probabilistic linker, imports it.
 splink = ["splink>=5.0"]
 dev = ["pytest>=8", "pytest-timeout>=2.3", "ruff>=0.6"]

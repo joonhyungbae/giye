@@ -735,6 +735,119 @@ def _add_tool_parsers(sub: argparse._SubParsersAction) -> None:
         action="store_true",
         help="try URLs recorded as unavailable again (robots_unreachable is always retried)",
     )
+    _add_career_parser(sub)
+    _add_mcp_parser(sub)
+
+
+def _add_career_parser(sub: argparse._SubParsersAction) -> None:
+    """``giye career build``: the same options as ``python -m giye.career build``."""
+    from giye.career.rules import PCT_MIN, K
+
+    career = sub.add_parser("career", help="build the career-evidence bundle")
+    career_sub = career.add_subparsers(dest="career_cmd", required=True)
+    build_cmd = career_sub.add_parser("build", help="write a career bundle from an archive")
+    build_cmd.add_argument("--config", required=True, help="path to giye.toml")
+    build_cmd.add_argument("--out", required=True, help="bundle directory, created if needed")
+    build_cmd.add_argument("--weights", default=None, help="CSV of ledger_id, weight (record-depth IPW)")
+    build_cmd.add_argument("--k", type=int, default=K, help="minimum people per cell")
+    build_cmd.add_argument("--pct-min", type=int, default=PCT_MIN, dest="pct_min", help="minimum people for a share")
+    build_cmd.add_argument("--roster-facts", dest="roster_facts", default=None, help="open roster_facts.csv for the D5 check")
+    build_cmd.add_argument("--seed", type=int, default=20261010, help="bootstrap seed")
+    build_cmd.add_argument("--current-year", type=int, default=None, dest="current_year", help="right-censoring year")
+
+
+def _add_mcp_parser(sub: argparse._SubParsersAction) -> None:
+    """``giye mcp serve``: the same options as ``python -m giye.mcp serve``."""
+    import os
+
+    mcp = sub.add_parser("mcp", help="serve career evidence over MCP")
+    mcp_sub = mcp.add_subparsers(dest="mcp_cmd", required=True)
+    serve = mcp_sub.add_parser("serve", help="serve one career bundle")
+    serve.add_argument(
+        "--bundle",
+        default=os.environ.get("GIYE_CAREER_BUNDLE"),
+        help="bundle directory (default: GIYE_CAREER_BUNDLE)",
+    )
+    serve.add_argument(
+        "--lang",
+        default=os.environ.get("GIYE_LANG", "en"),
+        choices=("en", "ko"),
+        help="default language (default: GIYE_LANG, else en)",
+    )
+    serve.add_argument("--http", action="store_true", help="streamable HTTP instead of stdio")
+    serve.add_argument("--host", default="127.0.0.1", help="HTTP bind host")
+    serve.add_argument("--port", type=int, default=6240, help="HTTP bind port")
+    serve.add_argument("--stateless", action="store_true", help="stateless streamable HTTP")
+    serve.add_argument(
+        "--allowed-host",
+        action="append",
+        default=None,
+        dest="allowed_host",
+        help="Host header allowed when DNS-rebinding protection is on; repeatable",
+    )
+    serve.add_argument(
+        "--allowed-origin",
+        action="append",
+        default=None,
+        dest="allowed_origin",
+        help="Origin header allowed when DNS-rebinding protection is on; repeatable",
+    )
+
+
+def _career(args: argparse.Namespace) -> int:
+    """Dispatch ``giye career build`` to the career module's own parser."""
+    from giye.career.__main__ import main as career_main
+
+    argv = [
+        "build",
+        "--config",
+        args.config,
+        "--out",
+        args.out,
+        "--k",
+        str(args.k),
+        "--pct-min",
+        str(args.pct_min),
+        "--seed",
+        str(args.seed),
+    ]
+    if args.weights:
+        argv.extend(["--weights", args.weights])
+    if args.roster_facts:
+        argv.extend(["--roster-facts", args.roster_facts])
+    if args.current_year is not None:
+        argv.extend(["--current-year", str(args.current_year)])
+    return career_main(argv)
+
+
+def _mcp(args: argparse.Namespace) -> int:
+    """Dispatch ``giye mcp serve``. A missing SDK is one line and exit 2, not a traceback."""
+    try:
+        from giye.mcp import server as mcp_server
+    except ImportError as exc:
+        name = exc.name or ""
+        if name == "mcp" or name.startswith("mcp."):
+            print('giye mcp: install the extra: pip install "giye[mcp]"', file=sys.stderr)
+            return 2
+        raise
+    # Touch the server so a failed extra cannot look like a successful import.
+    if not callable(mcp_server.build_server):
+        print('giye mcp: install the extra: pip install "giye[mcp]"', file=sys.stderr)
+        return 2
+    from giye.mcp.__main__ import main as mcp_main
+
+    argv = ["serve", "--lang", args.lang, "--host", args.host, "--port", str(args.port)]
+    if args.bundle:
+        argv.extend(["--bundle", args.bundle])
+    if args.http:
+        argv.append("--http")
+    if args.stateless:
+        argv.append("--stateless")
+    for host in args.allowed_host or []:
+        argv.extend(["--allowed-host", host])
+    for origin in args.allowed_origin or []:
+        argv.extend(["--allowed-origin", origin])
+    return mcp_main(argv)
 
 
 def _one_line_config_warnings() -> None:
@@ -814,6 +927,10 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _unhide(args)
     if args.cmd == "evidence":
         return _evidence(args)
+    if args.cmd == "career" and args.career_cmd == "build":
+        return _career(args)
+    if args.cmd == "mcp" and args.mcp_cmd == "serve":
+        return _mcp(args)
     return _unknown_command(args.cmd)
 
 
