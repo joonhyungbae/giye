@@ -169,8 +169,8 @@ an MCP prompt `read_my_career` that the user selects (prompts are a user-level c
 text is not). Every success response also carries the reading contract as data:
 
 ```
-layer            "roster" | "cv" | "both"
-population       who is counted, with n
+layer            "roster" | "cv" | "both" | "none"   (none: the entries hold no dated public activity)
+population       who is counted, with n (the published, rounded count, or null when withheld)
 report_value     the number to cite; weighted and unweighted when CV layer
 interval         bootstrap or Wilson interval where defined
 suppressed       cells withheld under k
@@ -179,14 +179,23 @@ forbidden_paraphrase   phrasings the answer must not use (causal verbs, "chance"
 generalization_allowed false when n is small or the layer does not support it
 claim_template   a ready sentence with the denominator
 bundle_version   ledger version the bundle was built from
+rules            rule ids the answer used (C*, D*, Q*)
+lang             "en" | "ko"
 ```
+
+Implemented 2026-10-10 (`src/giye/mcp/`): a tool's return type is a pydantic model, so the SDK publishes
+`outputSchema`; the tool returns a `CallToolResult` whose first text block is the sentence and whose
+`structured_content` is the payload. `must_say` has the layer sentence, the "descriptions, not advice"
+sentence, and the small-cell sentence when `generalization_allowed` is false (cell withheld, under
+`PCT_MIN`, or layer `none`). Bands come from the quantiles the cell published (five, quartiles, median
+only, or `no_reference`); there is no percentile rank and no score.
 
 | Tool | Input | What it returns |
 |---|---|---|
 | `about` | — | Boundary of the evidence, populations, bundle version, reading rules. Call first |
 | `career_schema` | — | The `CareerEntry` schema and instructions for the client to structure a CV (year, kind, venue name, city/country, programme if any). The client's model does the structuring; the server never sees the CV document |
 | `position` | `entries: list[CareerEntry]` | Career age, generation, and for each measure the user's value beside the reference quantiles at the same career age and generation. Bands, not scores |
-| `programme_fit` | `entries` | Only if the author keeps it (section 10). For each programme with an unsuppressed entry profile: whether the user's measures fall inside the central 50% / 80% of that programme's entrants at entry. Ordered by programme code, not by fit, so it is not a ranking |
+| `programme_fit` | — | Not built (decision 3, 2026-10-10). The entry profile is read through `programme_profile` |
 | `programme_profile` | `programme` | The programme's profile and entry profile, transitions to and from it |
 | `next_steps` | `entries` or `career_age` + `generation` | Base rates of what followed in reference careers at the same career age and mix |
 | `field_trend` | `measure` | Generation-level trend with intervals |
@@ -194,9 +203,11 @@ bundle_version   ledger version the bundle was built from
 | `list_vocab` | — | Every accepted value: kinds, regions, programmes, measures |
 
 `CareerEntry`: `year` (int), `kind` (closed vocabulary from `list_vocab`), `venue` (str, optional),
-`city` / `country` (optional), `programme` (optional code), `role` (optional). Venue names are
-classified on the server with `giye.normalize` (country, region, institution kind, art-tech) and the
-classification is echoed back so the user can correct it.
+`city` / `country` (optional, ISO 3166-1 alpha-2), `programme` (optional code), `role` (optional). In phase 2
+the country group comes from the entry's `country` against the archive territory (missing → `unresolved`), an
+entry is art-tech when `programme` is set or its venue equals a programme name, and `region` is not derived
+(`city` is accepted and not yet read). Classifying venue names with `giye.normalize` and echoing the
+classification back is later work.
 
 ## 6. Evaluation
 
@@ -239,7 +250,7 @@ adversarial critic/author review before it was implemented (rules and counts in 
 |---|---|---|
 | 0 | Data fixes of section 8 (done 2026-10-08, deployed) | preprocess and site rebuild pass; before/after counts reported |
 | 1 | `giye.career` builder, rules C0–C12 (`src/giye/career/rules.py`), synthetic and demo bundles, privacy tests. Done 2026-10-10: `python -m giye.career build --config <giye.toml> --out <dir> [--weights <ipw.csv>] [--roster-facts <open roster_facts.csv>]` | `pytest -q` and `ruff` pass; no published cell under `k`; the D5 scans pass |
-| 2 | `giye mcp serve` (stdio, `--http` for streamable HTTP) with `about`, `career_schema`, `position`, `programme_profile`, `next_steps`, `field_trend`, `map_question`, `list_vocab`, the prompt `read_my_career` and the reading contract on every result | scenario set and contract tests pass on a synthetic bundle and on the demo bundle |
+| 2 | Done 2026-10-10. `giye mcp serve --bundle <dir> [--lang ko] [--http …]` (stdio, `--http` for streamable HTTP) with `about`, `career_schema`, `position`, `programme_profile`, `next_steps`, `field_trend`, `map_question`, `list_vocab`, the prompt `read_my_career` and the reading contract on every result | scenario set and contract tests pass on a synthetic bundle and on the demo bundle |
 | 3 | Reference bundle from the production ledger with the record-depth weights; holdout check of `next_window` | holdout check reported |
 | 4 | Remote deployment, rate limit, opt-in logging | smoke test from a real MCP client |
 | 5 | Contract-compliance study | report in `docs/` |
