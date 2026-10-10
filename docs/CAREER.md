@@ -220,7 +220,9 @@ classification back is later work.
   the contract works without the server's control over the client.
 - **Holdout check of `next_steps`**: on the reference instance only, build the bundle from careers
   up to year T and compare predicted base rates with what followed after T, to report calibration
-  as a property of the base rates, not as a forecast for one person.
+  as a property of the base rates, not as a forecast for one person. Implemented as `giye career holdout`
+  (phase 3); the first run (T = 2022) is in the private data directory. Few cells are comparable because the
+  realisation only counts windows that opened after T, so the check gains power with every yearly update.
 
 ## 7. Usage logging (opt-in)
 
@@ -251,7 +253,7 @@ adversarial critic/author review before it was implemented (rules and counts in 
 | 0 | Data fixes of section 8 (done 2026-10-08, deployed) | preprocess and site rebuild pass; before/after counts reported |
 | 1 | `giye.career` builder, rules C0–C12 (`src/giye/career/rules.py`), synthetic and demo bundles, privacy tests. Done 2026-10-10: `python -m giye.career build --config <giye.toml> --out <dir> [--weights <ipw.csv>] [--roster-facts <open roster_facts.csv>]` | `pytest -q` and `ruff` pass; no published cell under `k`; the D5 scans pass |
 | 2 | Done 2026-10-10. `giye mcp serve --bundle <dir> [--lang ko] [--http …]` (stdio, `--http` for streamable HTTP) with `about`, `career_schema`, `position`, `programme_profile`, `next_steps`, `field_trend`, `map_question`, `list_vocab`, the prompt `read_my_career` and the reading contract on every result | scenario set and contract tests pass on a synthetic bundle and on the demo bundle |
-| 3 | Reference bundle from the production ledger with the record-depth weights; holdout check of `next_window` | holdout check reported |
+| 3 | Done 2026-10-10. Reference bundle built from the production ledger with the record-depth weights (`giye career build --weights <ipw.csv>`); `giye career holdout --split-year T` compares the next-window shares seen at `T` with the windows that closed in `(T, T+3]`, on cells that passed D1–D4 in both tables, and reports cell count, mean and median absolute difference and Wilson coverage per age band and outcome family | holdout check reported |
 | 4 | Remote deployment, rate limit, opt-in logging | smoke test from a real MCP client |
 | 5 | Contract-compliance study | report in `docs/` |
 
