@@ -132,11 +132,13 @@ def quantile_allowed(n_people: int, q: float, k: int) -> bool:
     P90 100, at ``k`` 10. Minimum and maximum are never a quantile here
     (``q`` of 0 or 1 is refused). These release tables publish counts, not
     quantiles; the builder calls this so a quantile cannot be attached later
-    without the threshold.
+    without the threshold. The comparison is multiplied through and allows
+    ``1e-9`` because ``1 - q`` is not exact in binary, which otherwise refuses
+    P90 at exactly 100.
     """
     if q <= 0 or q >= 1:
         return False
-    return n_people >= k / min(q, 1.0 - q)
+    return n_people * min(q, 1.0 - q) + 1e-9 >= k
 
 
 def round_to_5(n: int) -> int:
@@ -1615,6 +1617,23 @@ def _disclose_count(value: str, k: int) -> str | int:
     return n
 
 
+def _external_note(stats: dict) -> str:
+    """README sentence: the external-coverage block describes its own scan cohort, not this build.
+
+    Why: the scan ran on an earlier version of the register, so its population and
+    its probable count are not a share of the people in this build (final release
+    audit, 2026-10-10).
+    """
+    ext = stats.get("external_coverage") or {}
+    population = ext.get("population")
+    if not population:
+        return ""
+    return (
+        f" The `external_coverage` block in `stats.json` describes a scan of an earlier version of the"
+        f" register ({population} people); its counts are not shares of the {stats.get('people')} people in this build."
+    )
+
+
 def _external_coverage(path: Path, k: int) -> dict | None:
     """Headline figures from the external-coverage note, when the file parses.
 
@@ -1820,10 +1839,10 @@ There are two records. This folder is the open record, licensed CC BY 4.0
 after a request is reviewed. The agreement for that record is `DUA.md` in
 this folder.
 
-People in this build: {people}. Editions: {stats["editions"]}. Programmes: {stats["programmes"]}.
+People in this build: {people}. Editions: {stats["editions"]}. Roster frames: {stats["programmes"]}.
 CV people: {stats["cv_people"]}. CV rows: {stats["cv_rows"]}.
 Years covered: {stats["years_covered"]["min"]}–{stats["years_covered"]["max"]}.
-Counts a paper cites are in `stats.json`.
+Counts a paper cites are in `stats.json`.{_external_note(stats)}
 
 ## Who is included
 
