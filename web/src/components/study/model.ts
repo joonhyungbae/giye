@@ -150,7 +150,7 @@ export type Layout = {
   years: { min: number; max: number };
 };
 
-const GENERIC_VENUES = new Set([
+export const GENERIC_VENUES = new Set([
   "",
   "참여 작가",
   "online",

@@ -11,26 +11,32 @@
  *   2. tech    — the room goes to the night palette, one technology at a time (lib/tech.ts, W4):
  *                the records of people whose titles name it are ringed from their first such
  *                year on, appearing as the period grows; only those people play, each from that
- *                year; then the parts of two of them (TECH_CUES).
+ *                year. Then the shaft splits the ties among them in two (TIES, below): ties made
+ *                before both had named it bend under the axis, ties made after bend over it;
+ *                then the parts of two of them (TECH_CUES).
  * No person is ranked or sized by their records. `?notes` adds the count behind a technology
  * scene (computed in the browser) for documentation.
  *
  * Input: a click or a key starts the sound (browsers need a gesture); dragging turns the study as
  * at home. The buttons and the arrow keys jump between scenes; after a minute without input the
  * loop resumes. `?kiosk` hides the pointer and the buttons; `?scene=<n>&at=<0..1>` opens a point
- * of one scene.
+ * of one scene, and `&hold` keeps it there (for stills).
  */
 import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArchivalStudy,
   type StudyDirector,
+  type StudyTies,
 } from "@/components/study/ArchivalStudy";
 import {
   buildLayout,
+  GENERIC_VENUES,
+  srcIndex,
   type Layout,
   type StudyData,
 } from "@/components/study/model";
+import { foldVenue } from "@/lib/record-text";
 import { useLang } from "@/lib/i18n";
 import { TECH_CODES, TECH_LABEL, type TechCode } from "@/lib/tech";
 
@@ -54,7 +60,12 @@ type Api = NonNullable<StudyDirector["api"]>;
 /** A cue runs once when the scene reaches `at` (a fraction of its length). */
 type Cue = {
   at: number;
-  run: (api: Api, part: (k: number) => number | null) => void;
+  run: (
+    api: Api,
+    part: (k: number) => number | null,
+    /** this technology's ties, with the sides asked for shown (tech scenes) */
+    tie: (below: boolean, above: boolean) => StudyTies | null,
+  ) => void;
 };
 /** A span over which the shown period grows from the first year ring to the last. */
 type Grow = { from: number; to: number };
@@ -106,13 +117,41 @@ const TECH_CUES: Cue[] = [
     ),
   },
   { at: 0.42, run: (a) => (a.setPeriod(0, a.rings - 1), a.setStage(2)) },
+  { at: 0.47, run: (a, _p, tie) => a.setTies(tie(true, false)) },
+  { at: 0.55, run: (a, _p, tie) => a.setTies(tie(true, true)) },
   {
     at: 0.66,
-    run: (a, part) => (a.setSpin(0), a.setStage(4), a.focus(part(0))),
+    run: (a, part) => (
+      a.setTies(null),
+      a.setSpin(0),
+      a.setStage(4),
+      a.focus(part(0))
+    ),
   },
   { at: 0.83, run: (a, part) => a.focus(part(1)) },
 ];
 const TECH_GROW: Grow = { from: 0.03, to: 0.4 };
+
+/**
+ * How much more often than other pairs the adopters of a technology formed a new tie, from the
+ * technology-diffusion study (year-stratified Mantel–Haenszel odds ratios against pairs where
+ * neither ever adopts; all ties): `before` — both adopt it, but only later than the tie;
+ * `after` — both had adopted it before the tie. An odds ratio near 1 is no closer than anyone.
+ * Reason: the page cannot run that comparison (it needs every pair of active artists, every
+ * year); it draws real ties among the adopters and lets the study's number set their strength.
+ */
+const TIE_ODDS: Record<TechCode, { before: number; after: number }> = {
+  ai: { before: 1.03, after: 1.51 },
+  xr: { before: 1.0, after: 2.15 },
+  data: { before: 1.73, after: 1.59 },
+  bio: { before: 1.37, after: 1.15 },
+  robot: { before: 1.66, after: 1.44 },
+  nft: { before: 1.71, after: 1.32 },
+};
+/** Arc strength for an odds ratio: about invisible at 1, full near the strongest (XR after). */
+const tieAlpha = (or: number) => 0.04 + 0.56 * clamp((or - 1) / 1.15, 0, 1);
+/** Each side draws the same number of ties, so a side differs only by its strength. */
+const TIE_SAMPLE = 180;
 
 /** Parts need a few records to read as parts; below this a strand is too short to pull out. */
 const MIN_PARTS = 4;
@@ -137,7 +176,65 @@ type TechView = {
   ringed: Set<number>;
   /** adopters with enough ringed records to pull out as parts */
   parts: number[];
+  /** ties among adopters: record pair, and -1 made before both adopted / +1 after */
+  ties: Array<[number, number, -1 | 1]>;
+  /** how many ties each side had before the sample, [before, after] */
+  tieCount: [number, number];
 };
+
+/**
+ * A tie is a pair of adopters on the same venue in the same year (the co-presence of the
+ * study), dated by the first year they share. It counts as before when both adopt after that
+ * year and as after when both adopted before it; a tie in either one's adoption year is neither.
+ */
+function buildTies(
+  layout: Layout,
+  data: StudyData,
+  first: Map<number, number>,
+): Pick<TechView, "ties" | "tieCount"> {
+  const at = new Map<string, Map<number, number>>(); // venue|year → artist → record node
+  for (const [i] of first)
+    for (const ri of layout.artists[i]!.strand) {
+      const nd = layout.records[ri]!;
+      const v = foldVenue(data.records[srcIndex(nd)]!.venue);
+      if (GENERIC_VENUES.has(v)) continue;
+      const key = `${v}|${nd.year}`;
+      let m = at.get(key);
+      if (!m) at.set(key, (m = new Map()));
+      if (!m.has(i)) m.set(i, ri);
+    }
+  const firstTie = new Map<string, [number, number, number]>(); // pair → year, nodes
+  for (const [key, m] of at) {
+    if (m.size < 2) continue;
+    const year = Number(key.slice(key.lastIndexOf("|") + 1));
+    const who = [...m.keys()].sort((p, q) => p - q);
+    for (let x = 0; x < who.length; x++)
+      for (let y = x + 1; y < who.length; y++) {
+        const pk = `${who[x]}-${who[y]}`;
+        const had = firstTie.get(pk);
+        if (!had || year < had[0])
+          firstTie.set(pk, [year, m.get(who[x]!)!, m.get(who[y]!)!]);
+      }
+  }
+  const sides: Array<Array<[number, number, -1 | 1]>> = [[], []];
+  for (const [pk, [year, p, q]] of firstTie) {
+    const [i, j] = pk.split("-").map(Number) as [number, number];
+    const yi = first.get(i)!;
+    const yj = first.get(j)!;
+    if (yi > year && yj > year) sides[0]!.push([p, q, -1]);
+    else if (yi < year && yj < year) sides[1]!.push([p, q, 1]);
+  }
+  const n = Math.min(TIE_SAMPLE, sides[0]!.length, sides[1]!.length);
+  // an even walk over each side (pairs in a fixed order), not the first n
+  const pick = (list: Array<[number, number, -1 | 1]>) => {
+    list.sort((u, v) => u[0] - v[0] || u[1] - v[1]);
+    return Array.from({ length: n }, (_, k) => list[Math.floor((k * list.length) / n)]!);
+  };
+  return {
+    ties: [...pick(sides[0]!), ...pick(sides[1]!)],
+    tieCount: [sides[0]!.length, sides[1]!.length],
+  };
+}
 
 function buildTech(layout: Layout, data: StudyData, tech: TechCode): TechView {
   const first = new Map<number, number>();
@@ -157,7 +254,7 @@ function buildTech(layout: Layout, data: StudyData, tech: TechCode): TechView {
     for (const ri of layout.artists[i]!.strand) if (ringed.has(ri)) n++;
     return n >= MIN_PARTS;
   });
-  return { tech, first, byAngle, ringed, parts };
+  return { tech, first, byAngle, ringed, parts, ...buildTies(layout, data, first) };
 }
 
 export function Exhibit({ data }: { data: StudyData }) {
@@ -178,6 +275,11 @@ export function Exhibit({ data }: { data: StudyData }) {
     [],
   );
   const kiosk = params.has("kiosk");
+  // `&hold` stops the scene clock at `at`
+  const hold =
+    params.has("hold") && params.has("scene")
+      ? clamp(Number(params.get("at")) || 0, 0, 1)
+      : null;
   // The installation shows no explanation by default: the picture and the sound carry it, and the
   // words go on the wall label. `?notes` brings back the count (for documentation).
   const notes = params.has("notes");
@@ -264,8 +366,16 @@ export function Exhibit({ data }: { data: StudyData }) {
       const grow = sc.kind === "records" ? RECORD_GROW : TECH_GROW;
       const pool = sc.kind === "tech" ? techs.get(sc.tech)!.parts : recordParts;
       const part = (k: number) => pickPart(pool, st.loop, k);
+      const tie = (below: boolean, above: boolean): StudyTies | null => {
+        if (sc.kind !== "tech") return null;
+        const odds = TIE_ODDS[sc.tech];
+        return {
+          pairs: techs.get(sc.tech)!.ties,
+          alpha: [below ? tieAlpha(odds.before) : 0, above ? tieAlpha(odds.after) : 0],
+        };
+      };
       while (st.cue < cues.length && cues[st.cue]!.at <= phase)
-        cues[st.cue++]!.run(api, part);
+        cues[st.cue++]!.run(api, part, tie);
       if (phase >= grow.from && phase < grow.to) {
         const u = (phase - grow.from) / (grow.to - grow.from);
         api.setPeriod(0, u * (api.rings - 1));
@@ -282,6 +392,7 @@ export function Exhibit({ data }: { data: StudyData }) {
       if (st.scene === 0) st.loop++;
       if (byUser) st.lastInput = performance.now();
       const sc = LOOP[st.scene]!;
+      director.api?.setTies(null);
       director.api?.setRinged(
         sc.kind === "tech" ? techs.get(sc.tech)!.ringed : null,
         sc.kind === "tech" ? sc.tech : "",
@@ -330,6 +441,8 @@ export function Exhibit({ data }: { data: StudyData }) {
           st.sceneStart = now - at * lengthOf(LOOP[k0]!) * 1000;
         }
       }
+      if (st.started && hold != null)
+        st.sceneStart = now - hold * lengthOf(LOOP[st.scene]!) * 1000;
       // the ensemble exists only after the first gesture: tune it when it appears
       const m = director.api?.music() ?? null;
       if (m && m !== tuned) {
@@ -348,7 +461,7 @@ export function Exhibit({ data }: { data: StudyData }) {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [st, director, params, goScene, tuneMusic, runScript]);
+  }, [st, director, params, hold, goScene, tuneMusic, runScript]);
 
   // Recover from a lost GPU or a stalled tab: an installation reloads itself once an hour.
   useEffect(() => {
@@ -382,8 +495,8 @@ export function Exhibit({ data }: { data: StudyData }) {
         {notes && tv ? (
           <span className="ml-3 text-[12px] opacity-70">
             {t(
-              `${tv.first.size.toLocaleString()}명 · 테 = 제목에 처음 나온 해부터의 기록`,
-              `${tv.first.size.toLocaleString()} people · ringed: records from the first year a title names it`,
+              `${tv.first.size.toLocaleString()}명 · 테 = 제목에 처음 나온 해부터의 기록 · 축 아래 = 채택 전 연결(오즈비 ${TIE_ODDS[tv.tech].before.toFixed(2)}), 위 = 채택 뒤(${TIE_ODDS[tv.tech].after.toFixed(2)}) · 각 ${Math.min(TIE_SAMPLE, ...tv.tieCount)}개`,
+              `${tv.first.size.toLocaleString()} people · ringed: records from the first year a title names it · below the axis: ties before adopting (odds ratio ${TIE_ODDS[tv.tech].before.toFixed(2)}), above: after (${TIE_ODDS[tv.tech].after.toFixed(2)}) · ${Math.min(TIE_SAMPLE, ...tv.tieCount)} each`,
             )}
           </span>
         ) : null}

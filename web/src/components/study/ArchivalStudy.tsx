@@ -349,8 +349,20 @@ export type StudyDirector = {
     focus: (artist: number | null) => void;
     /** a steady turn (radians per second) in every view, while no turn is targeted */
     setSpin: (radPerSec: number) => void;
+    /** ties between record pairs, drawn as arcs off the shaft; null fades them out */
+    setTies: (ties: StudyTies | null) => void;
     layout: Layout;
   } | null;
+};
+
+/**
+ * Ties the director draws as arcs leaving the shaft: each pair (two record nodes) bends to the
+ * side it belongs to, below (-1) or above (+1) the axis. `alpha` is each side's strength,
+ * [below, above]; changing it eases the side in or out.
+ */
+export type StudyTies = {
+  pairs: Array<[number, number, -1 | 1]>;
+  alpha: [number, number];
 };
 
 export function ArchivalStudy({
@@ -488,6 +500,9 @@ export function ArchivalStudy({
     ringedKey: "",
     /** director: steady turn in radians per second (0 = the home's own idle drift only) */
     spin: 0,
+    /** director: ties drawn as arcs off the shaft (StudyTies), and each side's shown alpha */
+    ties: null as StudyTies | null,
+    tieA: [0, 0] as [number, number],
     lastInput: 0,
     lastTurnAt: 0,
     sx: new Float32Array(layout.records.length),
@@ -2802,6 +2817,62 @@ export function ArchivalStudy({
         for (const i of knotLate) paintKnotMark(i);
       }
 
+      /* -- director ties: arcs that leave the shaft, one side below the axis, one above -- */
+      if (st.ties) {
+        const tg = st.ties.alpha;
+        st.tieA[0] = damp(st.tieA[0], tg[0], 1.6, dt);
+        st.tieA[1] = damp(st.tieA[1], tg[1], 1.6, dt);
+        if (tg[0] === 0 && tg[1] === 0 && st.tieA[0] < 0.002 && st.tieA[1] < 0.002) {
+          st.ties = null;
+          st.tieA = [0, 0];
+        }
+      }
+      if (st.ties) {
+        // the screen direction across the axis, turned to point up the screen
+        let nx = rc;
+        let ny = rs;
+        if (ny > 0) {
+          nx = -nx;
+          ny = -ny;
+        }
+        ctx.lineWidth = 1;
+        // where each year plate's centre lands on screen, and its radius there
+        const plateC = new Map<number, [number, number, number]>();
+        const plateAt = (rk: number, g: number) => {
+          const key = rk * 64 + g;
+          let pc = plateC.get(key);
+          if (!pc) {
+            const z = ringZ[rk]! + gz(g);
+            const [px, py] = proj(0, 0, z);
+            const rr = rings[rk]!.r * s * scaleOf(depthOf(0, 0, z));
+            plateC.set(key, (pc = [px, py, rr]));
+          }
+          return pc;
+        };
+        for (const side of [-1, 1] as const) {
+          const k = side < 0 ? 0 : 1;
+          const a = st.tieA[k];
+          if (a < 0.003) continue;
+          // the arcs bend past the rim of their year plate, further as their side eases in:
+          // the ties after adopting are a crown over the shaft, those before it roots under it
+          const reach = 0.9 + 1.5 * smooth(0, 0.3, a);
+          ctx.beginPath();
+          st.ties.pairs.forEach(([p, q, sd], n) => {
+            if (sd !== side || ra[p]! <= 0 || ra[q]! <= 0) return;
+            const [pcx, pcy, pr] = plateAt(records[p]!.ring, artists[records[p]!.artist]!.group);
+            const x0 = st.sx[p]!;
+            const y0 = st.sy[p]!;
+            const x1 = st.sx[q]!;
+            const y1 = st.sy[q]!;
+            const d = pr * reach * (0.8 + 0.4 * ((n * 0.6180339887) % 1));
+            ctx.moveTo(x0, y0);
+            ctx.quadraticCurveTo(pcx + nx * d * side, pcy + ny * d * side, x1, y1);
+          });
+          ctx.strokeStyle = withAlpha(accent, a);
+          ctx.stroke();
+        }
+      }
+
       /* -- venue partners: where the chosen artist's curves land -- */
       if (emphasisArtist >= 0 && st.links.chords.length && diagram < 0.3) {
         const la = liftChords ? 1 : 0.75;
@@ -3691,6 +3762,10 @@ export function ArchivalStudy({
       },
       setSpin: (r) => {
         st.spin = r;
+      },
+      setTies: (t) => {
+        if (t) st.ties = t;
+        else if (st.ties) st.ties = { ...st.ties, alpha: [0, 0] };
       },
       layout,
     };
