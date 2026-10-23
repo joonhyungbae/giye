@@ -11,7 +11,7 @@
  *   2. tech    — the room goes to the night palette, one technology at a time (lib/tech.ts, W4):
  *                the records of people whose titles name it are ringed from their first such
  *                year on, appearing as the period grows; only those people play, each from that
- *                year. Then the shaft splits the ties among them in two (TIES, below): ties made
+ *                year. Then the shaft splits the ties among them in two (the ties, below): ties made
  *                before both had named it bend under the axis, ties made after bend over it;
  *                then the parts of two of them (TECH_CUES).
  * No person is ranked or sized by their records. `?notes` adds the count behind a technology
@@ -133,25 +133,14 @@ const TECH_CUES: Cue[] = [
 const TECH_GROW: Grow = { from: 0.03, to: 0.4 };
 
 /**
- * How much more often than other pairs the adopters of a technology formed a new tie, from the
- * technology-diffusion study (year-stratified Mantel–Haenszel odds ratios against pairs where
- * neither ever adopts; all ties): `before` — both adopt it, but only later than the tie;
- * `after` — both had adopted it before the tie. An odds ratio near 1 is no closer than anyone.
- * Reason: the page cannot run that comparison (it needs every pair of active artists, every
- * year); it draws real ties among the adopters and lets the study's number set their strength.
+ * The ties are drawn as they are in the archive: every technology and side the same strength,
+ * and the two sides in their own proportion. The page shows what the ties look like and makes
+ * no claim about why; the comparison that would (against pairs who never adopt, year by year)
+ * is the study's, not the page's.
  */
-const TIE_ODDS: Record<TechCode, { before: number; after: number }> = {
-  ai: { before: 1.03, after: 1.51 },
-  xr: { before: 1.0, after: 2.15 },
-  data: { before: 1.73, after: 1.59 },
-  bio: { before: 1.37, after: 1.15 },
-  robot: { before: 1.66, after: 1.44 },
-  nft: { before: 1.71, after: 1.32 },
-};
-/** Arc strength for an odds ratio: about invisible at 1, full near the strongest (XR after). */
-const tieAlpha = (or: number) => 0.04 + 0.56 * clamp((or - 1) / 1.15, 0, 1);
-/** Each side draws the same number of ties, so a side differs only by its strength. */
-const TIE_SAMPLE = 180;
+const TIE_ALPHA = 0.32;
+/** At most this many ties per scene; both sides are thinned by the same factor. */
+const TIE_SAMPLE = 360;
 
 /** Parts need a few records to read as parts; below this a strand is too short to pull out. */
 const MIN_PARTS = 4;
@@ -224,9 +213,10 @@ function buildTies(
     if (yi > year && yj > year) sides[0]!.push([p, q, -1]);
     else if (yi < year && yj < year) sides[1]!.push([p, q, 1]);
   }
-  const n = Math.min(TIE_SAMPLE, sides[0]!.length, sides[1]!.length);
+  const keep = Math.min(1, TIE_SAMPLE / Math.max(1, sides[0]!.length + sides[1]!.length));
   // an even walk over each side (pairs in a fixed order), not the first n
   const pick = (list: Array<[number, number, -1 | 1]>) => {
+    const n = Math.round(list.length * keep);
     list.sort((u, v) => u[0] - v[0] || u[1] - v[1]);
     return Array.from({ length: n }, (_, k) => list[Math.floor((k * list.length) / n)]!);
   };
@@ -368,10 +358,9 @@ export function Exhibit({ data }: { data: StudyData }) {
       const part = (k: number) => pickPart(pool, st.loop, k);
       const tie = (below: boolean, above: boolean): StudyTies | null => {
         if (sc.kind !== "tech") return null;
-        const odds = TIE_ODDS[sc.tech];
         return {
           pairs: techs.get(sc.tech)!.ties,
-          alpha: [below ? tieAlpha(odds.before) : 0, above ? tieAlpha(odds.after) : 0],
+          alpha: [below ? TIE_ALPHA : 0, above ? TIE_ALPHA : 0],
         };
       };
       while (st.cue < cues.length && cues[st.cue]!.at <= phase)
@@ -495,8 +484,8 @@ export function Exhibit({ data }: { data: StudyData }) {
         {notes && tv ? (
           <span className="ml-3 text-[12px] opacity-70">
             {t(
-              `${tv.first.size.toLocaleString()}명 · 테 = 제목에 처음 나온 해부터의 기록 · 축 아래 = 채택 전 연결(오즈비 ${TIE_ODDS[tv.tech].before.toFixed(2)}), 위 = 채택 뒤(${TIE_ODDS[tv.tech].after.toFixed(2)}) · 각 ${Math.min(TIE_SAMPLE, ...tv.tieCount)}개`,
-              `${tv.first.size.toLocaleString()} people · ringed: records from the first year a title names it · below the axis: ties before adopting (odds ratio ${TIE_ODDS[tv.tech].before.toFixed(2)}), above: after (${TIE_ODDS[tv.tech].after.toFixed(2)}) · ${Math.min(TIE_SAMPLE, ...tv.tieCount)} each`,
+              `${tv.first.size.toLocaleString()}명 · 테 = 제목에 처음 나온 해부터의 기록 · 축 아래 = 둘 다 쓰기 전에 생긴 연결 ${tv.tieCount[0]}, 위 = 둘 다 쓴 뒤 ${tv.tieCount[1]}`,
+              `${tv.first.size.toLocaleString()} people · ringed: records from the first year a title names it · below the axis: ties made before both named it ${tv.tieCount[0]}, above: after ${tv.tieCount[1]}`,
             )}
           </span>
         ) : null}
