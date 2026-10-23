@@ -5,13 +5,13 @@
  * The home study (components/study/ArchivalStudy) is the stage: the exhibit drives it through a
  * StudyDirector and draws nothing of its own over it except one word at the start of a scene.
  * Scenes loop on their own, so the page can run unattended on a projector:
- *   1. records — in the site's own paper tone, the study assembles and opens through its
- *                exploded views: the disc, its layers over the source piers, the year plates,
- *                the generation segments. The artists near the needle play "In C"
+ *   1. records — in the site's own paper tone, the study assembles and unfolds through all its
+ *                views (RECORD_CUES). The artists near the needle play "In C"
  *                (conductor.ts / ensemble.ts).
  *   2. tech    — the room goes to the night palette, one technology at a time (lib/tech.ts, W4):
  *                the records of people whose titles name it are ringed from their first such
- *                year on, and only those people play, each from that year.
+ *                year on, appearing as the period grows; only those people play, each from that
+ *                year; then the parts of two of them (TECH_CUES).
  * No person is ranked or sized by their records. `?notes` adds the count behind a technology
  * scene (computed in the browser) for documentation.
  *
@@ -38,8 +38,8 @@ const clamp = (v: number, lo: number, hi: number) =>
   Math.min(hi, Math.max(lo, v));
 
 /* Scene lengths (seconds). One loop: the records, then the six technologies. */
-const RECORDS_SEC = 110;
-const TECH_SEC = 36;
+const RECORDS_SEC = 150;
+const TECH_SEC = 48;
 type Scene = { kind: "records" } | { kind: "tech"; tech: TechCode };
 const LOOP: Scene[] = [
   { kind: "records" },
@@ -47,24 +47,85 @@ const LOOP: Scene[] = [
 ];
 const lengthOf = (s: Scene) => (s.kind === "records" ? RECORDS_SEC : TECH_SEC);
 const IDLE_RESUME_MS = 60_000;
+/** The steady turn of the structure (radians per second), stopped while parts are out. */
+const SPIN = 0.02;
 
-type View = "flat" | "layers" | "years" | "plates" | "segments";
+type Api = NonNullable<StudyDirector["api"]>;
+/** A cue runs once when the scene reaches `at` (a fraction of its length). */
+type Cue = {
+  at: number;
+  run: (api: Api, part: (k: number) => number | null) => void;
+};
+/** A span over which the shown period grows from the first year ring to the last. */
+type Grow = { from: number; to: number };
+
 /**
- * The records scene walks the study's own views, one band of the scene each:
- * flat disc → layers opened over the source piers → year plates → generation segments → closed.
+ * The records scene uses every view the study has, in the order the home's stage list gives:
+ * the assembly (records fly in in the order they were collected), the years opening while the
+ * period grows one ring at a time, the exploded layers, the year plates, the generation
+ * segments, and the record parts of one artist after another; then it closes.
  */
-const RECORD_BANDS: Array<{ until: number; view: View }> = [
-  { until: 0.18, view: "flat" },
-  { until: 0.4, view: "layers" },
-  { until: 0.64, view: "plates" },
-  { until: 0.88, view: "segments" },
-  { until: 1.01, view: "flat" },
+const RECORD_CUES: Cue[] = [
+  { at: 0, run: (a) => (a.reassemble(), a.setSpin(SPIN)) },
+  { at: 0.07, run: (a) => (a.setPeriod(0, 0), a.openYears(true)) },
+  { at: 0.26, run: (a) => (a.setPeriod(0, a.rings - 1), a.setStage(1)) },
+  { at: 0.4, run: (a) => a.setStage(2) },
+  { at: 0.54, run: (a) => a.setStage(3) },
+  {
+    at: 0.68,
+    run: (a, part) => (a.setSpin(0), a.setStage(4), a.focus(part(0))),
+  },
+  { at: 0.76, run: (a, part) => a.focus(part(1)) },
+  { at: 0.84, run: (a, part) => a.focus(part(2)) },
+  {
+    at: 0.92,
+    run: (a) => (
+      a.focus(null),
+      a.setStage(0),
+      a.openStack(false),
+      a.setSpin(SPIN)
+    ),
+  },
 ];
-/** A technology scene: layers open with the years spread, then the year plates. */
-const TECH_BANDS: Array<{ until: number; view: View }> = [
-  { until: 0.55, view: "years" },
-  { until: 1.01, view: "plates" },
+const RECORD_GROW: Grow = { from: 0.08, to: 0.24 };
+
+/**
+ * A technology scene: the years open with the period at the first ring and grow, so the rings
+ * of that technology appear year by year; then the year plates; then the parts of two of the
+ * people who named it.
+ */
+const TECH_CUES: Cue[] = [
+  {
+    at: 0,
+    run: (a) => (
+      a.focus(null),
+      a.setStage(0),
+      a.setPeriod(0, 0),
+      a.openYears(true),
+      a.setSpin(SPIN)
+    ),
+  },
+  { at: 0.42, run: (a) => (a.setPeriod(0, a.rings - 1), a.setStage(2)) },
+  {
+    at: 0.66,
+    run: (a, part) => (a.setSpin(0), a.setStage(4), a.focus(part(0))),
+  },
+  { at: 0.83, run: (a, part) => a.focus(part(1)) },
 ];
+const TECH_GROW: Grow = { from: 0.03, to: 0.4 };
+
+/** Parts need a few records to read as parts; below this a strand is too short to pull out. */
+const MIN_PARTS = 4;
+/**
+ * Whose parts are shown: a golden-ratio walk over the eligible people in rim order, advanced
+ * by the loop count, so every loop shows others. Record counts only gate (MIN_PARTS); they do
+ * not rank — no one is picked for having more.
+ */
+function pickPart(pool: number[], loop: number, k: number): number | null {
+  if (!pool.length) return null;
+  const u = ((loop * 3 + k + 1) * 0.6180339887) % 1;
+  return pool[Math.floor(u * pool.length)]!;
+}
 
 type TechView = {
   tech: TechCode;
@@ -74,6 +135,8 @@ type TechView = {
   byAngle: number[];
   /** record nodes from each adopter's first year on (ringed in the study) */
   ringed: Set<number>;
+  /** adopters with enough ringed records to pull out as parts */
+  parts: number[];
 };
 
 function buildTech(layout: Layout, data: StudyData, tech: TechCode): TechView {
@@ -89,7 +152,12 @@ function buildTech(layout: Layout, data: StudyData, tech: TechCode): TechView {
   for (const [i, y0] of first)
     for (const ri of layout.artists[i]!.strand)
       if (layout.records[ri]!.year >= y0) ringed.add(ri);
-  return { tech, first, byAngle, ringed };
+  const parts = byAngle.filter((i) => {
+    let n = 0;
+    for (const ri of layout.artists[i]!.strand) if (ringed.has(ri)) n++;
+    return n >= MIN_PARTS;
+  });
+  return { tech, first, byAngle, ringed, parts };
 }
 
 export function Exhibit({ data }: { data: StudyData }) {
@@ -119,7 +187,8 @@ export function Exhibit({ data }: { data: StudyData }) {
     scene: 0,
     sceneStart: 0,
     lastInput: -Infinity,
-    band: "" as View | "",
+    cue: 0,
+    loop: 0,
     started: false,
   }).current;
   const [hud, setHud] = useState({ scene: 0, sound: false, word: 0 });
@@ -176,32 +245,41 @@ export function Exhibit({ data }: { data: StudyData }) {
     setHud((h) => (h.sound ? h : { ...h, sound: true }));
   }, [director]);
 
-  /** Put the study into the view a scene band asks for. */
-  const applyBand = useCallback(
-    (view: View) => {
+  // people whose parts the records scene may pull out (rim order; see pickPart)
+  const recordParts = useMemo(
+    () =>
+      layout.artists
+        .filter((a) => !a.hidden && a.strand.length >= MIN_PARTS)
+        .map((a) => a.i),
+    [layout],
+  );
+
+  /** Run the cues the scene has reached, and grow the period over its span. */
+  const runScript = useCallback(
+    (phase: number) => {
       const api = director.api;
-      if (!api || st.band === view) return;
-      st.band = view;
-      if (view === "flat") {
-        api.setStage(0);
-        api.openStack(false);
-      } else if (view === "layers") {
-        api.setStage(0);
-        api.openStack(true);
-      } else if (view === "years") {
-        api.setStage(0);
-        api.openYears(true);
-      } else if (view === "plates") api.setStage(2);
-      else api.setStage(3);
+      if (!api) return;
+      const sc = LOOP[st.scene]!;
+      const cues = sc.kind === "records" ? RECORD_CUES : TECH_CUES;
+      const grow = sc.kind === "records" ? RECORD_GROW : TECH_GROW;
+      const pool = sc.kind === "tech" ? techs.get(sc.tech)!.parts : recordParts;
+      const part = (k: number) => pickPart(pool, st.loop, k);
+      while (st.cue < cues.length && cues[st.cue]!.at <= phase)
+        cues[st.cue++]!.run(api, part);
+      if (phase >= grow.from && phase < grow.to) {
+        const u = (phase - grow.from) / (grow.to - grow.from);
+        api.setPeriod(0, u * (api.rings - 1));
+      }
     },
-    [director, st],
+    [director, st, techs, recordParts],
   );
 
   const goScene = useCallback(
     (k: number, byUser = true) => {
       st.scene = ((k % LOOP.length) + LOOP.length) % LOOP.length;
       st.sceneStart = performance.now();
-      st.band = "";
+      st.cue = 0;
+      if (st.scene === 0) st.loop++;
       if (byUser) st.lastInput = performance.now();
       const sc = LOOP[st.scene]!;
       director.api?.setRinged(
@@ -264,15 +342,13 @@ export function Exhibit({ data }: { data: StudyData }) {
         if (now - st.sceneStart > len && now - st.lastInput > IDLE_RESUME_MS)
           goScene(st.scene + 1, false);
         const phase = clamp((now - st.sceneStart) / len, 0, 1);
-        const bands =
-          LOOP[st.scene]!.kind === "records" ? RECORD_BANDS : TECH_BANDS;
-        applyBand(bands.find((b) => phase < b.until)!.view);
+        runScript(phase);
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [st, director, params, goScene, tuneMusic, applyBand]);
+  }, [st, director, params, goScene, tuneMusic, runScript]);
 
   // Recover from a lost GPU or a stalled tab: an installation reloads itself once an hour.
   useEffect(() => {

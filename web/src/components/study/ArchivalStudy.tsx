@@ -340,6 +340,15 @@ export type StudyDirector = {
     music: () => Ensemble | null;
     /** record nodes to ring, the same mark the version comparison uses; null clears */
     setRinged: (nodes: Set<number> | null, key: string) => void;
+    /** replay the assembly: records fly in in the order they were collected */
+    reassemble: () => void;
+    /** the activity period shown, as ring indices (inclusive); see `rings` */
+    setPeriod: (yr0: number, yr1: number) => void;
+    rings: number;
+    /** turn an artist's strand to the needle (the stage-4 parts are theirs); null lets go */
+    focus: (artist: number | null) => void;
+    /** a steady turn (radians per second) in every view, while no turn is targeted */
+    setSpin: (radPerSec: number) => void;
     layout: Layout;
   } | null;
 };
@@ -477,6 +486,8 @@ export function ArchivalStudy({
     /** director: rings drawn in place of the version comparison, and its cache key */
     ringed: null as Set<number> | null,
     ringedKey: "",
+    /** director: steady turn in radians per second (0 = the home's own idle drift only) */
+    spin: 0,
     lastInput: 0,
     lastTurnAt: 0,
     sx: new Float32Array(layout.records.length),
@@ -1051,6 +1062,7 @@ export function ArchivalStudy({
         if (Math.abs(st.vel) < 1e-4) st.vel = 0;
         if (!reduced && st.focus < 0 && st.tilt < 0.05 && st.asmDone && now - st.lastInput > 4000)
           st.rot += 0.012 * dt;
+        else if (st.spin && st.asmDone && st.gesture === "none") st.rot += st.spin * dt;
       }
       st.music?.update(st.rot);
       if (st.targetZoom != null) {
@@ -3667,12 +3679,37 @@ export function ArchivalStudy({
         st.ringed = nodes;
         st.ringedKey = key;
       },
+      reassemble,
+      setPeriod: (a, b) => {
+        st.yr0 = clamp(Math.round(a), 0, lastRing);
+        st.yr1 = clamp(Math.round(b), st.yr0, lastRing);
+      },
+      rings: lastRing + 1,
+      focus: (i) => {
+        if (i == null) closeSheet();
+        else focusArtist(i, false);
+      },
+      setSpin: (r) => {
+        st.spin = r;
+      },
       layout,
     };
     return () => {
       director.api = null;
     };
-  }, [director, setStage, openStack, openYears, toggleMusic, st, layout]);
+  }, [
+    director,
+    setStage,
+    openStack,
+    openYears,
+    toggleMusic,
+    st,
+    layout,
+    reassemble,
+    lastRing,
+    closeSheet,
+    focusArtist,
+  ]);
 
   if (director) {
     return (
