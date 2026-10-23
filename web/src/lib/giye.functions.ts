@@ -36,6 +36,7 @@ import { domainOf, fold, foldVenue } from "./record-text";
 import { packRecords } from "./study-pack";
 import { countFrameDecisions } from "./frame-population";
 import { shapeArtistPage, type ArtistPageData } from "./artist-page";
+import { techFirstYears } from "./tech";
 
 /**
  * W1. A response that covers many people carries only coded structure: ids, years, type codes, and
@@ -495,6 +496,8 @@ function studyOrder(): StudyOrder {
 
 /** Everything the home "Archival Study" needs: every published artist (artists.json holds no hidden one), every sourced record, the frames. The fields are listed on /privacy and in docs/DEPLOY.md W1; change them together. */
 function buildStudyData(stamp: string) {
+  const ordered = studyOrder();
+  const techOf = techFirstYears(ordered.rows);
   const artists = loadAllArtists().map((a) => ({
     id: a.id,
     name_ko: a.name_ko,
@@ -507,12 +510,13 @@ function buildStudyData(stamp: string) {
     active_since: a.active_since,
     medium_tags: a.medium_tags,
     regions: a.regions,
+    // W4: first year of each technology word in the person's record titles (lib/tech.ts)
+    tech: techOf.get(a.id) ?? {},
   }));
   // ~60k rows: sent as one packed column string (see study-pack.ts), unpacked in the home loader.
   // Study order (artist, title, record id) before packing: every subset of one artist's rows (a year,
   // or the shared ring before 2017) is then in that order, as the canvas used to sort it, without
   // the title or the record id travelling to the browser.
-  const ordered = studyOrder();
   const indexOf = new Map<string, number>();
   const rows = ordered.rows.map((r, i) => {
     indexOf.set(r.id, i);

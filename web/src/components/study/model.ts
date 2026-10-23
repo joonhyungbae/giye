@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { fold, foldVenue } from "@/lib/record-text";
+import type { TechCode } from "@/lib/tech";
 
 /**
  * Archival Study — layout model.
@@ -24,6 +25,8 @@ export type StudyArtist = {
   active_since: number | null;
   medium_tags: string[];
   regions: string[];
+  /** W4. First year of each technology word in this person's record titles (lib/tech.ts). */
+  tech?: Partial<Record<TechCode, number>>;
 };
 
 export type StudyRecord = {
