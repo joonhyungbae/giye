@@ -2,7 +2,7 @@
 import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { SITE_NAV } from "@/components/SiteChrome";
-import { playTick } from "@/components/flight/sound";
+import { audioContext, playTick } from "@/components/flight/sound";
 import { Ensemble, type SoundedNote } from "./ensemble";
 import { RecordSheet, type SheetPreview } from "./RecordSheet";
 import { StudySearch } from "./StudySearch";
@@ -325,7 +325,34 @@ function parseHash(): ViewState | null {
 /* component                                                            */
 /* ------------------------------------------------------------------ */
 
-export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitch?: ReactNode }) {
+/**
+ * Commands an outside view (the exhibit, components/exhibit) uses to drive the study. When a
+ * director is passed, the study draws only its canvas: no menus, panels or messages.
+ */
+export type StudyDirector = {
+  /** filled in by the study once it is mounted */
+  api: {
+    setStage: (n: number) => void;
+    openStack: (open: boolean) => void;
+    openYears: (open: boolean) => void;
+    /** start the ensemble (needs a user gesture in most browsers); idempotent */
+    startMusic: () => void;
+    music: () => Ensemble | null;
+    /** record nodes to ring, the same mark the version comparison uses; null clears */
+    setRinged: (nodes: Set<number> | null, key: string) => void;
+    layout: Layout;
+  } | null;
+};
+
+export function ArchivalStudy({
+  data,
+  modeSwitch,
+  director,
+}: {
+  data: StudyData;
+  modeSwitch?: ReactNode;
+  director?: StudyDirector;
+}) {
   const { lang, setLang, t } = useLang();
   const layout = useMemo<Layout>(() => buildLayout(data, { R: 380 }), [data]);
   const strata = useMemo<Strata>(() => buildStrata(layout, data), [layout, data]);
@@ -447,6 +474,9 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
     music: null as Ensemble | null,
     notes: [] as SoundedNote[],
     versions: false,
+    /** director: rings drawn in place of the version comparison, and its cache key */
+    ringed: null as Set<number> | null,
+    ringedKey: "",
     lastInput: 0,
     lastTurnAt: 0,
     sx: new Float32Array(layout.records.length),
@@ -1002,6 +1032,8 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
     const draw = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
+      // the rings of the version comparison, or the director's rings in their place
+      const ringSet = st.ringed ?? (st.versions ? newSince : null);
       const { w, h, dpr } = st;
       const ink = st.theme.ink;
       const paper = st.theme.paper;
@@ -2082,7 +2114,7 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
             liftChords ? 1 : 0,
             st.yr0,
             st.yr1,
-            st.versions ? 1 : 0,
+            st.ringed ? `r${st.ringedKey}` : st.versions ? 1 : 0,
             chordA.toFixed(3),
           ].join("|")
         : "";
@@ -2135,7 +2167,7 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
           assembling &&
           !cacheable &&
           !st.pointer.inside &&
-          !(st.versions && newSince) &&
+          !ringSet &&
           ra[i]! >= 0.999
         ) {
           const k = records[i]!.reveal;
@@ -2331,7 +2363,7 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
           const kAt = (t0: number) => ((t0 - A_RECORDS[0]) * denomK) / spanK;
           let kStart = 0;
           let kEnd = records.length - 1;
-          if (flyingOnly && !(st.versions && newSince)) {
+          if (flyingOnly && !ringSet) {
             const flyLo = Math.floor(kAt(T - 0.5 * RECORD_FLIGHT)) - 2;
             const flyHi = Math.ceil(kAt(T)) + 2;
             const pulseLo = Math.floor(kAt(T - RECORD_FLIGHT - 0.6)) - 2;
@@ -2366,7 +2398,7 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
               const rr = (isHov ? dotR + 1.6 : dotR) * (flying ? 1.6 - 0.6 * a : 1) * f;
               addDot(emph || isHov ? dotsTop : dotsBase, styleFor(emph, alpha), x, y, rr);
             }
-            if (!emphOnly && st.versions && newSince && newSince.has(ri)) {
+            if (!emphOnly && ringSet && ringSet.has(ri)) {
               const p = pathIn(rings2, strokeKey(1, withAlpha(accent, 0.7)));
               const ringR = (dotR + 3) * f;
               p.moveTo(x + ringR, y);
@@ -3619,6 +3651,43 @@ export function ArchivalStudy({ data, modeSwitch }: { data: StudyData; modeSwitc
   };
   const btn =
     "grid size-6 place-items-center border border-input text-[11px] leading-none text-foreground/75 transition hover:border-primary hover:text-primary disabled:opacity-30 aria-pressed:bg-foreground aria-pressed:text-background";
+
+  useEffect(() => {
+    if (!director) return;
+    director.api = {
+      setStage,
+      openStack,
+      openYears,
+      startMusic: () => {
+        if (st.music) void audioContext()?.resume();
+        else toggleMusic();
+      },
+      music: () => st.music,
+      setRinged: (nodes, key) => {
+        st.ringed = nodes;
+        st.ringedKey = key;
+      },
+      layout,
+    };
+    return () => {
+      director.api = null;
+    };
+  }, [director, setStage, openStack, openYears, toggleMusic, st, layout]);
+
+  if (director) {
+    return (
+      <div
+        ref={wrapRef}
+        className="relative h-dvh w-full select-none overflow-hidden bg-background"
+      >
+        <canvas
+          ref={canvasRef}
+          className="block h-full w-full touch-none"
+          aria-label={t("기록 연구 시각화", "Archival study visualisation")}
+        />
+      </div>
+    );
+  }
 
   return (
     <div
