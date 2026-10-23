@@ -186,9 +186,12 @@ export class Ensemble {
     }, 1300);
   }
 
+  /** When set and it returns a list, that list is played instead of the needle's (the exhibit). */
+  chooser: ((rot: number) => number[] | null) | null = null;
+
   /** Called every frame: who sits near the needle, and where they sit (for panning). */
   update(rot: number) {
-    this.conductor.want(Conductor.pick(this.layout, rot));
+    this.conductor.want(this.chooser?.(rot) ?? Conductor.pick(this.layout, rot));
     const t = this.ctx.currentTime;
     for (const [i, ch] of this.channels) {
       const a = this.layout.artists[i]!;

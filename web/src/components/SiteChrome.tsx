@@ -13,6 +13,7 @@ import { useLang } from "@/lib/i18n";
 // sub-navigation (AboutNav). /research is not listed: no published work cites Giye data yet.
 export const SITE_NAV = [
   { to: "/artists", ko: "목록", en: "List" },
+  { to: "/exhibit", ko: "전시", en: "Exhibit" },
   { to: "/about/methodology", ko: "소개", en: "About" },
   { to: "/data", ko: "인용", en: "Citation" },
   { to: "/request", ko: "요청", en: "Request" },
@@ -60,7 +61,7 @@ export function AboutNav() {
 export function HomeReturn() {
   const { t } = useLang();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  if (pathname === "/") return null;
+  if (pathname === "/" || pathname === "/exhibit") return null;
   return (
     <Link
       to="/"
@@ -79,7 +80,7 @@ export function HomeReturn() {
 export function LangToggle() {
   const { lang, setLang, t } = useLang();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  if (pathname === "/") return null;
+  if (pathname === "/" || pathname === "/exhibit") return null;
   return (
     <button
       type="button"

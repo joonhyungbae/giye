@@ -113,6 +113,8 @@ function RootComponent() {
   const { queryClient, lang } = Route.useRouteContext();
   const pathname = useRouterState({ select: (st) => st.location.pathname });
   const isHome = pathname === "/";
+  // the exhibit is a full-screen installation, like the home study
+  const bare = isHome || pathname === "/exhibit";
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -129,7 +131,7 @@ function RootComponent() {
           {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
           <Outlet />
         </main>
-        {!isHome && <SiteFooter />}
+        {!bare && <SiteFooter />}
         <Toaster />
       </LanguageProvider>
     </QueryClientProvider>

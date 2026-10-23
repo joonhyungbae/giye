@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ArtistsRouteImport } from './routes/artists'
 import { Route as DataRouteImport } from './routes/data'
+import { Route as ExhibitRouteImport } from './routes/exhibit'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as RequestRouteImport } from './routes/request'
 import { Route as ResearchRouteImport } from './routes/research'
@@ -35,6 +36,11 @@ const ArtistsRoute = ArtistsRouteImport.update({
 const DataRoute = DataRouteImport.update({
   id: '/data',
   path: '/data',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExhibitRoute = ExhibitRouteImport.update({
+  id: '/exhibit',
+  path: '/exhibit',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PrivacyRoute = PrivacyRouteImport.update({
@@ -87,6 +93,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/artists': typeof ArtistsRoute
   '/data': typeof DataRoute
+  '/exhibit': typeof ExhibitRoute
   '/privacy': typeof PrivacyRoute
   '/request': typeof RequestRoute
   '/research': typeof ResearchRoute
@@ -101,6 +108,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/artists': typeof ArtistsRoute
   '/data': typeof DataRoute
+  '/exhibit': typeof ExhibitRoute
   '/privacy': typeof PrivacyRoute
   '/request': typeof RequestRoute
   '/research': typeof ResearchRoute
@@ -116,6 +124,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/artists': typeof ArtistsRoute
   '/data': typeof DataRoute
+  '/exhibit': typeof ExhibitRoute
   '/privacy': typeof PrivacyRoute
   '/request': typeof RequestRoute
   '/research': typeof ResearchRoute
@@ -132,6 +141,7 @@ export interface FileRouteTypes {
     | '/'
     | '/artists'
     | '/data'
+    | '/exhibit'
     | '/privacy'
     | '/request'
     | '/research'
@@ -146,6 +156,7 @@ export interface FileRouteTypes {
     | '/'
     | '/artists'
     | '/data'
+    | '/exhibit'
     | '/privacy'
     | '/request'
     | '/research'
@@ -160,6 +171,7 @@ export interface FileRouteTypes {
     | '/'
     | '/artists'
     | '/data'
+    | '/exhibit'
     | '/privacy'
     | '/request'
     | '/research'
@@ -175,6 +187,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ArtistsRoute: typeof ArtistsRoute
   DataRoute: typeof DataRoute
+  ExhibitRoute: typeof ExhibitRoute
   PrivacyRoute: typeof PrivacyRoute
   RequestRoute: typeof RequestRoute
   ResearchRoute: typeof ResearchRoute
@@ -207,6 +220,13 @@ declare module '@tanstack/react-router' {
       path: '/data'
       fullPath: '/data'
       preLoaderRoute: typeof DataRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/exhibit': {
+      id: '/exhibit'
+      path: '/exhibit'
+      fullPath: '/exhibit'
+      preLoaderRoute: typeof ExhibitRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/privacy': {
@@ -279,6 +299,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ArtistsRoute: ArtistsRoute,
   DataRoute: DataRoute,
+  ExhibitRoute: ExhibitRoute,
   PrivacyRoute: PrivacyRoute,
   RequestRoute: RequestRoute,
   ResearchRoute: ResearchRoute,

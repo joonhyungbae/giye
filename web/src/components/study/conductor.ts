@@ -137,6 +137,9 @@ export class Conductor {
   beat = 0;
   minCell = 0;
 
+  /** When set, a voice plays only its records from this year on (the exhibit's technology voices). */
+  from: ((artist: number) => number) | null = null;
+
   constructor(layout: Layout, cells = buildCells(layout)) {
     this.cells = cells;
     this.artists = layout.artists;
@@ -174,7 +177,9 @@ export class Conductor {
     const strand = [...a.strand].sort(
       (p, q) => this.records[p]!.year - this.records[q]!.year || p - q,
     );
-    for (const ri of strand) byRing[this.records[ri]!.ring]?.push(ri);
+    const from = this.from?.(artist) ?? -Infinity;
+    for (const ri of strand)
+      if (this.records[ri]!.year >= from) byRing[this.records[ri]!.ring]?.push(ri);
     const v: Voice = {
       artist,
       cell,
