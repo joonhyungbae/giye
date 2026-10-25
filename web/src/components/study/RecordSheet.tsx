@@ -349,7 +349,8 @@ export const RecordSheet = memo(function RecordSheet({
             <table className="w-full table-fixed border-b border-foreground/30 font-mono text-[10.5px] leading-5">
               {/* fixed columns: a long degree title truncates instead of widening the table */}
               <colgroup>
-                <col className="w-[4.25rem]" />
+                {/* wide enough for "education" in the mono face with the cell padding */}
+                <col className="w-[5.5rem]" />
                 <col />
                 <col className="w-[4.25rem]" />
                 <col />
