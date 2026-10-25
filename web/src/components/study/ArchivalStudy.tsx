@@ -204,6 +204,8 @@ const A_SOURCES = [0.4, 1.6] as const;
 const A_RECORDS = [1.2, 6.0] as const;
 const A_CLOSE = [6.1, 7.8] as const;
 const RECORD_FLIGHT = 0.75;
+/** seconds over which the opening's full-ink picture gives way to the settled, lighter one */
+const SETTLE_FADE = 1.8;
 
 type ViewState = { r: number; t: number; y: number; p: string | null; a: string | null };
 
@@ -485,6 +487,8 @@ export function ArchivalStudy({
     pinchZoom: 1,
     asmStart: 0,
     asmDone: !!initial || false,
+    /** when the opening finished (performance.now); the settle fade runs from here */
+    doneAt: 0,
     revealCount: 0,
     hover: null as Hover,
     focus: -1,
@@ -1110,6 +1114,7 @@ export function ArchivalStudy({
         st.tilt = tilt;
         if (T >= A_CLOSE[1]) {
           st.asmDone = true;
+          st.doneAt = now;
           st.tilt = 0;
           st.yr0 = 0;
           st.yr1 = lastRing;
@@ -2620,6 +2625,16 @@ export function ArchivalStudy({
       } else if (!asmLayer) {
         lc.sig = "";
         paintLinks(gx);
+      }
+      // The opening stamps every landed record at full ink; the settled copy above is the
+      // lighter picture. Without this the change happens in one frame: the full-ink picture is
+      // painted over the copy and fades out, so the density thins smoothly instead.
+      const settleU = st.asmDone ? (now - st.doneAt) / (SETTLE_FADE * 1000) : 1;
+      if (settleU < 1 && cacheable) {
+        gx.save();
+        gx.globalAlpha = 1 - smooth(0, 1, settleU);
+        paintLinks(gx, "all");
+        gx.restore();
       }
 
       /* -- sounded records: a ring spreads from each record as it is played -- */
