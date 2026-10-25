@@ -523,6 +523,7 @@ export function ArchivalStudy({
     date: "",
     done: false,
     hint: true,
+    untouched: true,
     open: false,
     spread: false,
     yr0: 0,
@@ -3387,6 +3388,7 @@ export function ArchivalStudy({
           date: lastRec,
           done: st.asmDone,
           hint: st.lastInput === 0 && performance.now() - st.asmStart < 15000,
+          untouched: st.lastInput === 0,
           open: st.tilt > 0.35,
           spread: st.spread > 0.5,
           yr0: st.yr0,
@@ -3734,6 +3736,9 @@ export function ArchivalStudy({
   };
   const btn =
     "grid size-6 place-items-center border border-input text-[11px] leading-none text-foreground/75 transition hover:border-primary hover:text-primary disabled:opacity-30 aria-pressed:bg-foreground aria-pressed:text-background";
+  // the stage buttons carry the main transformation, so they read heavier than the other tools
+  const stageBtn =
+    "h-6 whitespace-nowrap border border-foreground/80 px-2 text-[11px] leading-none text-foreground transition hover:border-primary hover:text-primary disabled:border-input disabled:text-foreground/30";
 
   useEffect(() => {
     if (!director) return;
@@ -3973,45 +3978,60 @@ export function ArchivalStudy({
           {/* play bar — the sheet's title block laid out along the bottom edge */}
           <div className="pointer-events-auto absolute inset-x-4 bottom-4 border-t border-foreground/40 bg-background/80 font-mono text-[10px] text-foreground/80 backdrop-blur-[2px]">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-2.5 py-2 sm:flex-nowrap sm:gap-x-4">
-              <div className="flex items-center gap-1">
+              {/* stages: verbs on the buttons, one cell per stage between them */}
+              <div className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setStage(hud.stage - 1)}
-                  className={btn}
+                  className={stageBtn}
                   aria-label={t("한 단계 조립", "Assemble one step")}
                   title={t("조립 [", "Assemble [")}
                   disabled={hud.stage === 0}
                 >
-                  ◀
+                  {t("◂ 조립", "◂ assemble")}
                 </button>
+                <div className="flex items-center gap-[3px]" role="group" aria-label={t("분해 단계", "Stages")}>
+                  {STAGE_NAMES.map(([ko, en], k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setStage(k)}
+                      aria-pressed={hud.stage === k}
+                      aria-label={`${k} ${t(ko, en)}`}
+                      title={`${k} ${t(ko, en)}`}
+                      className={`h-3 w-3 border border-foreground/70 transition hover:border-primary ${k <= hud.stage ? "bg-foreground" : "bg-transparent"}`}
+                    />
+                  ))}
+                </div>
                 <button
                   type="button"
                   onClick={() => setStage(hud.stage + 1)}
-                  className={btn}
+                  className={`${stageBtn} ${hud.done && hud.untouched && hud.stage === 0 ? "stage-beckon" : ""}`}
                   aria-label={t("한 단계 분해", "Explode one step")}
                   title={t("분해 ]", "Explode ]")}
                   disabled={hud.stage === STAGES}
                 >
-                  ▶
-                </button>
-                <button
-                  type="button"
-                  onClick={reassemble}
-                  className={btn}
-                  aria-label={t("다시 조립", "Reassemble")}
-                  title={t("다시 조립 R", "Reassemble R")}
-                >
-                  ↻
+                  {t("분해 ▸", "explode ▸")}
                 </button>
               </div>
 
-              <span className="w-[9rem] shrink-0 truncate whitespace-nowrap tabular-nums text-foreground/70">
+              <span className="w-[8.5rem] shrink-0 truncate whitespace-nowrap tabular-nums text-foreground/70">
                 {hud.done
                   ? hud.music
                     ? t(`합주 · ${hud.cell}`, `ensemble · ${hud.cell}`)
                     : `${STAGE_NAMES[hud.stage]![lang === "ko" ? 0 : 1]} ${hud.stage}/${STAGES}`
                   : t("조립 중", "assembling")}
               </span>
+
+              <button
+                type="button"
+                onClick={reassemble}
+                className={btn}
+                aria-label={t("다시 조립", "Reassemble")}
+                title={t("다시 조립 R", "Reassemble R")}
+              >
+                ↻
+              </button>
 
               {/* period: which years of activity are drawn — drag either end, or click a year */}
               <div className="order-first flex w-full min-w-0 flex-col gap-1 sm:order-none sm:flex-1 sm:flex-row sm:items-center sm:gap-3">

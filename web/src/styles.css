@@ -211,6 +211,25 @@
   animation: cite-notice 2.2s ease-out forwards;
 }
 
+/* first explode prompt — the button glows twice once the first assembly is done */
+@keyframes stage-beckon {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-primary) 35%, transparent);
+    border-color: var(--color-primary);
+  }
+}
+
+@utility stage-beckon {
+  animation: stage-beckon 1.6s ease-in-out 0.4s 2;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
 /* record sheet loading: a short segment runs along the header rule. It appears only after a
    moment, so a record that loads at once never flashes it; under reduced motion it rests. */
 @keyframes sheet-sweep {
